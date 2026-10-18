@@ -21,7 +21,7 @@ export async function reportFailure(i,error,log=console.error) {
   let message;
   if(Number(error.code)===50013 || Number(error.code)===50001)message='Number One cannot access that channel or perform that action. Ask a server administrator to check its permissions.';
   else if(Number(error.code)===10062)message='Discord expired this action. Run the command again.';
-  else if(error.name==='Error' && !error.code)message=safeError(error);
+  else if(error.name==='UserError')message=safeError(error);
   else message='Something went wrong while processing this action. Please try again.';
   try {await respond(i,{content:`${message}\nReference: ${reference}`,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]},embeds:[],components:[]});}
   catch(replyError) {log(`[${reference}] Could not send the error reply (${String(replyError.code || replyError.name)}). Verify the bot is online and Discord is reachable.`);}

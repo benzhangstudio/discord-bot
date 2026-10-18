@@ -33,12 +33,12 @@ test('embed form saves edits and publication only permits explicit mentions',asy
   const d=h.store.list('server-a','embed')[0];const i=h.interaction();
   Object.assign(i,{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>true,customId:`embedform:${d.id}:text`,fields:{getTextInputValue:k=>({title:'Welcome',description:`Visit <#${h.channel.id}>`,color:'E5A1B3',content:'@everyone hello'})[k]}});
   await h.app.handle(i);assert.equal(h.store.get('server-a','embed',d.id).embed.title,'Welcome');
-  await h.app.handle(h.interaction('embed','send',{id:d.id,role:'345678901234567890'}));
+  await h.app.handle(h.interaction('embed','send',{message:d.id,role:'345678901234567890'}));
   assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[]});assert.match(h.sent[0].content,/@everyone/);h.store.close();
 });
 test('another server cannot publish an embed by guessing its ID',async()=>{
   const h=harness({guildId:'server-b'});h.store.put('server-a','embed',{id:'secret',name:'Secret',embed:{description:'private'}});
-  await assert.rejects(h.app.handle(h.interaction('embed','send',{id:'secret'})),/not found/);assert.equal(h.sent.length,0);h.store.close();
+  await assert.rejects(h.app.handle(h.interaction('embed','send',{message:'secret'})),/no longer available/);assert.equal(h.sent.length,0);h.store.close();
 });
 test('staff meetings require a private channel and future local time',async()=>{
   const h=harness();await assert.rejects(h.app.handle(h.interaction('schedule','add',{title:'Meeting',start:'2030-12-01T19:00',kind:'staff-meeting'})),/hidden from/);assert.equal(h.store.list('server-a','event').length,0);h.store.close();
@@ -48,9 +48,9 @@ test('staff meetings require a private channel and future local time',async()=>{
 test('private schedule details are withheld and RSVP requires channel access',async()=>{
   const h=harness({manager:false,visible:false,privateChannel:true});
   const event={id:'meeting',title:'Private',channel:h.channel.id,start:Date.now()+600000,duration:60,rsvps:{}};h.store.put('server-a','event',event);
-  await assert.rejects(h.app.handle(h.interaction('schedule','show',{id:'meeting'})),/cannot access/);
+  await assert.rejects(h.app.handle(h.interaction('schedule','show',{event:'meeting'})),/cannot view/);
   const button=h.interaction();Object.assign(button,{isButton:()=>true,isChatInputCommand:()=>false,customId:`rsvp:meeting:${event.start}:going`});
-  await assert.rejects(h.app.handle(button),/cannot access/);assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{});h.store.close();
+  await assert.rejects(h.app.handle(button),/cannot view/);assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{});h.store.close();
 });
 test('RSVP rejects obsolete occurrences and cancel marks future delivery inactive',async()=>{
   const h=harness();const start=Date.now()+600000;h.store.put('server-a','event',{id:'meeting',title:'Test',kind:'event',channel:h.channel.id,start,duration:60,rsvps:{}});
@@ -96,4 +96,24 @@ test('help dropdown updates the original menu without requiring staff access',as
   const h=harness({manager:false});const i=h.interaction();
   Object.assign(i,{isChatInputCommand:()=>false,isStringSelectMenu:()=>true,customId:'help:topic',values:['events']});
   await h.app.dispatch(i);assert.equal(i.deferred,true);assert.match(h.outputs[0].embeds[0].toJSON().title,/Events & schedules/);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
+});
+test('command autocomplete responds with saved names without deferring or exposing another server',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'ours',name:'Welcome'});h.store.put('other','embed',{id:'secret',name:'Secret'});
+  const i=h.interaction('embed','edit');Object.assign(i,{isAutocomplete:()=>true,isChatInputCommand:()=>false,respond:async options=>h.outputs.push(options)});i.options.getFocused=()=>({name:'message',value:'wel'});
+  await h.app.dispatch(i);assert.ok(!i.deferred);assert.deepEqual(h.outputs[0],[{name:'Welcome',value:'ours'}]);h.store.close();
+});
+test('every message-edit form opens with readable labels and valid Discord lengths',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'message',name:'Welcome',embed:{description:'Hello'}});
+  for(const action of ['text','media','field','branding']) {
+    const i=h.interaction();Object.assign(i,{isChatInputCommand:()=>false,isButton:()=>true,customId:`embed:message:${action}`});await h.app.handle(i);
+    const form=h.outputs.at(-1);assert.equal(form.title,'Number One · Edit message');
+    for(const row of form.components){const input=row.components[0];assert.ok(input.label.length<=45);assert.doesNotMatch(input.label,/URL|Hex|Inline|field/i);}
+  }
+  h.store.close();
+});
+test('empty saved lists offer a next step and delivery status omits internal failure details',async()=>{
+  const h=harness();await h.app.handle(h.interaction('embed','list'));assert.match(h.outputs.at(-1).content,/No saved messages yet/);
+  await h.app.handle(h.interaction('feed','list'));assert.match(h.outputs.at(-1).content,/No sources yet/);
+  h.store.put('server-a','feed',{id:'feed',name:'Updates',error:'XML parser schema stacktrace'});await h.app.handle(h.interaction('settings','status'));
+  assert.match(h.outputs.at(-1).content,/Updates needs attention/);assert.doesNotMatch(h.outputs.at(-1).content,/XML|schema|stacktrace/);h.store.close();
 });

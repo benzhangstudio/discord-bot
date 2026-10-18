@@ -1,41 +1,42 @@
 // Discord application command JSON. All entry points are slash commands.
 const str = (name, description, required = false, extra = {}) => ({type:3,name,description,required,...extra});
 const integer = (name, description, min, max) => ({type:4,name,description,min_value:min,max_value:max});
-const channel = (required = false) => ({type:7,name:'channel',description:'Destination text or announcement channel',required,channel_types:[0,5]});
-const id = () => str('id','Saved item ID',true);
+const channel = (required = false) => ({type:7,name:'channel',description:'Choose where Number One should post',required,channel_types:[0,5]});
+const id = () => str('id','Start typing a name, then choose from the suggestions',true,{autocomplete:true});
 const sub = (name,description,options=[]) => ({type:1,name,description,options});
-const choice = values => values.map(v => ({name:v,value:v}));
+const labels={event:'Community event','staff-meeting':'Staff meeting',rotation:'Staff rotation',none:'One time only',daily:'Every day',weekly:'Every week'};
+const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
 export const commands = [
-  {name:'help',description:'How to use Number One'},
-  {name:'settings',description:'Configure this server’s Number One settings',default_member_permissions:'32',options:[
-    sub('view','View settings'),sub('timezone','Set the default scheduling timezone',[str('zone','IANA timezone, for example America/New_York',true)]),
-    sub('staff','Set an additional role allowed to manage Number One',[{...role,required:true}]),sub('clear-staff','Remove the additional staff role'),sub('status','Check delivery problems')
+  {name:'help',description:'Open the help menu and find a quick walkthrough'},
+  {name:'settings',description:'Choose your server’s timezone and who can manage Number One',default_member_permissions:'32',options:[
+    sub('view','See your server’s current settings'),sub('timezone','Choose the timezone for new events',[str('zone','Type a city or choose a timezone, such as New York or Seoul',true,{autocomplete:true})]),
+    sub('staff','Choose a role that can manage announcements, events, and feeds',[{...role,required:true}]),sub('clear-staff','Remove the extra staff role'),sub('status','Check whether reminders and weekly posts need attention')
   ]},
-  {name:'embed',description:'Build and publish rich embeds',options:[
-    sub('create','Open a new embed builder',[str('name','Template name',true,{max_length:80})]),
-    sub('edit','Open a saved embed',[id()]),sub('list','List saved embeds'),sub('delete','Delete a saved embed',[id()]),
-    sub('remove-field','Remove one field from a saved embed',[id(),{...integer('number','Field number, starting at 1',1,25),required:true}]),
-    sub('send','Publish a saved embed',[id(),channel(true),role,{type:6,name:'user',description:'Optional user to notify'}])
+  {name:'embed',description:'Create and share announcements with pictures, links, and colors',options:[
+    sub('create','Start a new styled message',[str('name','Give your saved message a name, such as Welcome',true,{max_length:80})]),
+    sub('edit','Keep working on a saved message',[id()]),sub('list','See your saved messages'),sub('delete','Delete a saved message; posted copies stay in their channels',[id()]),
+    sub('remove-section','Remove a section from your message',[id(),{...integer('number','Which section? Count from the top, starting at 1',1,25),required:true}]),
+    sub('send','Share a saved message in a channel',[id(),channel(true),role,{type:6,name:'user',description:'Choose a person to notify, if you want'}])
   ]},
   {name:'schedule',description:'Events, meetings, reminders, and staff rotations',options:[
-    sub('add','Create an event or recurring rotation',[
-      str('title','Event title',true,{max_length:150}),str('start','Local YYYY-MM-DDTHH:mm or ISO time with offset',true),channel(true),
+    sub('add','Plan an event, staff meeting, or staff rotation',[
+      str('title','What is happening?',true,{max_length:150}),str('start','Date and time: YYYY-MM-DD HH:mm, using a 24-hour clock',true),channel(true),
       str('kind','Event category',false,{choices:choice(['event','staff-meeting','rotation'])}),
-      str('repeat','Recurrence in the chosen timezone',false,{choices:choice(['none','daily','weekly'])}),
-      integer('duration','Duration in minutes',1,10080),integer('reminder','Minutes before start; 0 means at start',0,10080),
+      str('repeat','Should this happen once, every day, or every week?',false,{choices:choice(['none','daily','weekly'])}),
+      integer('duration','How long is it? Enter minutes; the default is 60',1,10080),integer('reminder','Minutes before the start; default 30, or 0 for the start',0,10080),
       str('description','Event details',false,{max_length:2000}),str('location','Location or meeting link',false,{max_length:300}),
-      str('zone','Override the server timezone'),role,str('assignees','Rotation: ordered user IDs or @mentions, separated by spaces',false,{max_length:1000})
+      str('zone','Use a different timezone for this event; type a city',false,{autocomplete:true}),role,str('people','Staff rotation: mention people in turn order, separated by spaces',false,{max_length:1000})
     ]),
-    sub('list','Browse upcoming events you can access',[integer('page','Page number',1,1000)]),
-    sub('show','Show an event and RSVP buttons',[id()]),sub('edit','Edit an event’s details and time',[id()]),
-    sub('post','Publish an event card and RSVP buttons in its channel',[id()]),
-    sub('configure','Update recurrence and reminder options',[id(),str('repeat','Recurrence',false,{choices:choice(['none','daily','weekly'])}),integer('duration','Minutes long',1,10080),integer('reminder','Minutes before start',0,10080)]),
-    sub('cancel','Cancel an event and future occurrences',[id()])
+    sub('list','See what’s coming up in your server',[integer('page','Which page would you like to see?',1,1000)]),
+    sub('show','See an event’s details and let people know if you’re going',[id()]),sub('edit','Change an event’s details or start time',[id()]),
+    sub('post','Share an event card where people can say if they’re going',[id()]),
+    sub('configure','Change an event’s reminders, length, or repetition',[id(),str('repeat','How often should this event happen?',false,{choices:choice(['none','daily','weekly'])}),integer('duration','How long is it, in minutes?',1,10080),integer('reminder','Minutes before the start; 0 means at the start',0,10080)]),
+    sub('cancel','Cancel this event and stop its future reminders',[id()])
   ]},
-  {name:'feed',description:'Subscribe a channel to an RSS or Atom autofeed',options:[
-    sub('add','Subscribe without reposting existing feed entries',[str('name','Feed label',true,{max_length:80}),str('url','HTTPS RSS/Atom feed URL from an approved provider',true),channel(true),role]),
-    sub('list','List feed subscriptions and delivery status'),sub('preview','Preview the newest item privately',[id()]),
-    sub('pause','Pause delivery',[id()]),sub('resume','Resume delivery',[id()]),sub('remove','Remove a subscription',[id()])
+  {name:'feed',description:'Bring new posts to your server in a weekly roundup',options:[
+    sub('add','Choose a source and channel for weekly posts',[str('name','Give this source a name, such as Rosé updates',true,{max_length:80}),str('link','Paste a feed link from a source approved by the bot owner',true),channel(true),role]),
+    sub('list','See your sources and how many new posts are waiting'),sub('preview','Take a private look at the latest post',[id()]),
+    sub('pause','Pause this source’s weekly posts',[id()]),sub('resume','Turn this source’s weekly posts back on',[id()]),sub('remove','Stop following this source; posted messages stay in the channel',[id()])
   ]}
-].map(c => ({...c,type:1,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',feed:'source'}[c.name]}:option)})),type:1,contexts:[0],integration_types:[0]}));

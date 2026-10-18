@@ -56,7 +56,7 @@ test('missed occurrences advance rotation fairly without a backlog of reminders'
 });
 test('Discord embed combined text and field limits are enforced',()=>{
   assert.throws(()=>validateEmbed({embed:{description:'x'.repeat(4096),fields:[{name:'n',value:'x'.repeat(1024)},{name:'n',value:'x'.repeat(1024)}]}}),/text limits/);
-  assert.throws(()=>validateEmbed({embed:{description:'ok',fields:Array(26).fill({name:'n',value:'v'})}}),/25 fields/);
+  assert.throws(()=>validateEmbed({embed:{description:'ok',fields:Array(26).fill({name:'n',value:'v'})}}),/25 sections/);
   assert.equal(validateEmbed({embed:{description:'<#123456789012345678>'}}).embed.description,'<#123456789012345678>');
 });
 test('RSS destinations must be operator-approved HTTPS public hosts',()=>{

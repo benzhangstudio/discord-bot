@@ -1,5 +1,7 @@
+import {UserError} from './user-error.js';
 import {EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
+import {timezoneLabel} from './suggestions.js';
 const categories=[
   ['home','Getting started','Meet Number One and find your way around','👋'],
   ['embeds','Announcements & embeds','Create and share a styled message','💌'],
@@ -8,8 +10,8 @@ const categories=[
   ['setup','Server settings','Choose a timezone and who can manage things','⚙️']
 ];
 export function helpMenu({page='home',canManage=false,canConfigure=false,timezone='America/New_York'}={}) {
-  if(!categories.some(([value])=>value===page))throw Error('That help page is no longer available. Open /help again.');
-  const example=DateTime.now().setZone(timezone).plus({days:1}).set({hour:19,minute:0}).toFormat("yyyy-MM-dd'T'HH:mm");
+  if(!categories.some(([value])=>value===page))throw new UserError('That help page is no longer available. Open /help again.');
+  const example=DateTime.now().setZone(timezone).plus({days:1}).set({hour:19,minute:0}).toFormat('yyyy-MM-dd HH:mm');
   const pages={
     home:{title:'Welcome to Number One 👋',description:'A little help keeping your community connected. Choose a topic from the menu below.',fields:[
       {name:'📅 See what’s coming up',value:'Find upcoming events, check the details, and let everyone know if you’re going.'},
@@ -19,31 +21,31 @@ export function helpMenu({page='home',canManage=false,canConfigure=false,timezon
     ]},
     embeds:{title:'💌 Announcements & embeds',description:'Give your announcements a little personality with styled text, pictures, links, and colors.',fields:canManage?[
       {name:'1 · Start a message',value:'Use **/embed create** and give it a name, such as “Welcome” or “Weekly news”.'},
-      {name:'2 · Make it yours',value:'Use the builder controls to edit the text and color, add pictures, arrange information in fields, or add an author and footer. Your changes save automatically.'},
+      {name:'2 · Make it yours',value:'Use the controls to edit your text, choose a color such as pink or blue, add pictures or sections, and add an author or small print. Your changes save automatically.'},
       {name:'3 · Preview and share',value:'Use **/embed send** to choose your saved message and the channel. You can also choose a person or role to notify.'},
-      {name:'Come back later',value:'**/embed list** shows your saved messages and their IDs. Copy an ID into **/embed edit** to keep working, or **/embed delete** to remove the saved message.'},
+      {name:'Come back later',value:'**/embed list** shows your saved messages. With **/embed edit**, start typing the message’s name and choose a suggestion. **/embed delete** removes the saved message; copies already posted stay in their channels.'},
       {name:'Channel links & notifications',value:'You can include channel mentions in your text. To actually notify someone, choose the person or role when sending; mentions inside the embed do not send a notification.'}
     ]:[{name:'Want to share an announcement?',value:'Ask a staff member to create one. Building and publishing announcements is available to the people who manage Number One in your server.'}]},
     events:{title:'📅 Events & schedules',description:'Keep up with community events, meetings, and who’s on duty.',fields:[
-      {name:'Find your next event',value:'Use **/schedule list** to see upcoming events. Copy an event’s ID into **/schedule show** for its time, location, and details.'},
-      {name:'Let people know you’re coming',value:'Choose **Going**, **Maybe**, or **Decline** on an event card. You can change your answer later. Open **/schedule show** again to see the latest totals.'},
+      {name:'Find your next event',value:'Use **/schedule list** to see upcoming events. With **/schedule show**, start typing an event’s name and choose a suggestion for its time, location, and details.'},
+      {name:'Let people know you’re coming',value:'Choose **Going**, **Maybe**, or **Can’t make it** on an event card. You can change your answer later. Open **/schedule show** again to see the latest replies.'},
       ...(canManage?[
-        {name:'Plan an event',value:`Use **/schedule add**. Choose a title, start time, and channel. For the start, use a date and time like **${example}**. The server timezone is **${timezone}**.`},
+        {name:'Plan an event',value:`Use **/schedule add**. Choose a title, start time, and channel. Use a date and time like **${example}**, using a 24-hour clock. New events use **${timezoneLabel(timezone)}**; choose a different city in the zone option if needed.`},
         {name:'Make it recurring',value:'Choose daily or weekly repetition for regular events. For staff rotations, choose “rotation” and provide the people in the order they should take turns. Staff meetings and rotations need a staff-only channel.'},
-        {name:'Remind, share, or change plans',value:'Choose how many minutes before the event to send its reminder; use 0 for a message at the start. Use **/schedule post** to share an event card, **edit** to update details, **configure** to change reminders or repetition, and **cancel** to cancel future occurrences.'}
+        {name:'Remind, share, or change plans',value:'Choose how many minutes before the event to send its reminder; use 0 for a message at the start. Use **/schedule post** to share a card, **edit** for details, **configure** for reminders or repetition, and **cancel** to stop the event and its future reminders.'}
       ]:[]),
-      {name:'Private meetings stay private',value:'You’ll only see events in channels you can access. Discord displays event timestamps in your own local time.'}
+      {name:'Private meetings stay private',value:'You’ll only see events in channels you can access. Discord shows event times in your own local time.'}
     ]},
     feeds:{title:'📰 Weekly posts',description:'New posts are gathered into one weekly roundup, rather than sending a message for every update.',fields:[
-      {name:'When does it arrive?',value:'**Sunday at 12:00 a.m. in America/New_York**—the beginning of Sunday. If there are no new posts, no message is sent.'},
+      {name:'When does it arrive?',value:'**Sunday at midnight, New York time**—the beginning of Sunday. If there are no new posts, no message is sent.'},
       ...(canManage?[
-        {name:'Choose where posts go',value:'Use **/feed add** with a name, a supported RSS/Atom feed link, and your chosen channel. You can optionally notify a role when the roundup arrives.'},
-        {name:'Check or manage a feed',value:'**/feed list** shows saved feeds, their IDs, and how many posts are waiting. Use an ID with **/feed preview** to peek at the latest post, **pause** or **resume** to control delivery, or **remove** to unsubscribe.'},
+        {name:'Choose where posts go',value:'Use **/feed add** with a name, a feed link approved by the bot owner, and your chosen channel. You can optionally notify a role when the roundup arrives.'},
+        {name:'Check or manage a source',value:'**/feed list** shows your sources and how many posts are waiting. Choose a source by name with **/feed preview** to peek at its latest post, **pause** or **resume** to control posting, or **remove** to stop following it.'},
         {name:'Following Instagram?',value:'Ask the bot owner for a supported feed link. An Instagram profile link alone won’t work. Story coverage depends on the feed provider.'}
       ]:[{name:'Want a feed added?',value:'Ask your server’s staff to choose a source and a channel for the weekly roundup. Instagram story coverage depends on the source.'}])
     ]},
     setup:{title:'⚙️ Server settings',description:canConfigure?'A few choices to make Number One fit your server.':'These settings are managed by your server’s administrators.',fields:canConfigure?[
-      {name:'Set your timezone',value:`Use **/settings timezone** to choose your server’s timezone, such as **America/New_York** or **Asia/Seoul**. Right now it’s **${timezone}**. Existing events keep their original timezone; weekly roundups always use New York time.`},
+      {name:'Set your timezone',value:`Use **/settings timezone**, type a city such as **New York** or **Seoul**, and choose a suggestion. Right now new events use **${timezoneLabel(timezone)}**. Existing events keep their original timezone; weekly roundups always use New York time.`},
       {name:'Choose who can help',value:'Use **/settings staff** to choose a role that can manage announcements, schedules, and feeds. **/settings clear-staff** removes that extra access. Members with Manage Server permission can always manage Number One.'},
       {name:'Review your settings',value:'**/settings view** shows the current choices. **/settings status** checks for delivery problems. If something goes wrong, share the error reference with the bot owner.'}
     ]:[{name:'Need something changed?',value:'Ask someone with Manage Server permission to choose the timezone or staff role. You can still browse events and RSVP without managing the bot.'}]}

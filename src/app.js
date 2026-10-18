@@ -1,69 +1,73 @@
+import {UserError} from './user-error.js';
 import {PermissionFlagsBits as P,MessageFlags,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
-import {DEFAULT_ZONE,zone,parseTime,validateEmbed,webUrl,rotationMember} from './domain.js';
+import {DEFAULT_ZONE,zone,parseTime,parseColor,validateEmbed,webUrl,rotationMember} from './domain.js';
 import {loadFeed,feedMessage} from './feeds.js';
 import {startWorker} from './worker.js';
 import {nextDigest} from './weekly-feeds.js';
 import {commands} from './commands.js';
 import {acknowledge,respond,updateResponse,reportFailure,safeError} from './responses.js';
 import {helpMenu} from './help.js';
+import {suggestions,timezoneLabel} from './suggestions.js';
 
 export function createApp(client,store) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
+const selected=i=>i.options.getString({embed:'message',schedule:'event',feed:'source'}[i.commandName]) || i.options.getString('id');
 function staff(i) {const role=settings(i.guildId).staff;return i.memberPermissions?.has(P.ManageGuild) || Boolean(role && (i.member.roles?.cache?.has(role) || (Array.isArray(i.member.roles)&&i.member.roles.includes(role))));}
-function needStaff(i) {if(!staff(i)) throw Error('You need Manage Server or this server’s configured Number One staff role.');}
-function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw Error('That item was not found in this server.');return v;}
+function needStaff(i) {if(!staff(i)) throw new UserError('This is a staff action. Ask someone with Manage Server permission or the server’s Number One staff role to help.');}
+function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
   const channel=i.guild.channels.cache?.get(id) || await i.guild.channels.fetch(id).catch(()=>null);
   return checkDestination(i,channel,{writing,privateOnly});
 }
 function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
-  if(!channel || ![0,5].includes(channel.type)) throw Error('Choose a text or announcement channel in this server.');
-  if(!channel.permissionsFor(i.member)?.has([P.ViewChannel,...(writing?[P.SendMessages]:[])])) throw Error('You cannot access or publish in that channel.');
-  if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw Error('Number One needs View Channel, Send Messages, and Embed Links there.');
-  if(privateOnly && channel.permissionsFor(i.guild.roles.everyone)?.has(P.ViewChannel)) throw Error('Staff meetings and rotations require a channel hidden from @everyone.');
+  if(!channel || ![0,5].includes(channel.type)) throw new UserError('Choose a text or announcement channel in this server.');
+  if(!channel.permissionsFor(i.member)?.has([P.ViewChannel,...(writing?[P.SendMessages]:[])])) throw new UserError(writing?'Choose a channel you can view and send messages in.':'You cannot view this event’s channel. Ask a staff member if you need access.');
+  if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw new UserError('Number One needs View Channel, Send Messages, and Embed Links there.');
+  if(privateOnly && channel.permissionsFor(i.guild.roles.everyone)?.has(P.ViewChannel)) throw new UserError('Choose a staff-only channel for meetings and rotations. It must be hidden from @everyone.');
   return channel;
 }
 async function pingRole(i,roleId,channel) {
   if(!roleId) return;
   const role=await i.guild.roles.fetch(roleId);
-  if(!role || role.id===i.guildId || role.managed) throw Error('Choose an ordinary server role.');
-  if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw Error('Both you and Number One need Mention Everyone in the destination to notify a non-mentionable role.');
+  if(!role || role.id===i.guildId || role.managed) throw new UserError('Choose a role created for your members, rather than @everyone or a role managed by another app.');
+  if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw new UserError('That role cannot be notified here. Ask an administrator to make it mentionable, or give you and Number One the Mention Everyone permission in this channel.');
   return role.id;
 }
 function modal(id,title,fields) {
   return new ModalBuilder().setCustomId(id).setTitle(title).addComponents(fields.map(([name,label,value='',max=1000,required=false])=>new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(name).setLabel(label).setStyle(max>300?TextInputStyle.Paragraph:TextInputStyle.Short).setRequired(required).setMaxLength(max).setValue(String(value).slice(0,max)))));
 }
 function editor(d) {
-  const buttons=[['text','Text & color'],['media','Images & links'],['field','Add field'],['branding','Author & footer'],['clearfields','Clear fields']];
-  return {content:`**${d.name}** · ID: \`${d.id}\`\nSaved automatically. Use /embed send to publish. Channel links: <#CHANNEL_ID>. Notification pings are selected when sending.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the buttons below to build your embed.',color:0xe5a1b3})],components:[{type:1,components:buttons.map(([action,label])=>({type:2,style:2,label,custom_id:`embed:${d.id}:${action}`}))}],allowedMentions:{parse:[]}};
+  const buttons=[['text','Text & color'],['media','Pictures & links'],['field','Add or edit a section'],['branding','Author & small print'],['clearfields','Remove all sections']];
+  return {content:`**${d.name}**\nYour changes save automatically. This is your private preview. When you’re ready, use **/embed send**, choose this message by name, and pick a channel. You can choose who to notify before sending.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the controls below to create your announcement.',color:0xe5a1b3})],components:[{type:1,components:buttons.map(([action,label])=>({type:2,style:2,label,custom_id:`embed:${d.id}:${action}`}))}],allowedMentions:{parse:[]}};
 }
 function editModal(d,action) {
   const e=d.embed;
   const fields={
-    text:[['title','Title',e.title,256],['description','Description (supports channel mentions)',e.description,4000],['color','Hex color, e.g. E5A1B3',e.color?.toString(16).padStart(6,'0'),6],['content','Message above embed (no notification pings)',d.content,1800]],
-    media:[['url','Title link',e.url,500],['image','Image URL',e.image?.url,500],['thumbnail','Thumbnail URL',e.thumbnail?.url,500]],
-    field:[['name','Field name','',256,true],['value','Field value','',1024,true],['inline','Inline? yes or no','no',3],['number','Field number to replace (blank adds a field)','',2]],
-    branding:[['author','Author name',e.author?.name,256],['authorurl','Author link',e.author?.url,500],['icon','Author icon URL',e.author?.icon_url,500],['footer','Footer text',e.footer?.text,2048]]
+    text:[['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color name or code, e.g. pink or E5A1B3',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
+    media:[['url','Title link',e.url,500],['image','Main picture link',e.image?.url,500],['thumbnail','Small picture link',e.thumbnail?.url,500]],
+    field:[['name','Section heading','',256,true],['value','Section text','',1024,true],['inline','Place beside other sections? yes or no','no',3],['number','Section to replace (leave blank to add one)','',2]],
+    branding:[['author','Author name',e.author?.name,256],['authorurl','Author link',e.author?.url,500],['icon','Author picture link',e.author?.icon_url,500],['footer','Small text at the bottom',e.footer?.text,2048]]
   };
-  return modal(`embedform:${d.id}:${action}`,'Number One · Embed builder',fields[action]);
+  return modal(`embedform:${d.id}:${action}`,'Number One · Edit message',fields[action]);
 }
 function eventView(e) {
   const counts=Object.values(e.rsvps || {}).reduce((a,v)=>(a[v]=(a[v]||0)+1,a),{});
   return {embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle(e.title).setDescription((e.description || 'No description.').slice(0,4096)).addFields(
-    {name:'When',value:`<t:${Math.floor(e.start/1000)}:F>\n${e.zone} · ${e.duration} minutes`},
-    {name:'Details',value:`${e.kind} · ${e.repeat}\n<#${e.channel}>${e.location?'\n'+e.location:''}${rotationMember(e)?'\nOn duty: <@'+rotationMember(e)+'>':''}`},
-    {name:'RSVP',value:`Going: ${counts.going||0} · Maybe: ${counts.maybe||0} · Declined: ${counts.declined||0}`}
-  ).setFooter({text:`ID: ${e.id}${e.cancelled?' · Cancelled':e.complete?' · Completed':''}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Decline',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
+    {name:'When',value:`<t:${Math.floor(e.start/1000)}:F>\n${timezoneLabel(e.zone)} · ${e.duration} minutes`},
+    {name:'Details',value:`${{event:'Community event','staff-meeting':'Staff meeting',rotation:'Staff rotation'}[e.kind]||'Event'} · ${{none:'One time only',daily:'Every day',weekly:'Every week'}[e.repeat]||'One time only'}\n<#${e.channel}>${e.location?'\n'+e.location:''}${rotationMember(e)?'\nOn duty: <@'+rotationMember(e)+'>':''}`},
+    {name:'Who’s coming?',value:`Going: ${counts.going||0} · Maybe: ${counts.maybe||0} · Can’t make it: ${counts.declined||0}`}
+  ).setFooter({text:`Number One · ${e.cancelled?'Cancelled':e.complete?'Finished':'Open /schedule show to see the latest replies'}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
 async function handle(i) {
-  if(!i.inGuild()) throw Error('Use Number One inside a Discord server.');
+  if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
+  if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
   if(i.isStringSelectMenu?.()) {
     await acknowledge(i,true);
-    if(i.customId!=='help:topic')throw Error('This menu is no longer available. Open /help again.');
+    if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
     return updateResponse(i,helpMenu({...helpOptions(),page:i.values[0]}));
   }
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
@@ -72,7 +76,7 @@ async function handle(i) {
     if(!opensModal)await acknowledge(i);
     const definition=commands.find(command=>command.name===i.commandName);
     if(!definition)return respond(i,privateReply('This is an older or unavailable command. Use /schedule list for upcoming events, or /help for current commands.'));
-    if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw Error('This command has changed. Choose one of its current subcommands, or use /help.');
+    if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current subcommands, or use /help.');
   }
   if(i.isButton()) {
     const [kind,id,action,value]=i.customId.split(':');
@@ -86,12 +90,12 @@ async function handle(i) {
       let e=item(i,'event',id);await destination(i,e.channel,{writing:false});
       // Other members may RSVP while the permission lookup is in progress.
       e=item(i,'event',id);
-      if(e.cancelled || e.complete || e.start!==Number(action) || Date.now()>e.start+e.duration*60000) throw Error('This occurrence is no longer accepting RSVPs. Open /schedule show for the current occurrence.');
-      if(!['going','maybe','declined'].includes(value)) throw Error('Invalid RSVP.');
+      if(e.cancelled || e.complete || e.start!==Number(action) || Date.now()>e.start+e.duration*60000) throw new UserError('This event is no longer accepting replies, or its time has changed. Open /schedule show and choose the event again.');
+      if(!['going','maybe','declined'].includes(value)) throw new UserError('Choose Going, Maybe, or Can’t make it on the event card.');
       e.rsvps ||= {};e.rsvps[i.user.id]=value;store.put(i.guildId,'event',e);
-      return respond(i,privateReply(`RSVP saved: ${value}. Use /schedule show to see current counts.`));
+      return respond(i,privateReply(`Your reply is saved: **${{going:'Going',maybe:'Maybe',declined:'Can’t make it'}[value]}**. You can change your answer on the event card. Use /schedule show to see everyone’s latest replies.`));
     }
-    throw Error('This button is no longer available.');
+    throw new UserError('This button is no longer available.');
   }
   if(i.isModalSubmit()) {
     await acknowledge(i,i.customId.startsWith('embedform:')&&i.isFromMessage());
@@ -100,13 +104,14 @@ async function handle(i) {
       const d=item(i,'embed',id),e=d.embed;
       if(action==='text') {
         for(const key of ['title','description']) {const v=read(key);if(v)e[key]=v;else delete e[key];}
-        const color=read('color');if(color && !/^[\da-f]{6}$/i.test(color)) throw Error('Color must be six hexadecimal characters.');
-        if(color)e.color=parseInt(color,16);else delete e.color;d.content=read('content');
+        const color=read('color');
+        if(color)e.color=parseColor(color);else delete e.color;d.content=read('content');
       } else if(action==='media') {
         for(const key of ['url','image','thumbnail']) {const v=read(key);if(v)e[key]=key==='url'?webUrl(v):{url:webUrl(v)};else delete e[key];}
       } else if(action==='field') {
-        e.fields ||= [];const field={name:read('name'),value:read('value'),inline:read('inline').toLowerCase()==='yes'};
-        const number=read('number');if(number) {const n=Number(number);if(!Number.isInteger(n)||n<1||n>e.fields.length)throw Error('Choose an existing field number.');e.fields[n-1]=field;} else e.fields.push(field);
+        const beside=read('inline').toLowerCase();if(!['yes','no',''].includes(beside))throw new UserError('For placing sections beside each other, enter yes or no.');
+        e.fields ||= [];const field={name:read('name'),value:read('value'),inline:beside==='yes'};
+        const number=read('number');if(number) {const n=Number(number);if(!Number.isInteger(n)||n<1||n>e.fields.length)throw new UserError('Choose a section that is already in your message, counting from the top.');e.fields[n-1]=field;} else e.fields.push(field);
       } else if(action==='branding') {
         const author=read('author');if(author) {e.author={name:author};if(read('authorurl'))e.author.url=webUrl(read('authorurl'));if(read('icon'))e.author.icon_url=webUrl(read('icon'));} else delete e.author;
         const footer=read('footer');if(footer)e.footer={text:footer};else delete e.footer;
@@ -118,49 +123,49 @@ async function handle(i) {
     if(kind==='eventform') {
       let e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
       e=item(i,'event',id);
-      if(e.cancelled || e.complete) throw Error('Create a new event instead of editing a cancelled or completed event.');
-      const start=parseTime(read('start'),e.zone);if(start<=Date.now())throw Error('Choose a future start time.');
+      if(e.cancelled || e.complete) throw new UserError('Create a new event instead of editing a cancelled or completed event.');
+      const start=parseTime(read('start'),e.zone);if(start<=Date.now())throw new UserError('Choose a future start time.');
       e.title=read('title');e.description=read('description');e.location=read('location');e.start=start;e.rsvps={};store.put(i.guildId,'event',e);
       return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});
     }
-    throw Error('This form is no longer available.');
+    throw new UserError('This form is no longer available.');
   }
   if(!i.isChatInputCommand())return;
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
   if(name==='help')return respond(i,helpMenu(helpOptions()));
   if(name==='settings') {
-    if(!i.memberPermissions.has(P.ManageGuild))throw Error('Settings require Manage Server.');
+    if(!i.memberPermissions.has(P.ManageGuild))throw new UserError('Ask someone with Manage Server permission to change these settings.');
     const s=settings(i.guildId);
     if(sub==='timezone')s.zone=zone(opt.getString('zone'));
     if(sub==='staff')s.staff=opt.getRole('role').id;
     if(sub==='clear-staff')delete s.staff;
     if(sub==='status') {
-      const issues=store.problems(i.guildId).map(p=>`${p.state}: ${p.key.slice(0,120)}`);
-      for(const e of store.list(i.guildId,'event'))if(e.error)issues.push(`Event ${e.id}: ${e.error}`);
-      for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`Feed ${f.id}: ${f.error}`);
-      return respond(i,privateReply(issues.length?issues.join('\n').slice(0,1900):'No recent recorded delivery problems.'));
+      const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A weekly post could not be confirmed. Check the chosen channel and ask the bot owner to review it.');
+      for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check Number One’s access to its channel and ask the bot owner for help.');
+      for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and channel access, or ask the bot owner for help.`);
+      return respond(i,privateReply(issues.length?[...new Set(issues)].join('\n').slice(0,1900):'Everything looks good—no recent reminder or weekly-post problems have been recorded.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,privateReply(`Timezone: ${s.zone}\nAdditional staff role: ${s.staff?'<@&'+s.staff+'>':'none'}`));
+    store.put(i.guildId,'settings',s);return respond(i,privateReply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nExtra staff role: ${s.staff?'<@&'+s.staff+'>':'not set'}\nMembers with Manage Server permission can always manage Number One. Existing events keep their original timezone.`));
   }
   if(name==='embed') {
     needStaff(i);
     if(sub==='create') {
-      if(store.list(i.guildId,'embed').length>=100)throw Error('Limit: 100 saved embeds per server.');
-      const d=store.put(i.guildId,'embed',{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your embed text goes here.',color:0xe5a1b3},content:''});
+      if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved messages. Delete one you no longer need before making another.');
+      const d=store.put(i.guildId,'embed',{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0xe5a1b3},content:''});
       return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
     }
-    if(sub==='list')return respond(i,privateReply(store.list(i.guildId,'embed').map(d=>`\`${d.id}\` ${d.name}`).join('\n').slice(0,1900)||'No saved embeds. Use /embed create.'));
-    const d=item(i,'embed',opt.getString('id'));
+    if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,privateReply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
+    const d=item(i,'embed',selected(i));
     if(sub==='edit')return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
-    if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,privateReply('Embed deleted.'));}
-    if(sub==='remove-field') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw Error('That field number does not exist.');d.embed.fields.splice(n-1,1);validateEmbed(d);store.put(i.guildId,'embed',d);return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});}
+    if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,privateReply('Saved message deleted. Any copies already posted in channels are unchanged.'));}
+    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);store.put(i.guildId,'embed',d);return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});}
     if(sub==='send') {
       await acknowledge(i);
       const channel=await destination(i,opt.getChannel('channel').id);const role=await pingRole(i,opt.getRole('role')?.id,channel),user=opt.getUser('user')?.id;
-      if(user)await i.guild.members.fetch(user).catch(()=>{throw Error('Choose a member of this server.');});
+      if(user)await i.guild.members.fetch(user).catch(()=>{throw new UserError('Choose a member of this server.');});
       validateEmbed(d);
       const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',d.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(d.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]}});
-      return i.editReply({content:`Published: ${message.url}`});
+      return i.editReply({content:`Message shared: ${message.url}`});
     }
   }
   if(name==='schedule') {
@@ -171,65 +176,66 @@ async function handle(i) {
         try {await destination(i,e.channel,{writing:false});events.push(e);} catch {}
       }
       const page=opt.getInteger('page')||1,total=Math.max(1,Math.ceil(events.length/5));
-      return i.editReply({content:`**Upcoming · page ${page}/${total}**\n`+(events.slice((page-1)*5,page*5).map(e=>`\`${e.id}\` **${e.title}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')||'No events on this page.'),allowedMentions:{parse:[]}});
+      return i.editReply({content:`**Upcoming events · page ${page}/${total}**\n`+(events.slice((page-1)*5,page*5).map(e=>`**${e.title}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')||'No upcoming events on this page. Check back soon.')+'\n\nUse /schedule show and choose an event by name for details and replies.',allowedMentions:{parse:[]}});
     }
-    if(sub==='show') {const e=item(i,'event',opt.getString('id'));await destination(i,e.channel,{writing:false});return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});}
+    if(sub==='show') {const e=item(i,'event',selected(i));await destination(i,e.channel,{writing:false});return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});}
     needStaff(i);
     if(sub==='add') {
       await acknowledge(i);
-      if(store.list(i.guildId,'event').filter(e=>!e.complete&&!e.cancelled).length>=200)throw Error('Limit: 200 active schedules per server.');
+      if(store.list(i.guildId,'event').filter(e=>!e.complete&&!e.cancelled).length>=200)throw new UserError('You already have 200 upcoming schedules. Cancel one you no longer need before adding another.');
       const kind=opt.getString('kind')||'event',repeat=opt.getString('repeat')||'none',timezone=zone(opt.getString('zone')||settings(i.guildId).zone);
       const channel=await destination(i,opt.getChannel('channel').id,{privateOnly:kind!=='event'});
-      const start=parseTime(opt.getString('start'),timezone);if(start<=Date.now())throw Error('Choose a future start time.');
-      const raw=opt.getString('assignees')||'';const assignees=raw.split(/[\s,]+/).filter(Boolean).map(v=>v.replace(/^<@!?|>$/g,''));
-      if(assignees.length>30 || assignees.some(v=>!/^\d{17,20}$/.test(v)))throw Error('Use up to 30 valid user IDs or @mentions.');
-      if(kind==='rotation' && (!assignees.length || repeat==='none'))throw Error('A rotation needs assignees and daily or weekly recurrence.');
-      for(const id of assignees)await i.guild.members.fetch(id).catch(()=>{throw Error('One of the assignees is not a server member.');});
+      const start=parseTime(opt.getString('start'),timezone);if(start<=Date.now())throw new UserError('Choose a future start time.');
+      const raw=opt.getString('people')||opt.getString('assignees')||'';const assignees=raw.split(/[\s,]+/).filter(Boolean).map(v=>v.replace(/^<@!?|>$/g,''));
+      if(assignees.length>30 || assignees.some(v=>!/^\d{17,20}$/.test(v)))throw new UserError('Mention up to 30 people in the order they should take turns, separated by spaces.');
+      if(kind==='rotation' && (!assignees.length || repeat==='none'))throw new UserError('Choose Every day or Every week for the rotation, and mention the people who will take turns.');
+      for(const id of assignees)await i.guild.members.fetch(id).catch(()=>{throw new UserError('One of the people in this rotation is not a member of this server. Check the mentions and try again.');});
       const duration=opt.getInteger('duration')||60;
-      if((repeat==='daily' && duration>=1440)||(repeat==='weekly' && duration>=10080))throw Error('Duration must be shorter than the recurrence interval.');
+      if((repeat==='daily' && duration>=1440)||(repeat==='weekly' && duration>=10080))throw new UserError('This event must finish before the next one begins. Shorten its duration or choose a less frequent repeat.');
       const e=store.put(i.guildId,'event',{title:opt.getString('title'),description:opt.getString('description')||'',location:opt.getString('location')||'',channel:channel.id,start,zone:timezone,kind,repeat,duration,reminder:opt.getInteger('reminder')??30,role:await pingRole(i,opt.getRole('role')?.id,channel),assignees,rotationIndex:0,rsvps:{}});
       return i.editReply(eventView(e));
     }
-    const e=item(i,'event',opt.getString('id'));
+    const e=item(i,'event',selected(i));
     if(sub==='edit')checkDestination(i,i.guild.channels.cache?.get(e.channel),{privateOnly:e.kind!=='event'});
     else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
     if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);const sent=await channel.send(eventView(e));return i.editReply({content:`Event card posted: ${sent.url}`});}
     if(sub==='configure') {
-      if(e.cancelled||e.complete)throw Error('This event is no longer active.');
+      if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');
       e.repeat=opt.getString('repeat')??e.repeat;e.duration=opt.getInteger('duration')??e.duration;e.reminder=opt.getInteger('reminder')??e.reminder;
-      if(e.kind==='rotation'&&e.repeat==='none')throw Error('A rotation requires recurrence.');
-      if((e.repeat==='daily'&&e.duration>=1440)||(e.repeat==='weekly'&&e.duration>=10080))throw Error('Duration must be shorter than recurrence.');
+      if(e.kind==='rotation'&&e.repeat==='none')throw new UserError('Choose Every day or Every week for a staff rotation.');
+      if((e.repeat==='daily'&&e.duration>=1440)||(e.repeat==='weekly'&&e.duration>=10080))throw new UserError('This event must finish before the next one begins. Shorten its duration or choose a less frequent repeat.');
       store.put(i.guildId,'event',e);return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});
     }
-    if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return respond(i,privateReply('Event and future occurrences cancelled.'));}
-    if(sub==='edit')return i.showModal(modal(`eventform:${e.id}:edit`,'Number One · Edit schedule',[
-      ['title','Title',e.title,150,true],['start',`Local start (${e.zone})`.slice(0,45),DateTime.fromMillis(e.start,{zone:e.zone}).toISO({suppressMilliseconds:true}),40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
-    ]));
+    if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return respond(i,privateReply('Event cancelled. Its future repeats and reminders have stopped. Existing event cards will remain in the channel.'));}
+    if(sub==='edit') {const local=DateTime.fromMillis(e.start,{zone:e.zone});const startText=local.toFormat('yyyy-MM-dd HH:mm')+(local.getPossibleOffsets().length>1?local.toFormat('ZZ'):'');return i.showModal(modal(`eventform:${e.id}:edit`,'Number One · Edit event',[
+      ['title','Title',e.title,150,true],['start',`Start · ${timezoneLabel(e.zone)}`.slice(0,45),startText,40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
+    ]));}
   }
   if(name==='feed') {
     needStaff(i);await acknowledge(i);
-    if(sub==='list')return i.editReply({content:store.list(i.guildId,'feed').map(f=>`\`${f.id}\` **${f.name}** → <#${f.channel}> · ${f.paused?'paused':'weekly: Sunday 00:00 America/New_York'} · ${f.pending?.length||0} queued${f.error?' · '+f.error:''}`).join('\n').slice(0,1900)||'No feeds. Instagram requires an external RSS/Atom provider; profile links do not work.',allowedMentions:{parse:[]}});
+    if(sub==='list') {const sources=store.list(i.guildId,'feed');return i.editReply({content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':'Every Sunday at midnight, New York time'} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—ask the bot owner for help':''}`).join('\n\n').slice(0,1700)+'\n\nUse /feed preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /feed add to choose a source and a channel.',allowedMentions:{parse:[]}});}
     if(sub==='add') {
-      if(store.list(i.guildId,'feed').length>=10)throw Error('Limit: 10 feeds per server.');
-      const channel=await destination(i,opt.getChannel('channel').id),url=opt.getString('url');
-      if(store.list(i.guildId,'feed').some(f=>f.url===url && f.channel===channel.id))throw Error('That feed is already subscribed in that channel.');
+      if(store.list(i.guildId,'feed').length>=10)throw new UserError('You already follow 10 sources. Remove one you no longer need before adding another.');
+      const channel=await destination(i,opt.getChannel('channel').id),url=opt.getString('link')||opt.getString('url');
+      if(store.list(i.guildId,'feed').some(f=>f.url===url && f.channel===channel.id))throw new UserError('You already follow this source in that channel.');
       const items=await loadFeed(url);
       const now=Date.now();
       const f=store.put(i.guildId,'feed',{name:opt.getString('name'),url,channel:channel.id,role:await pingRole(i,opt.getRole('role')?.id,channel),seen:items.map(x=>x.key),pending:[],paused:false,checked:now,nextCheck:now+86400000,nextDigest:nextDigest(now)});
-      return i.editReply({content:`Feed saved: ${f.id}. New posts are collected daily and sent together Sunday at 12:00 a.m. America/New_York. First batch: <t:${Math.floor(f.nextDigest/1000)}:F>. Existing entries were marked as seen.`});
+      return i.editReply({content:`**${f.name}** is ready! New posts will be shared in <#${f.channel}> every Sunday at midnight, New York time—the beginning of Sunday.\nYour first roundup is scheduled for <t:${Math.floor(f.nextDigest/1000)}:F>. Older posts won’t be resent.`,allowedMentions:{parse:[]}});
     }
-    const f=item(i,'feed',opt.getString('id'));await destination(i,f.channel);
-    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Subscription removed.'});}
-    if(sub==='preview') {const items=await loadFeed(f.url);if(!items.length)throw Error('This feed has no supported items.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
-    f.paused=sub==='pause';if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Feed paused.':'Feed resumed. Collected posts will be included in the next weekly batch; an overdue batch may post now.'});
+    const f=item(i,'feed',selected(i));await destination(i,f.channel);
+    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Source removed. No more weekly posts will be sent from it. Messages already in the channel are unchanged.'});}
+    if(sub==='preview') {const items=await loadFeed(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
+    f.paused=sub==='pause';if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into the weekly roundup. If a roundup is overdue, it may be shared now.'});
   }
-  throw Error('This command has changed or is unavailable. Use /help for current commands.');
+  throw new UserError('This command has changed or is unavailable. Use /help for current commands.');
 }
 
 async function dispatch(i) {
-  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.())return;
+  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.())return;
   console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
   try {await handle(i);} catch(error) {
+    if(i.isAutocomplete?.()){console.error(`Could not load command suggestions: ${safeError(error)}`);try{await i.respond([]);}catch{}return;}
     await reportFailure(i,error);
   }
 }
