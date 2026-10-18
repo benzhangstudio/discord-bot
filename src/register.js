@@ -1,6 +1,8 @@
 import {REST, Routes} from 'discord.js';
 import {commands} from './commands.js';
-if (!process.env.DISCORD_TOKEN || !process.env.DISCORD_APPLICATION_ID) throw Error('Fill DISCORD_TOKEN and DISCORD_APPLICATION_ID in .env first.');
+import {loadConfig,requireConfig} from './config.js';
+loadConfig();
+requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
 const rest = new REST({version:'10'}).setToken(process.env.DISCORD_TOKEN);
 const app = await rest.get('/applications/@me');
 if (app.id !== process.env.DISCORD_APPLICATION_ID) throw Error('Application ID and bot token do not belong to the same application.');

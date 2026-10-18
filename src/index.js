@@ -1,7 +1,9 @@
 import {Client,GatewayIntentBits} from 'discord.js';
 import {Store} from './store.js';
 import {createApp} from './app.js';
-if(!process.env.DISCORD_TOKEN)throw Error('Create .env from .env.example and fill in DISCORD_TOKEN.');
+import {loadConfig,requireConfig} from './config.js';
+loadConfig();
+requireConfig(['DISCORD_TOKEN']);
 const store=new Store();
 const client=new Client({intents:[GatewayIntentBits.Guilds]});
 const app=createApp(client,store);
