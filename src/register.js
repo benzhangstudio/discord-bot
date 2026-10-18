@@ -1,10 +1,5 @@
-import {REST} from 'discord.js';
-import {registerCommands} from './registration.js';
+import {syncApplicationCommands} from './registration.js';
 import {loadConfig,requireConfig} from './config.js';
 loadConfig();
 requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
-const rest = new REST({version:'10'}).setToken(process.env.DISCORD_TOKEN);
-const app = await rest.get('/applications/@me');
-if (app.id !== process.env.DISCORD_APPLICATION_ID) throw Error('Application ID and bot token do not belong to the same application.');
-if (app.interactions_endpoint_url) throw Error('Clear the Interactions Endpoint URL in the Discord Developer Portal before using this gateway bot.');
-await registerCommands(rest,app.id,process.env.DISCORD_TEST_GUILD_ID);
+await syncApplicationCommands({token:process.env.DISCORD_TOKEN,applicationId:process.env.DISCORD_APPLICATION_ID,testGuildId:process.env.DISCORD_TEST_GUILD_ID});
