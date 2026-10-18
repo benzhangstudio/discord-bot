@@ -20,6 +20,8 @@ Command failures produce a private error reply with a reference ID and a matchin
 
 ## Embed builder
 
+`/help` opens a private dropdown menu with short walkthroughs for getting started, announcements, events, weekly posts, and server settings. The instructions reflect the reader’s permissions. Selecting a topic updates the same help message; there is nothing to configure or design.
+
 `/embed create name:Welcome` opens a private builder. Buttons edit text/color, images/title links, fields, and author/footer. Optional blank values clear those properties. To replace a field, enter its number in Add field; `/embed remove-field` removes one field. Saved templates are shared by authorized staff in that server; changes save automatically.
 
 `/embed list` gives IDs; `/embed edit` reopens one. `/embed send` selects the destination and optional role/user notifications. Channel mentions use `<#CHANNEL_ID>`. User/role mentions inside the embed do not notify people. The explicit send options place notifications in the accompanying message; arbitrary mentions in saved text are suppressed. No @everyone notifications are supported.

@@ -6,6 +6,7 @@ import {startWorker} from './worker.js';
 import {nextDigest} from './weekly-feeds.js';
 import {commands} from './commands.js';
 import {acknowledge,respond,updateResponse,reportFailure,safeError} from './responses.js';
+import {helpMenu} from './help.js';
 
 export function createApp(client,store) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
@@ -59,6 +60,12 @@ function eventView(e) {
 
 async function handle(i) {
   if(!i.inGuild()) throw Error('Use Number One inside a Discord server.');
+  const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
+  if(i.isStringSelectMenu?.()) {
+    await acknowledge(i,true);
+    if(i.customId!=='help:topic')throw Error('This menu is no longer available. Open /help again.');
+    return updateResponse(i,helpMenu({...helpOptions(),page:i.values[0]}));
+  }
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
     const opensModal=i.commandName==='schedule'&&i.options.getSubcommand(false)==='edit';
@@ -120,7 +127,7 @@ async function handle(i) {
   }
   if(!i.isChatInputCommand())return;
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
-  if(name==='help')return respond(i,privateReply('**Number One**\n/embed create — build saved embeds with Discord forms and buttons.\n/embed send — publish with optional role/user notifications.\n/schedule add — events, staff meetings, recurring rotations, reminders.\n/schedule list or show — upcoming events and RSVPs.\n/feed add — subscribe to an approved RSS/Atom provider.\n/settings — timezone and staff role.\nManagement requires Manage Server or the configured staff role. Each server has separate data.'));
+  if(name==='help')return respond(i,helpMenu(helpOptions()));
   if(name==='settings') {
     if(!i.memberPermissions.has(P.ManageGuild))throw Error('Settings require Manage Server.');
     const s=settings(i.guildId);
@@ -220,7 +227,7 @@ async function handle(i) {
 }
 
 async function dispatch(i) {
-  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit())return;
+  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.())return;
   console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
   try {await handle(i);} catch(error) {
     await reportFailure(i,error);

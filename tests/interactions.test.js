@@ -26,7 +26,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 }
 test('only staff can create embeds, while all members can use help',async()=>{
   const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Manage Server/);
-  await h.app.handle(h.interaction('help',null));assert.match(h.outputs[0].content,/Number One/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
+  await h.app.handle(h.interaction('help',null));assert.match(h.outputs[0].embeds[0].toJSON().title,/Number One/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
 });
 test('embed form saves edits and publication only permits explicit mentions',async()=>{
   const h=harness();await h.app.handle(h.interaction('embed','create',{name:'Welcome'}));
@@ -91,4 +91,9 @@ test('simultaneous RSVPs retain both members after asynchronous permission check
   for(const i of [first,second])Object.assign(i,{isButton:()=>true,isChatInputCommand:()=>false,customId:`rsvp:meeting:${start}:going`});
   await Promise.all([h.app.handle(first),h.app.handle(second)]);
   assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{[first.user.id]:'going',[second.user.id]:'going'});h.store.close();
+});
+test('help dropdown updates the original menu without requiring staff access',async()=>{
+  const h=harness({manager:false});const i=h.interaction();
+  Object.assign(i,{isChatInputCommand:()=>false,isStringSelectMenu:()=>true,customId:'help:topic',values:['events']});
+  await h.app.dispatch(i);assert.equal(i.deferred,true);assert.match(h.outputs[0].embeds[0].toJSON().title,/Events & schedules/);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
 });
