@@ -8,7 +8,7 @@ Production hosting is **Wispbyte**, with GitHub supplying code updates. See [WIS
 
 1. Use Node.js 24.12 or newer (Node 25 is already installed on this computer).
 2. Open PowerShell in this folder and run `npm install`.
-3. Copy `.env.example` to `.env` **once** and fill in the bot token, application ID, and your test Discord server ID. Never share `.env`.
+3. For temporary local testing only, create a private `.env` in this folder with DISCORD_TOKEN and DISCORD_APPLICATION_ID. Optionally set DISCORD_TEST_GUILD_ID for a test server. Never commit or share `.env`. On Wispbyte, use its Environment page to save these values to the server-local `.env`.
 4. In the Discord Developer Portal, use the intended Number One application. Enable Public Bot when ready for public invitations. Clear an old Interactions Endpoint URL if one is set. No privileged gateway intents are required.
 5. Invite with `bot` and `applications.commands` scopes. Grant View Channels, Send Messages, and Embed Links in destinations. No Administrator permission is required. For non-mentionable role notifications, Number One also needs Mention Everyone; the invoking staff member must have it too.
 6. Keep the hosted instance stopped. Run `npm run register`, then `npm start`. Registration replaces this application's old commands with the current command set. Global registration also removes this application's server-specific command overrides in servers the bot has joined. Other bots are not affected. It does not edit your Discord application’s display name.

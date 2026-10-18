@@ -71,12 +71,14 @@ async function handle(i) {
     const [kind,id,action,value]=i.customId.split(':');
     if(kind==='embed') {
       needStaff(i);const d=item(i,'embed',id);
-      if(action==='clearfields') {delete d.embed.fields;store.put(i.guildId,'embed',d);return updateResponse(i,editor(d));}
+      if(action==='clearfields') {delete d.embed.fields;validateEmbed(d);store.put(i.guildId,'embed',d);return updateResponse(i,editor(d));}
       return i.showModal(editModal(d,action));
     }
     if(kind==='rsvp') {
       await acknowledge(i);
-      const e=item(i,'event',id);await destination(i,e.channel,{writing:false});
+      let e=item(i,'event',id);await destination(i,e.channel,{writing:false});
+      // Other members may RSVP while the permission lookup is in progress.
+      e=item(i,'event',id);
       if(e.cancelled || e.complete || e.start!==Number(action) || Date.now()>e.start+e.duration*60000) throw Error('This occurrence is no longer accepting RSVPs. Open /schedule show for the current occurrence.');
       if(!['going','maybe','declined'].includes(value)) throw Error('Invalid RSVP.');
       e.rsvps ||= {};e.rsvps[i.user.id]=value;store.put(i.guildId,'event',e);
@@ -107,7 +109,8 @@ async function handle(i) {
       return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
     }
     if(kind==='eventform') {
-      const e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
+      let e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
+      e=item(i,'event',id);
       if(e.cancelled || e.complete) throw Error('Create a new event instead of editing a cancelled or completed event.');
       const start=parseTime(read('start'),e.zone);if(start<=Date.now())throw Error('Choose a future start time.');
       e.title=read('title');e.description=read('description');e.location=read('location');e.start=start;e.rsvps={};store.put(i.guildId,'event',e);
@@ -125,7 +128,7 @@ async function handle(i) {
     if(sub==='staff')s.staff=opt.getRole('role').id;
     if(sub==='clear-staff')delete s.staff;
     if(sub==='status') {
-      const issues=store.problems().filter(p=>p.key.split(':')[1]===i.guildId).map(p=>`${p.state}: ${p.key.slice(0,120)}`);
+      const issues=store.problems(i.guildId).map(p=>`${p.state}: ${p.key.slice(0,120)}`);
       for(const e of store.list(i.guildId,'event'))if(e.error)issues.push(`Event ${e.id}: ${e.error}`);
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`Feed ${f.id}: ${f.error}`);
       return respond(i,privateReply(issues.length?issues.join('\n').slice(0,1900):'No recent recorded delivery problems.'));

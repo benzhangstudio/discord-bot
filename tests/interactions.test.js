@@ -78,3 +78,17 @@ test('the production dispatcher replies to permission failures instead of swallo
   const h=harness({manager:false});await h.app.dispatch(h.interaction('embed','create',{name:'Test'}));
   assert.match(h.outputs[0].content,/Manage Server/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
 });
+
+test('clearing the only embed content is rejected without corrupting its saved template',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'fields',name:'Fields only',embed:{fields:[{name:'Title',value:'Text'}]}});
+  const i=h.interaction();Object.assign(i,{isButton:()=>true,isChatInputCommand:()=>false,customId:'embed:fields:clearfields'});
+  await assert.rejects(h.app.handle(i),/Add a title/);assert.equal(h.store.get('server-a','embed','fields').embed.fields.length,1);h.store.close();
+});
+test('simultaneous RSVPs retain both members after asynchronous permission checks',async()=>{
+  const h=harness();const start=Date.now()+600000;
+  h.store.put('server-a','event',{id:'meeting',title:'Test',channel:h.channel.id,start,duration:60,rsvps:{}});
+  const first=h.interaction(),second=h.interaction();second.user={id:'345678901234567890'};
+  for(const i of [first,second])Object.assign(i,{isButton:()=>true,isChatInputCommand:()=>false,customId:`rsvp:meeting:${start}:going`});
+  await Promise.all([h.app.handle(first),h.app.handle(second)]);
+  assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{[first.user.id]:'going',[second.user.id]:'going'});h.store.close();
+});

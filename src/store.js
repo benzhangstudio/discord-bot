@@ -18,6 +18,9 @@ export class Store {
   claim(key) {return this.db.prepare("INSERT OR IGNORE INTO deliveries VALUES(?,'sending',NULL,?)").run(key, Date.now()).changes === 1;}
   delivered(key, state, detail = '') {this.db.prepare('UPDATE deliveries SET state=?,detail=? WHERE key=?').run(state, String(detail).slice(0, 300), key);}
   delivery(key) {return this.db.prepare('SELECT state FROM deliveries WHERE key=?').get(key);}
-  problems() {return this.db.prepare("SELECT key,state,created FROM deliveries WHERE state!='sent' ORDER BY created DESC LIMIT 10").all();}
+  problems(guild) {
+    if(guild)return this.db.prepare("SELECT key,state,created FROM deliveries WHERE state!='sent' AND (key LIKE 'event:'||?||':%' OR key LIKE 'digest:'||?||':%' OR key LIKE 'feed:'||?||':%') ORDER BY created DESC LIMIT 10").all(guild,guild,guild);
+    return this.db.prepare("SELECT key,state,created FROM deliveries WHERE state!='sent' ORDER BY created DESC LIMIT 10").all();
+  }
   close() {this.db.close();}
 }

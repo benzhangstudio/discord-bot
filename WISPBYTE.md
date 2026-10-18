@@ -4,9 +4,9 @@ The existing Rose folder is the repository root. GitHub stores code and tests; W
 
 ## One-time connection
 
-1. Use a private GitHub repository for this folder. Do not upload other project folders or ZIP archives.
+1. Use `https://github.com/benzhangstudio/number-one.git`, branch `main`. This repository is public and contains code only; no authentication is needed to clone it. Do not upload credentials, runtime data, other project folders, or ZIP archives.
 2. In Wispbyte, select a Node.js image version 24.12 or newer. Node 22 is insufficient for this build’s built-in SQLite storage.
-3. Use the panel’s GitHub Integration to connect that repository. Choose the production branch agreed during setup. Private-repository authentication should have read access to this repository only; enter it in Wispbyte, never in source files, repository URLs, or chat.
+3. Use the panel’s GitHub Integration to connect that repository with branch `main`. Enable auto-update on startup. Use Clone for the initial setup; after that, use Pull for updates. Do not clone again over your saved server-local settings or data.
 4. Before the initial clone, stop the hosted bot and back up existing server files. A clone/install/reinstall operation can replace files; use the panel’s documented process for an existing server rather than deleting the server root.
 5. Keep DISCORD_TOKEN and DISCORD_APPLICATION_ID in Wispbyte runtime settings, or a private server-local .env file. Set FEED_ALLOWED_HOSTS when a feed provider is selected. The production bot normally leaves DISCORD_TEST_GUILD_ID blank.
 6. Install locked dependencies using `npm ci --omit=dev`. Set the startup command to `npm start`. If the panel asks only for a JavaScript filename, use `src/register.js` once for registration, then `src/index.js` permanently. Both files load the root server-local `.env` themselves, so Wispbyte’s direct Node startup works too. The Environment page that selects `.env` is a file editor; save credentials there on Wispbyte only. Real process environment variables take priority over the private file. Never add the actual `.env` to GitHub.

@@ -7,12 +7,32 @@ import {parseTime,advance,rollForward,rotationMember,validateEmbed} from '../src
 import {allowedUrl,publicAddress} from '../src/feeds.js';
 import {deliver} from '../src/worker.js';
 import {commands} from '../src/commands.js';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {rmSync} from 'node:fs';
 
 test('server data and item IDs cannot leak between servers',()=>{
   const s=new Store(':memory:');s.put('a','embed',{id:'shared',name:'Private'});
   assert.equal(s.get('b','embed','shared'),undefined);assert.deepEqual(s.list('b','embed'),[]);
   s.put('b','embed',{id:'shared',name:'Different'});s.remove('a','embed','shared');
   assert.equal(s.get('b','embed','shared').name,'Different');s.close();
+});
+test('delivery status filters by server before limiting recent problems',()=>{
+  const s=new Store(':memory:');s.claim('event:mine:event:1');
+  for(let n=0;n<20;n++)s.claim(`event:other:event:${n}`);
+  assert.equal(s.problems('mine').length,1);assert.equal(s.problems('mine')[0].key,'event:mine:event:1');s.close();
+});
+test('database restart preserves saved state, weekly batch progress and delivery claims',()=>{
+  const path=join(tmpdir(),`number-one-persistence-${randomUUID()}.sqlite`);
+  let s;
+  try {
+    s=new Store(path);s.put('guild','embed',{id:'saved',name:'Welcome',embed:{description:'Saved'}});
+    s.put('guild','feed',{id:'feed',pending:[{key:'post'}],batch:{slot:123,part:1,parts:[{content:'First'},{content:'Second'}]}});
+    assert.equal(s.claim('digest:guild:feed:123:0'),true);s.delivered('digest:guild:feed:123:0','sent','message');s.close();
+    s=new Store(path);assert.equal(s.get('guild','embed','saved').name,'Welcome');assert.equal(s.get('guild','feed','feed').batch.part,1);
+    assert.equal(s.get('guild','feed','feed').pending[0].key,'post');assert.equal(s.claim('digest:guild:feed:123:0'),false);
+  } finally {s?.close();for(const suffix of ['','-wal','-shm'])rmSync(path+suffix,{force:true});}
 });
 test('New York local input converts correctly; invalid and ambiguous daylight times require correction',()=>{
   assert.equal(new Date(parseTime('2026-10-20T19:00','America/New_York')).toISOString(),'2026-10-20T23:00:00.000Z');
