@@ -1,5 +1,5 @@
 import {rollForward,rotationMember} from './domain.js';
-import {loadFeed,feedMessage} from './feeds.js';
+import {processFeeds} from './weekly-feeds.js';
 import {PermissionFlagsBits as P} from 'discord.js';
 
 export async function deliver(store,key,channel,payload) {
@@ -8,7 +8,7 @@ export async function deliver(store,key,channel,payload) {
   catch(error) {store.delivered(key,'failed',error.message); throw error;}
 }
 export function startWorker(client,store) {
-  let running=false, lastFeed=0;
+  let running=false;
   const tick = async()=>{
     if(running) return; running=true;
     try {
@@ -39,28 +39,7 @@ export function startWorker(client,store) {
           console.error(`Event ${event.id}: ${error.message}`);
         }
       }
-      const period=Math.max(60,Number(process.env.FEED_POLL_SECONDS)||120)*1000;
-      if(now-lastFeed>=period) {
-        lastFeed=now;
-        for(const feed of store.all('feed')) {
-          if(feed.paused) continue;
-          try {
-            const items=await loadFeed(feed.url); const seen=new Set(feed.seen);
-            const fresh=items.filter(item=>!seen.has(item.key)).reverse();
-            const channel=await client.channels.fetch(feed.channel);
-            if(!channel || channel.guildId!==feed.guild || !channel.isTextBased()) throw Error('Feed channel unavailable.');
-            for(const item of fresh) {
-              const current=store.get(feed.guild,'feed',feed.id);
-              if(!current || current.paused)break;
-              await deliver(store,`feed:${feed.guild}:${feed.id}:${item.key}`,channel,feedMessage(feed,item));
-              seen.add(item.key);
-            }
-            feed.seen=[...new Set([...items.map(x=>x.key),...seen])].slice(0,1000);feed.checked=now;feed.error=null;
-          } catch(error) {feed.error=error.message; console.error(`Feed ${feed.id}: ${error.message}`);}
-          const current=store.get(feed.guild,'feed',feed.id);
-          if(current)store.put(feed.guild,'feed',{...feed,paused:current.paused});
-        }
-      }
+      await processFeeds(client,store,now,{send:deliver});
     } finally {running=false;}
   };
   const timer=setInterval(()=>tick().catch(error=>console.error(error.message)),15000);

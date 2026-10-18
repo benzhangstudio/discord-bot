@@ -3,6 +3,7 @@ import {DateTime} from 'luxon';
 import {DEFAULT_ZONE,zone,parseTime,validateEmbed,webUrl,rotationMember} from './domain.js';
 import {loadFeed,feedMessage} from './feeds.js';
 import {startWorker} from './worker.js';
+import {nextDigest} from './weekly-feeds.js';
 
 export function createApp(client,store) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
@@ -182,19 +183,20 @@ async function handle(i) {
   }
   if(name==='feed') {
     needStaff(i);await i.deferReply({flags:MessageFlags.Ephemeral});
-    if(sub==='list')return i.editReply({content:store.list(i.guildId,'feed').map(f=>`\`${f.id}\` **${f.name}** → <#${f.channel}> · ${f.paused?'paused':'active'}${f.error?' · '+f.error:''}`).join('\n').slice(0,1900)||'No feeds. Instagram requires an external RSS/Atom provider; profile links do not work.',allowedMentions:{parse:[]}});
+    if(sub==='list')return i.editReply({content:store.list(i.guildId,'feed').map(f=>`\`${f.id}\` **${f.name}** → <#${f.channel}> · ${f.paused?'paused':'weekly: Sunday 00:00 America/New_York'} · ${f.pending?.length||0} queued${f.error?' · '+f.error:''}`).join('\n').slice(0,1900)||'No feeds. Instagram requires an external RSS/Atom provider; profile links do not work.',allowedMentions:{parse:[]}});
     if(sub==='add') {
       if(store.list(i.guildId,'feed').length>=10)throw Error('Limit: 10 feeds per server.');
       const channel=await destination(i,opt.getChannel('channel').id),url=opt.getString('url');
       if(store.list(i.guildId,'feed').some(f=>f.url===url && f.channel===channel.id))throw Error('That feed is already subscribed in that channel.');
       const items=await loadFeed(url);
-      const f=store.put(i.guildId,'feed',{name:opt.getString('name'),url,channel:channel.id,role:await pingRole(i,opt.getRole('role')?.id,channel),seen:items.map(x=>x.key),paused:false,checked:Date.now()});
-      return i.editReply({content:`Feed saved: ${f.id}. Existing entries were marked as seen. New items are checked every ${Math.max(60,Number(process.env.FEED_POLL_SECONDS)||120)} seconds while Number One runs.`});
+      const now=Date.now();
+      const f=store.put(i.guildId,'feed',{name:opt.getString('name'),url,channel:channel.id,role:await pingRole(i,opt.getRole('role')?.id,channel),seen:items.map(x=>x.key),pending:[],paused:false,checked:now,nextCheck:now+86400000,nextDigest:nextDigest(now)});
+      return i.editReply({content:`Feed saved: ${f.id}. New posts are collected daily and sent together Sunday at 12:00 a.m. America/New_York. First batch: <t:${Math.floor(f.nextDigest/1000)}:F>. Existing entries were marked as seen.`});
     }
     const f=item(i,'feed',opt.getString('id'));await destination(i,f.channel);
     if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Subscription removed.'});}
     if(sub==='preview') {const items=await loadFeed(f.url);if(!items.length)throw Error('This feed has no supported items.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
-    f.paused=sub==='pause';store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Feed paused.':'Feed resumed. Unseen items still present in the feed may be delivered.'});
+    f.paused=sub==='pause';if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Feed paused.':'Feed resumed. Collected posts will be included in the next weekly batch; an overdue batch may post now.'});
   }
 }
 
