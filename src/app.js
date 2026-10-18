@@ -70,7 +70,7 @@ async function handle(i) {
     // rather than deferring and relying on a second webhook request.
     const payload=helpMenu(helpOptions());
     console.log('Sending /help menu as a direct reply.');
-    await i.reply({...payload,flags:MessageFlags.Ephemeral});
+    await i.reply(payload);
     console.log('Discord accepted the /help menu.');
     return;
   }

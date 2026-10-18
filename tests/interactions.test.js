@@ -120,5 +120,5 @@ test('empty saved lists offer a next step and delivery status omits internal fai
 test('/help sends its menu immediately without deferring or editing a webhook reply',async()=>{
   const h=harness();const i=h.interaction('help',null);
   i.deferReply=async()=>{throw Error('Help must not send a thinking response');};i.editReply=async()=>{throw Error('Help must not depend on editing a webhook response');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,64);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
 });

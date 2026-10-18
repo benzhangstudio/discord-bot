@@ -20,7 +20,7 @@ Command failures produce a private error reply with a reference ID and a matchin
 
 ## Embed builder
 
-`/help` opens a private dropdown menu with short walkthroughs for getting started, announcements, events, weekly posts, and server settings. The instructions reflect the reader’s permissions. Selecting a topic updates the same help message; there is nothing to configure or design.
+`/help` opens a public dropdown menu with short walkthroughs for getting started, announcements, events, weekly posts, and server settings. The instructions reflect the reader’s permissions. Anyone in the channel can choose a topic, updating the same public help message; there is nothing to configure or design.
 
 `/embed create name:Welcome` opens a private builder. Controls edit text/color, pictures/title links, information sections, and author/small print. Colors accept names such as pink or blue as well as color codes. Optional blank values clear those properties. To replace a section, enter its position in Add or edit a section; `/embed remove-section` removes one section. Saved messages are shared by authorized staff in that server; changes save automatically.
 

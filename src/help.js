@@ -51,5 +51,5 @@ export function helpMenu({page='home',canManage=false,canConfigure=false,timezon
     ]:[{name:'Need something changed?',value:'Ask someone with Manage Server permission to choose the timezone or staff role. You can still browse events and RSVP without managing the bot.'}]}
   };
   const selected=pages[page];
-  return {content:'',embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle(selected.title).setDescription(selected.description).addFields(selected.fields).setFooter({text:'Number One • Only you can see this help menu'})],components:[{type:1,components:[{type:3,custom_id:'help:topic',placeholder:'What would you like help with?',min_values:1,max_values:1,options:categories.map(([value,label,description,emoji])=>({value,label,description,emoji:{name:emoji},default:value===page}))}]}],allowedMentions:{parse:[]}};
+  return {content:'',embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle(selected.title).setDescription(selected.description).addFields(selected.fields).setFooter({text:'Number One • Choose a topic from the menu below'})],components:[{type:1,components:[{type:3,custom_id:'help:topic',placeholder:'What would you like help with?',min_values:1,max_values:1,options:categories.map(([value,label,description,emoji])=>({value,label,description,emoji:{name:emoji},default:value===page}))}]}],allowedMentions:{parse:[]}};
 }
