@@ -11,10 +11,12 @@ Production hosting is **Wispbyte**, with GitHub supplying code updates. See [WIS
 3. Copy `.env.example` to `.env` **once** and fill in the bot token, application ID, and your test Discord server ID. Never share `.env`.
 4. In the Discord Developer Portal, use the intended Number One application. Enable Public Bot when ready for public invitations. Clear an old Interactions Endpoint URL if one is set. No privileged gateway intents are required.
 5. Invite with `bot` and `applications.commands` scopes. Grant View Channels, Send Messages, and Embed Links in destinations. No Administrator permission is required. For non-mentionable role notifications, Number One also needs Mention Everyone; the invoking staff member must have it too.
-6. Keep the hosted instance stopped. Run `npm run register`, then `npm start`. Registration is separate from startup and preserves unrelated command names. This fresh project does not remove old bot commands or edit your Discord application’s display name.
+6. Keep the hosted instance stopped. Run `npm run register`, then `npm start`. Registration replaces this application's old commands with the current command set. Global registration also removes this application's server-specific command overrides in servers the bot has joined. Other bots are not affected. It does not edit your Discord application’s display name.
 7. Leave PowerShell open. Stop with Ctrl+C; restart with `npm start` in this same folder.
 
-For global/public commands, remove DISCORD_TEST_GUILD_ID and run `npm run register` again. Test-server commands may shadow global commands of the same name until you remove those test overrides in Discord. Other servers use the global definitions. Only enable public invitations after your test-server checks pass. Public deployment also needs your own privacy policy, support contact, and data deletion process.
+For global/public commands, remove DISCORD_TEST_GUILD_ID and run `npm run register` again. This also clears old server-specific commands so they do not override the global definitions. Only enable public invitations after your test-server checks pass. Public deployment also needs your own privacy policy, support contact, and data deletion process.
+
+Command failures produce a private error reply with a reference ID and a matching console diagnostic. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
 
 ## Embed builder
 

@@ -4,15 +4,20 @@ import {DEFAULT_ZONE,zone,parseTime,validateEmbed,webUrl,rotationMember} from '.
 import {loadFeed,feedMessage} from './feeds.js';
 import {startWorker} from './worker.js';
 import {nextDigest} from './weekly-feeds.js';
+import {commands} from './commands.js';
+import {acknowledge,respond,updateResponse,reportFailure,safeError} from './responses.js';
 
 export function createApp(client,store) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
-function staff(i) {return i.memberPermissions?.has(P.ManageGuild) || Boolean(settings(i.guildId).staff && i.member.roles.cache.has(settings(i.guildId).staff));}
+function staff(i) {const role=settings(i.guildId).staff;return i.memberPermissions?.has(P.ManageGuild) || Boolean(role && (i.member.roles?.cache?.has(role) || (Array.isArray(i.member.roles)&&i.member.roles.includes(role))));}
 function needStaff(i) {if(!staff(i)) throw Error('You need Manage Server or this server’s configured Number One staff role.');}
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw Error('That item was not found in this server.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
-  const channel=await i.guild.channels.fetch(id).catch(()=>null);
+  const channel=i.guild.channels.cache?.get(id) || await i.guild.channels.fetch(id).catch(()=>null);
+  return checkDestination(i,channel,{writing,privateOnly});
+}
+function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
   if(!channel || ![0,5].includes(channel.type)) throw Error('Choose a text or announcement channel in this server.');
   if(!channel.permissionsFor(i.member)?.has([P.ViewChannel,...(writing?[P.SendMessages]:[])])) throw Error('You cannot access or publish in that channel.');
   if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw Error('Number One needs View Channel, Send Messages, and Embed Links there.');
@@ -54,25 +59,33 @@ function eventView(e) {
 
 async function handle(i) {
   if(!i.inGuild()) throw Error('Use Number One inside a Discord server.');
-  // Fetch only the invoking member; no privileged member or message-content intents.
-  i.member=await i.guild.members.fetch(i.user.id);
+  // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
+  if(i.isChatInputCommand()) {
+    const opensModal=i.commandName==='schedule'&&i.options.getSubcommand(false)==='edit';
+    if(!opensModal)await acknowledge(i);
+    const definition=commands.find(command=>command.name===i.commandName);
+    if(!definition)return respond(i,privateReply('This is an older or unavailable command. Use /schedule list for upcoming events, or /help for current commands.'));
+    if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw Error('This command has changed. Choose one of its current subcommands, or use /help.');
+  }
   if(i.isButton()) {
     const [kind,id,action,value]=i.customId.split(':');
     if(kind==='embed') {
       needStaff(i);const d=item(i,'embed',id);
-      if(action==='clearfields') {delete d.embed.fields;store.put(i.guildId,'embed',d);return i.update(editor(d));}
+      if(action==='clearfields') {delete d.embed.fields;store.put(i.guildId,'embed',d);return updateResponse(i,editor(d));}
       return i.showModal(editModal(d,action));
     }
     if(kind==='rsvp') {
+      await acknowledge(i);
       const e=item(i,'event',id);await destination(i,e.channel,{writing:false});
       if(e.cancelled || e.complete || e.start!==Number(action) || Date.now()>e.start+e.duration*60000) throw Error('This occurrence is no longer accepting RSVPs. Open /schedule show for the current occurrence.');
       if(!['going','maybe','declined'].includes(value)) throw Error('Invalid RSVP.');
       e.rsvps ||= {};e.rsvps[i.user.id]=value;store.put(i.guildId,'event',e);
-      return i.reply(privateReply(`RSVP saved: ${value}. Use /schedule show to see current counts.`));
+      return respond(i,privateReply(`RSVP saved: ${value}. Use /schedule show to see current counts.`));
     }
     throw Error('This button is no longer available.');
   }
   if(i.isModalSubmit()) {
+    await acknowledge(i,i.customId.startsWith('embedform:')&&i.isFromMessage());
     needStaff(i);const [kind,id,action]=i.customId.split(':');const read=k=>i.fields.getTextInputValue(k).trim();
     if(kind==='embedform') {
       const d=item(i,'embed',id),e=d.embed;
@@ -90,21 +103,21 @@ async function handle(i) {
         const footer=read('footer');if(footer)e.footer={text:footer};else delete e.footer;
       }
       validateEmbed(d);new EmbedBuilder(e).toJSON();store.put(i.guildId,'embed',d);
-      if(i.isFromMessage())return i.update(editor(d));
-      return i.reply({...editor(d),flags:MessageFlags.Ephemeral});
+      if(i.isFromMessage())return updateResponse(i,editor(d));
+      return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
     }
     if(kind==='eventform') {
       const e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
       if(e.cancelled || e.complete) throw Error('Create a new event instead of editing a cancelled or completed event.');
       const start=parseTime(read('start'),e.zone);if(start<=Date.now())throw Error('Choose a future start time.');
       e.title=read('title');e.description=read('description');e.location=read('location');e.start=start;e.rsvps={};store.put(i.guildId,'event',e);
-      return i.reply({...eventView(e),flags:MessageFlags.Ephemeral});
+      return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});
     }
     throw Error('This form is no longer available.');
   }
   if(!i.isChatInputCommand())return;
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
-  if(name==='help')return i.reply(privateReply('**Number One**\n/embed create — build saved embeds with Discord forms and buttons.\n/embed send — publish with optional role/user notifications.\n/schedule add — events, staff meetings, recurring rotations, reminders.\n/schedule list or show — upcoming events and RSVPs.\n/feed add — subscribe to an approved RSS/Atom provider.\n/settings — timezone and staff role.\nManagement requires Manage Server or the configured staff role. Each server has separate data.'));
+  if(name==='help')return respond(i,privateReply('**Number One**\n/embed create — build saved embeds with Discord forms and buttons.\n/embed send — publish with optional role/user notifications.\n/schedule add — events, staff meetings, recurring rotations, reminders.\n/schedule list or show — upcoming events and RSVPs.\n/feed add — subscribe to an approved RSS/Atom provider.\n/settings — timezone and staff role.\nManagement requires Manage Server or the configured staff role. Each server has separate data.'));
   if(name==='settings') {
     if(!i.memberPermissions.has(P.ManageGuild))throw Error('Settings require Manage Server.');
     const s=settings(i.guildId);
@@ -115,24 +128,24 @@ async function handle(i) {
       const issues=store.problems().filter(p=>p.key.split(':')[1]===i.guildId).map(p=>`${p.state}: ${p.key.slice(0,120)}`);
       for(const e of store.list(i.guildId,'event'))if(e.error)issues.push(`Event ${e.id}: ${e.error}`);
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`Feed ${f.id}: ${f.error}`);
-      return i.reply(privateReply(issues.length?issues.join('\n').slice(0,1900):'No recent recorded delivery problems.'));
+      return respond(i,privateReply(issues.length?issues.join('\n').slice(0,1900):'No recent recorded delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return i.reply(privateReply(`Timezone: ${s.zone}\nAdditional staff role: ${s.staff?'<@&'+s.staff+'>':'none'}`));
+    store.put(i.guildId,'settings',s);return respond(i,privateReply(`Timezone: ${s.zone}\nAdditional staff role: ${s.staff?'<@&'+s.staff+'>':'none'}`));
   }
   if(name==='embed') {
     needStaff(i);
     if(sub==='create') {
       if(store.list(i.guildId,'embed').length>=100)throw Error('Limit: 100 saved embeds per server.');
       const d=store.put(i.guildId,'embed',{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your embed text goes here.',color:0xe5a1b3},content:''});
-      return i.reply({...editor(d),flags:MessageFlags.Ephemeral});
+      return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
     }
-    if(sub==='list')return i.reply(privateReply(store.list(i.guildId,'embed').map(d=>`\`${d.id}\` ${d.name}`).join('\n').slice(0,1900)||'No saved embeds. Use /embed create.'));
+    if(sub==='list')return respond(i,privateReply(store.list(i.guildId,'embed').map(d=>`\`${d.id}\` ${d.name}`).join('\n').slice(0,1900)||'No saved embeds. Use /embed create.'));
     const d=item(i,'embed',opt.getString('id'));
-    if(sub==='edit')return i.reply({...editor(d),flags:MessageFlags.Ephemeral});
-    if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return i.reply(privateReply('Embed deleted.'));}
-    if(sub==='remove-field') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw Error('That field number does not exist.');d.embed.fields.splice(n-1,1);validateEmbed(d);store.put(i.guildId,'embed',d);return i.reply({...editor(d),flags:MessageFlags.Ephemeral});}
+    if(sub==='edit')return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
+    if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,privateReply('Embed deleted.'));}
+    if(sub==='remove-field') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw Error('That field number does not exist.');d.embed.fields.splice(n-1,1);validateEmbed(d);store.put(i.guildId,'embed',d);return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});}
     if(sub==='send') {
-      await i.deferReply({flags:MessageFlags.Ephemeral});
+      await acknowledge(i);
       const channel=await destination(i,opt.getChannel('channel').id);const role=await pingRole(i,opt.getRole('role')?.id,channel),user=opt.getUser('user')?.id;
       if(user)await i.guild.members.fetch(user).catch(()=>{throw Error('Choose a member of this server.');});
       validateEmbed(d);
@@ -142,7 +155,7 @@ async function handle(i) {
   }
   if(name==='schedule') {
     if(sub==='list') {
-      await i.deferReply({flags:MessageFlags.Ephemeral});
+      await acknowledge(i);
       const events=[];
       for(const e of store.list(i.guildId,'event').filter(e=>!e.cancelled && !e.complete && e.start+e.duration*60000>Date.now()).sort((a,b)=>a.start-b.start)) {
         try {await destination(i,e.channel,{writing:false});events.push(e);} catch {}
@@ -150,10 +163,10 @@ async function handle(i) {
       const page=opt.getInteger('page')||1,total=Math.max(1,Math.ceil(events.length/5));
       return i.editReply({content:`**Upcoming · page ${page}/${total}**\n`+(events.slice((page-1)*5,page*5).map(e=>`\`${e.id}\` **${e.title}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')||'No events on this page.'),allowedMentions:{parse:[]}});
     }
-    if(sub==='show') {const e=item(i,'event',opt.getString('id'));await destination(i,e.channel,{writing:false});return i.reply({...eventView(e),flags:MessageFlags.Ephemeral});}
+    if(sub==='show') {const e=item(i,'event',opt.getString('id'));await destination(i,e.channel,{writing:false});return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});}
     needStaff(i);
     if(sub==='add') {
-      await i.deferReply({flags:MessageFlags.Ephemeral});
+      await acknowledge(i);
       if(store.list(i.guildId,'event').filter(e=>!e.complete&&!e.cancelled).length>=200)throw Error('Limit: 200 active schedules per server.');
       const kind=opt.getString('kind')||'event',repeat=opt.getString('repeat')||'none',timezone=zone(opt.getString('zone')||settings(i.guildId).zone);
       const channel=await destination(i,opt.getChannel('channel').id,{privateOnly:kind!=='event'});
@@ -167,22 +180,24 @@ async function handle(i) {
       const e=store.put(i.guildId,'event',{title:opt.getString('title'),description:opt.getString('description')||'',location:opt.getString('location')||'',channel:channel.id,start,zone:timezone,kind,repeat,duration,reminder:opt.getInteger('reminder')??30,role:await pingRole(i,opt.getRole('role')?.id,channel),assignees,rotationIndex:0,rsvps:{}});
       return i.editReply(eventView(e));
     }
-    const e=item(i,'event',opt.getString('id'));await destination(i,e.channel,{privateOnly:e.kind!=='event'});
-    if(sub==='post') {await i.deferReply({flags:MessageFlags.Ephemeral});const channel=await destination(i,e.channel);const sent=await channel.send(eventView(e));return i.editReply({content:`Event card posted: ${sent.url}`});}
+    const e=item(i,'event',opt.getString('id'));
+    if(sub==='edit')checkDestination(i,i.guild.channels.cache?.get(e.channel),{privateOnly:e.kind!=='event'});
+    else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
+    if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);const sent=await channel.send(eventView(e));return i.editReply({content:`Event card posted: ${sent.url}`});}
     if(sub==='configure') {
       if(e.cancelled||e.complete)throw Error('This event is no longer active.');
       e.repeat=opt.getString('repeat')??e.repeat;e.duration=opt.getInteger('duration')??e.duration;e.reminder=opt.getInteger('reminder')??e.reminder;
       if(e.kind==='rotation'&&e.repeat==='none')throw Error('A rotation requires recurrence.');
       if((e.repeat==='daily'&&e.duration>=1440)||(e.repeat==='weekly'&&e.duration>=10080))throw Error('Duration must be shorter than recurrence.');
-      store.put(i.guildId,'event',e);return i.reply({...eventView(e),flags:MessageFlags.Ephemeral});
+      store.put(i.guildId,'event',e);return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});
     }
-    if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return i.reply(privateReply('Event and future occurrences cancelled.'));}
+    if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return respond(i,privateReply('Event and future occurrences cancelled.'));}
     if(sub==='edit')return i.showModal(modal(`eventform:${e.id}:edit`,'Number One · Edit schedule',[
       ['title','Title',e.title,150,true],['start',`Local start (${e.zone})`.slice(0,45),DateTime.fromMillis(e.start,{zone:e.zone}).toISO({suppressMilliseconds:true}),40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
     ]));
   }
   if(name==='feed') {
-    needStaff(i);await i.deferReply({flags:MessageFlags.Ephemeral});
+    needStaff(i);await acknowledge(i);
     if(sub==='list')return i.editReply({content:store.list(i.guildId,'feed').map(f=>`\`${f.id}\` **${f.name}** → <#${f.channel}> · ${f.paused?'paused':'weekly: Sunday 00:00 America/New_York'} · ${f.pending?.length||0} queued${f.error?' · '+f.error:''}`).join('\n').slice(0,1900)||'No feeds. Instagram requires an external RSS/Atom provider; profile links do not work.',allowedMentions:{parse:[]}});
     if(sub==='add') {
       if(store.list(i.guildId,'feed').length>=10)throw Error('Limit: 10 feeds per server.');
@@ -198,20 +213,20 @@ async function handle(i) {
     if(sub==='preview') {const items=await loadFeed(f.url);if(!items.length)throw Error('This feed has no supported items.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
     f.paused=sub==='pause';if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Feed paused.':'Feed resumed. Collected posts will be included in the next weekly batch; an overdue batch may post now.'});
   }
+  throw Error('This command has changed or is unavailable. Use /help for current commands.');
 }
 
-client.on('interactionCreate',async i=>{
+async function dispatch(i) {
   if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit())return;
+  console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
   try {await handle(i);} catch(error) {
-    // Do not log request payloads or feed URLs, which can contain private provider keys.
-    console.error(`Interaction failed (${i.commandName || 'component'}): ${error.name}`);
-    const message=error.code?'Discord could not complete that action. Check channel permissions and try again.':error.message;
-    try {if(i.deferred||i.replied)await i.editReply({content:message,allowedMentions:{parse:[]}});else await i.reply(privateReply(message));} catch {console.error('Could not deliver the interaction error.');}
+    await reportFailure(i,error);
   }
-});
+}
+client.on('interactionCreate',dispatch);
 let stopWorker;
 client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);});
-client.on('error',error=>console.error(`Discord client error: ${error.name}`));
+client.on('error',error=>console.error(`Discord client error (${error.code || error.name}): ${safeError(error)}`));
 client.on('guildDelete',guild=>console.log(`Removed from server ${guild.id}; saved data retained for operator-managed deletion.`));
-return {handle,stop:()=>stopWorker?.()};
+return {handle,dispatch,stop:()=>stopWorker?.()};
 }
