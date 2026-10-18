@@ -1,5 +1,5 @@
 import {UserError} from './user-error.js';
-import {PermissionFlagsBits as P,MessageFlags,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
+import {PermissionFlagsBits as P,MessageFlags,RESTEvents,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
 import {DEFAULT_ZONE,zone,parseTime,parseColor,validateEmbed,webUrl,rotationMember} from './domain.js';
 import {loadFeed,feedMessage} from './feeds.js';
@@ -65,10 +65,18 @@ async function handle(i) {
   if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
+  if(i.isChatInputCommand()&&i.commandName==='help') {
+    // Help is built entirely from local data. Send it as the initial response,
+    // rather than deferring and relying on a second webhook request.
+    const payload=helpMenu(helpOptions());
+    console.log('Sending /help menu as a direct reply.');
+    await i.reply({...payload,flags:MessageFlags.Ephemeral});
+    console.log('Discord accepted the /help menu.');
+    return;
+  }
   if(i.isStringSelectMenu?.()) {
-    await acknowledge(i,true);
     if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
-    return updateResponse(i,helpMenu({...helpOptions(),page:i.values[0]}));
+    return i.update(helpMenu({...helpOptions(),page:i.values[0]}));
   }
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
@@ -132,7 +140,6 @@ async function handle(i) {
   }
   if(!i.isChatInputCommand())return;
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
-  if(name==='help')return respond(i,helpMenu(helpOptions()));
   if(name==='settings') {
     if(!i.memberPermissions.has(P.ManageGuild))throw new UserError('Ask someone with Manage Server permission to change these settings.');
     const s=settings(i.guildId);
@@ -240,6 +247,7 @@ async function dispatch(i) {
   }
 }
 client.on('interactionCreate',dispatch);
+client.rest?.on(RESTEvents.RateLimited,details=>console.warn(`Discord is delaying a request because of a rate limit. Retry delay: ${Math.ceil((details.timeToReset || details.retryAfter || 0)/1000)} second(s).`));
 let stopWorker;
 client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);});
 client.on('error',error=>console.error(`Discord client error (${error.code || error.name}): ${safeError(error)}`));
