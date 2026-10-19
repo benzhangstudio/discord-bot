@@ -12,6 +12,7 @@ function harness() {
   const store=new Store(':memory:'),outputs=[];let loads=0,allowed=true,hook;
   const handle=createInstagramSetup({store,settings:()=>({zone:'Asia/Seoul'}),needStaff:i=>{if(!i.staff)throw Error('Staff only');},destination:async()=>{if(!allowed)throw Error('Channel unavailable');return{id:'123456789012345678'};},pingRole:async(i,r)=>r,load:async()=>{loads++;await hook?.();return[post];}});
   const interaction=(action,values=[],fields={})=>({guildId:'g',user:{id:'member'},staff:true,commandName:action?'':'instagram',options:{getSubcommand:()=> 'setup'},customId:action?`instagram:${store.list('g','instagram-draft')[0]?.id}:${action}`:undefined,values,fields:{getTextInputValue:k=>fields[k]},isChatInputCommand:()=>!action,
+    update:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);},
     reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);},showModal:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p.toJSON());},
     deferReply:async function(){assert.ok(!this.replied&&!this.deferred);this.deferred=true;},deferUpdate:async function(){assert.ok(!this.replied&&!this.deferred);this.deferred=true;},editReply:async function(p){assert.ok(this.replied||this.deferred);outputs.push(p);}});
   const run=(a,v,f)=>handle(interaction(a,v,f));

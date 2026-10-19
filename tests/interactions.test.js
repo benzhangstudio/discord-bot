@@ -4,9 +4,10 @@ import {EventEmitter} from 'node:events';
 import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {createApp} from '../src/app.js';
 import {Store} from '../src/store.js';
+import {commands} from '../src/commands.js';
 
 function harness({manager=true,visible=true,privateChannel=false,guildId='server-a'}={}) {
-  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store),outputs=[],sent=[];
+  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
   const member={id:'123456789012345678',roles:{cache:new Map()}};
   const perms=new PermissionsBitField(manager?[P.ManageGuild,P.MentionEveryone]:[]);
   const channel={id:'234567890123456789',type:0,permissionsFor:target=>new PermissionsBitField(target==='everyone'?(privateChannel?[]:[P.ViewChannel]):target===member&&!visible?[]:[P.ViewChannel,P.SendMessages,P.EmbedLinks,P.MentionEveryone]),send:async p=>{sent.push(p);return {id:'posted',url:'https://discord.com/channels/server/channel/message'};}};
@@ -24,6 +25,90 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
   });
   return {store,app,outputs,sent,channel,member,interaction};
 }
+
+// Inventory comes from the deployed command schema: adding a command without
+// adding an exercised scenario fails the suite instead of silently missing it.
+const scenarios={
+  help:{},
+  'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings staff':{role:'345678901234567890'},'settings clear-staff':{},'settings status':{},
+  'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},
+  'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
+  'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
+};
+test('every registered subcommand has a complete reply or modal scenario',()=>{
+  const registered=commands.flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
+  assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
+});
+for(const [name,values] of Object.entries(scenarios))test(`command audit: /${name} finishes with a visible response`,{timeout:2000},async()=>{
+  const h=harness();
+  try {
+    h.store.put('server-a','embed',{id:'saved',name:'Saved announcement',content:'',embed:{description:'Hello',fields:[{name:'Section',value:'Details'}]}});
+    h.store.put('server-a','event',{id:'saved',title:'Saved event',channel:h.channel.id,start:Date.now()+3600000,duration:60,reminder:30,repeat:'none',kind:'event',zone:'America/New_York',rsvps:{}});
+    h.store.put('server-a','feed',{id:'saved',name:'Saved source',url:'https://example.com/rss',channel:h.channel.id,pending:[],seen:[],zone:'Asia/Seoul',time:'09:00',delivery:'daily'});
+    const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
+    await h.app.handle(i);assert.ok(i.replied||i.deferred);assert.ok(h.outputs.length>0,'A defer alone is not a completed reply');
+    const modal=name==='schedule edit',slow=['embed send','schedule add','schedule post','instagram preview'].includes(name);
+    if(!modal&&!slow){assert.ok(!i.deferred,'Local commands must not depend on deferred webhook edits');assert.equal(i.replied,true);}
+    if(modal)assert.ok(h.outputs[0].custom_id.startsWith('eventform:'));
+    if(name==='settings timezone')assert.equal(h.store.get('server-a','settings','main').zone,'Asia/Seoul');
+    if(name==='embed send'||name==='schedule post')assert.equal(h.sent.length,1);
+    if(name==='instagram preview')assert.deepEqual(h.outputs.at(-1).allowedMentions,{parse:[]});
+  } finally {h.store.close();}
+});
+
+test('settings timezone validation replies immediately and preserves the previous timezone',async()=>{
+  const h=harness();h.store.put('server-a','settings',{id:'main',zone:'Asia/Tokyo'});const i=h.interaction('settings','timezone',{zone:'Not a timezone'});
+  i.deferReply=async()=>{throw Error('Validation must reply immediately');};
+  await h.app.dispatch(i);assert.match(h.outputs[0].content,/Choose a timezone/);assert.equal(h.store.get('server-a','settings','main').zone,'Asia/Tokyo');assert.equal(i.replied,true);h.store.close();
+});
+
+test('unknown saved names across commands get immediate useful replies without network work',async()=>{
+  for(const [command,subs,key] of [['embed',['edit','send','delete','remove-section'],'message'],['schedule',['show','edit','post','configure','cancel'],'event'],['instagram',['preview','pause','resume','remove'],'source']]) {
+    for(const sub of subs){const h=harness();const i=h.interaction(command,sub,{[key]:'deleted'});i.guild.channels.fetch=async()=>{throw Error('Must not fetch a missing item');};await h.app.dispatch(i);assert.match(h.outputs[0].content,/no longer available/);assert.equal(i.replied,true);h.store.close();}
+  }
+});
+
+test('regular members get immediate permission replies for every staff subcommand',async()=>{
+  const publicNames=new Set(['help','schedule list','schedule show']);
+  for(const [name,values] of Object.entries(scenarios)) {
+    if(publicNames.has(name))continue;
+    const h=harness({manager:false}),[command,sub]=name.split(' '),i=h.interaction(command,sub,values);
+    await h.app.dispatch(i);assert.match(h.outputs[0].content,/Manage Server|staff action/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
+  }
+});
+
+test('failed message publishing and channel permission checks finish with an error reply',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
+  h.channel.send=async()=>{throw Object.assign(Error('Missing Permissions'),{code:50013});};
+  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.deferred,true);assert.match(h.outputs[0].content,/permissions/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
+});
+
+test('an event cancelled during a channel lookup cannot be revived by configure',async()=>{
+  const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
+  h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=async()=>{const e=h.store.get('server-a','event','event');e.cancelled=true;h.store.put('server-a','event',e);return h.channel;};
+  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',duration:90}));assert.equal(h.store.get('server-a','event','event').cancelled,true);assert.match(h.outputs[0].content,/no longer active/);h.store.close();
+});
+
+test('an announcement removed while permissions are being checked is not posted',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Old',embed:{description:'Hello'}});
+  h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=async()=>{h.store.remove('server-a','embed','saved');return h.channel;};
+  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.equal(h.sent.length,0);assert.match(h.outputs[0].content,/no longer available/);h.store.close();
+});
+
+test('a failed confirmation edit sends the result separately without publishing twice',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
+  const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=async()=>{throw Error('PATCH failed');};i.followUp=async p=>followups.push(p);
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,1);assert.match(followups[0].content,/Message shared:/);assert.equal(followups[0].flags,64);h.store.close();
+});
+
+test('invalid reminder settings do not partially overwrite an existing event',async()=>{
+  const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
+  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(h.outputs[0].content,/finish before/);h.store.close();
+});
+
+test('staff access cannot be delegated to everyone or an app-managed role',async()=>{
+  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/@everyone/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
+});
 test('only staff can create embeds, while all members can use help',async()=>{
   const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Manage Server/);
   await h.app.handle(h.interaction('help',null));assert.match(h.outputs[0].embeds[0].toJSON().title,/Number One/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
@@ -62,7 +147,7 @@ test('RSVP rejects obsolete occurrences and cancel marks future delivery inactiv
 test('legacy /events returns a useful reply without fetching a member',async()=>{
   const h=harness();const i=h.interaction('events',null);
   i.guild.members.fetch=async()=>{throw Error('Should not fetch a member');};
-  await h.app.handle(i);assert.equal(i.deferred,true);assert.match(h.outputs[0].content,/older or unavailable/);assert.match(h.outputs[0].content,/schedule list/);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/older or unavailable/);assert.match(h.outputs[0].content,/schedule list/);h.store.close();
 });
 test('slow channel work is acknowledged before the REST request',async()=>{
   const h=harness();const e={id:'event',title:'Test',channel:h.channel.id,start:Date.now()+600000,duration:60,zone:'America/New_York',kind:'event',repeat:'none'};
@@ -123,12 +208,33 @@ test('/help sends its menu immediately without deferring or editing a webhook re
   await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
 });
 
+test('empty schedule replies immediately without a thinking response or channel lookup',async()=>{
+  const h=harness();const i=h.interaction('schedule','list');
+  i.deferReply=async()=>{throw Error('Must reply directly');};i.editReply=async()=>{throw Error('Must not edit a webhook');};
+  i.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
+  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,64);assert.match(h.outputs[0].content,/No upcoming events/);assert.match(h.outputs[0].content,/schedule add/);h.store.close();
+});
+
+test('schedule list hides inaccessible, uncached, cancelled, completed and expired events without fetching',async()=>{
+  const h=harness({manager:false}),start=Date.now()+600000;
+  for(const [id,extra] of [['visible',{}],['hidden',{channel:'hidden'}],['uncached',{channel:'missing'}],['cancelled',{cancelled:true}],['complete',{complete:true}],['expired',{start:Date.now()-7200000}]])h.store.put('server-a','event',{id,title:id,channel:h.channel.id,start,duration:60,...extra});
+  h.channel.guild.channels.cache.set('hidden',{type:0,permissionsFor:()=>new PermissionsBitField([])});
+  h.channel.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
+  await h.app.handle(h.interaction('schedule','list',{page:999}));const text=h.outputs[0].content;
+  assert.match(text,/visible/);assert.match(text,/page 1\/1/);assert.doesNotMatch(text,/hidden|uncached|cancelled|complete|expired/);h.store.close();
+});
+
+test('schedule empty state also covers servers containing only inaccessible or inactive events',async()=>{
+  const h=harness({manager:false,visible:false});h.store.put('server-a','event',{id:'private',title:'Secret meeting',channel:h.channel.id,start:Date.now()+600000,duration:60});
+  await h.app.handle(h.interaction('schedule','list'));assert.match(h.outputs[0].content,/No upcoming events/);assert.doesNotMatch(h.outputs[0].content,/Secret|schedule add/);h.store.close();
+});
+
 test('production dispatcher routes Instagram setup and channel/role pickers to their saved draft',async()=>{
   const h=harness();await h.app.dispatch(h.interaction('instagram','setup'));
   const d=h.store.list('server-a','instagram-draft')[0];assert.ok(d);assert.equal(h.outputs.at(-1).flags,64);
   for(const [action,value] of [['channel',h.channel.id],['role','345678901234567890']]) {
     const i=h.interaction();Object.assign(i,{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',customId:`instagram:${d.id}:${action}`,values:[value]});
-    await h.app.dispatch(i);assert.equal(i.deferred,true);assert.equal(h.store.get('server-a','instagram-draft',d.id)[action],value);
+    await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.store.get('server-a','instagram-draft',d.id)[action],value);
   }
   const button=h.interaction();Object.assign(button,{isChatInputCommand:()=>false,isButton:()=>true,customId:`instagram:${d.id}:schedule`});await h.app.dispatch(button);assert.match(h.outputs.at(-1).title,/Delivery schedule/);assert.ok(!button.deferred);h.store.close();
 });

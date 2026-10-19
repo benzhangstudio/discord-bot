@@ -11,7 +11,7 @@ import {acknowledge,respond,updateResponse,reportFailure,safeError} from './resp
 import {helpMenu} from './help.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
-export function createApp(client,store) {
+export function createApp(client,store,{feedLoader=loadFeed}={}) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
@@ -19,7 +19,8 @@ function staff(i) {const role=settings(i.guildId).staff;return i.memberPermissio
 function needStaff(i) {if(!staff(i)) throw new UserError('This is a staff action. Ask someone with Manage Server permission or the server’s Number One staff role to help.');}
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
-  const channel=i.guild.channels.cache?.get(id) || await i.guild.channels.fetch(id).catch(()=>null);
+  let channel=i.guild.channels.cache?.get(id);
+  if(!channel){await acknowledge(i);channel=await i.guild.channels.fetch(id).catch(()=>null);}
   return checkDestination(i,channel,{writing,privateOnly});
 }
 function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
@@ -31,7 +32,8 @@ function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
 }
 async function pingRole(i,roleId,channel) {
   if(!roleId) return;
-  const role=await i.guild.roles.fetch(roleId);
+  let role=i.guild.roles.cache?.get(roleId);
+  if(!role){await acknowledge(i);role=await i.guild.roles.fetch(roleId);}
   if(!role || role.id===i.guildId || role.managed) throw new UserError('Choose a role created for your members, rather than @everyone or a role managed by another app.');
   if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw new UserError('That role cannot be notified here. Ask an administrator to make it mentionable, or give you and Number One the Mention Everyone permission in this channel.');
   return role.id;
@@ -62,7 +64,7 @@ function eventView(e) {
   ).setFooter({text:`Number One · ${e.cancelled?'Cancelled':e.complete?'Finished':'Open /schedule show to see the latest replies'}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
-const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole});
+const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function handle(i) {
   if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
@@ -78,14 +80,29 @@ async function handle(i) {
     console.log('Discord accepted the /help menu.');
     return;
   }
+  if(i.isChatInputCommand()&&i.commandName==='schedule'&&i.options.getSubcommand(false)==='list') {
+    // Guild channel/permission updates arrive through the gateway. Fail closed
+    // for uncached channels instead of stalling a list on individual REST fetches.
+    const now=Date.now(),events=store.list(i.guildId,'event').filter(e=>{
+      if(e.cancelled||e.complete||e.start+e.duration*60000<=now)return false;
+      try {checkDestination(i,i.guild.channels.cache?.get(e.channel),{writing:false});return true;}catch{return false;}
+    }).sort((a,b)=>a.start-b.start);
+    const total=Math.max(1,Math.ceil(events.length/5)),page=Math.min(i.options.getInteger('page')||1,total);
+    const clean=value=>String(value).replace(/[\\*_~`|<>@\[\]]/g,'');
+    const content=events.length?
+      `**Upcoming events · page ${page}/${total}**\n`+events.slice((page-1)*5,page*5).map(e=>`**${clean(e.title).slice(0,150)}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')+'\n\nUse /schedule show and choose an event by name for details and replies.':
+      'No upcoming events you can view right now. Check back soon.'+(staff(i)?'\n\nUse /schedule add to plan an event.':'');
+    console.log(`Sending /schedule list directly (${events.length} visible events).`);
+    await i.reply(privateReply(content));
+    console.log('Discord accepted /schedule list.');
+    return;
+  }
   if(i.isStringSelectMenu?.()) {
     if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
     return i.update(helpMenu({...helpOptions(),page:i.values[0]}));
   }
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
-    const opensModal=i.commandName==='schedule'&&i.options.getSubcommand(false)==='edit';
-    if(!opensModal)await acknowledge(i);
     const definition=commands.find(command=>command.name===i.commandName);
     if(!definition)return respond(i,privateReply('This is an older or unavailable command. Use /schedule list for upcoming events, or /help for current commands.'));
     if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current subcommands, or use /help.');
@@ -98,7 +115,6 @@ async function handle(i) {
       return i.showModal(editModal(d,action));
     }
     if(kind==='rsvp') {
-      await acknowledge(i);
       let e=item(i,'event',id);await destination(i,e.channel,{writing:false});
       // Other members may RSVP while the permission lookup is in progress.
       e=item(i,'event',id);
@@ -110,7 +126,6 @@ async function handle(i) {
     throw new UserError('This button is no longer available.');
   }
   if(i.isModalSubmit()) {
-    await acknowledge(i,i.customId.startsWith('embedform:')&&i.isFromMessage());
     needStaff(i);const [kind,id,action]=i.customId.split(':');const read=k=>i.fields.getTextInputValue(k).trim();
     if(kind==='embedform') {
       const d=item(i,'embed',id),e=d.embed;
@@ -148,7 +163,7 @@ async function handle(i) {
     if(!i.memberPermissions.has(P.ManageGuild))throw new UserError('Ask someone with Manage Server permission to change these settings.');
     const s=settings(i.guildId);
     if(sub==='timezone')s.zone=zone(opt.getString('zone'));
-    if(sub==='staff')s.staff=opt.getRole('role').id;
+    if(sub==='staff'){const role=opt.getRole('role');if(!role||role.id===i.guildId||role.managed)throw new UserError('Choose a member role for your staff, rather than @everyone or a role managed by another app.');s.staff=role.id;}
     if(sub==='clear-staff')delete s.staff;
     if(sub==='status') {
       const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A weekly post could not be confirmed. Check the chosen channel and ask the bot owner to review it.');
@@ -174,21 +189,12 @@ async function handle(i) {
       await acknowledge(i);
       const channel=await destination(i,opt.getChannel('channel').id);const role=await pingRole(i,opt.getRole('role')?.id,channel),user=opt.getUser('user')?.id;
       if(user)await i.guild.members.fetch(user).catch(()=>{throw new UserError('Choose a member of this server.');});
-      validateEmbed(d);
-      const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',d.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(d.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]}});
-      return i.editReply({content:`Message shared: ${message.url}`});
+      needStaff(i);const ready=item(i,'embed',d.id);validateEmbed(ready);
+      const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]}});
+      return respond(i,privateReply(`Message shared: ${message.url}`));
     }
   }
   if(name==='schedule') {
-    if(sub==='list') {
-      await acknowledge(i);
-      const events=[];
-      for(const e of store.list(i.guildId,'event').filter(e=>!e.cancelled && !e.complete && e.start+e.duration*60000>Date.now()).sort((a,b)=>a.start-b.start)) {
-        try {await destination(i,e.channel,{writing:false});events.push(e);} catch {}
-      }
-      const page=opt.getInteger('page')||1,total=Math.max(1,Math.ceil(events.length/5));
-      return i.editReply({content:`**Upcoming events · page ${page}/${total}**\n`+(events.slice((page-1)*5,page*5).map(e=>`**${e.title}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')||'No upcoming events on this page. Check back soon.')+'\n\nUse /schedule show and choose an event by name for details and replies.',allowedMentions:{parse:[]}});
-    }
     if(sub==='show') {const e=item(i,'event',selected(i));await destination(i,e.channel,{writing:false});return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});}
     needStaff(i);
     if(sub==='add') {
@@ -203,13 +209,16 @@ async function handle(i) {
       for(const id of assignees)await i.guild.members.fetch(id).catch(()=>{throw new UserError('One of the people in this rotation is not a member of this server. Check the mentions and try again.');});
       const duration=opt.getInteger('duration')||60;
       if((repeat==='daily' && duration>=1440)||(repeat==='weekly' && duration>=10080))throw new UserError('This event must finish before the next one begins. Shorten its duration or choose a less frequent repeat.');
-      const e=store.put(i.guildId,'event',{title:opt.getString('title'),description:opt.getString('description')||'',location:opt.getString('location')||'',channel:channel.id,start,zone:timezone,kind,repeat,duration,reminder:opt.getInteger('reminder')??30,role:await pingRole(i,opt.getRole('role')?.id,channel),assignees,rotationIndex:0,rsvps:{}});
-      return i.editReply(eventView(e));
+      const role=await pingRole(i,opt.getRole('role')?.id,channel);needStaff(i);
+      if(store.list(i.guildId,'event').filter(e=>!e.complete&&!e.cancelled).length>=200)throw new UserError('You already have 200 upcoming schedules. Cancel one before adding another.');
+      const e=store.put(i.guildId,'event',{title:opt.getString('title'),description:opt.getString('description')||'',location:opt.getString('location')||'',channel:channel.id,start,zone:timezone,kind,repeat,duration,reminder:opt.getInteger('reminder')??30,role,assignees,rotationIndex:0,rsvps:{}});
+      return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});
     }
-    const e=item(i,'event',selected(i));
+    let e=item(i,'event',selected(i));
     if(sub==='edit')checkDestination(i,i.guild.channels.cache?.get(e.channel),{privateOnly:e.kind!=='event'});
     else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
-    if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);const sent=await channel.send(eventView(e));return i.editReply({content:`Event card posted: ${sent.url}`});}
+    e=item(i,'event',e.id);needStaff(i);
+    if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);e=item(i,'event',e.id);if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');const sent=await channel.send(eventView(e));return respond(i,privateReply(`Event card posted: ${sent.url}`));}
     if(sub==='configure') {
       if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');
       e.repeat=opt.getString('repeat')??e.repeat;e.duration=opt.getInteger('duration')??e.duration;e.reminder=opt.getInteger('reminder')??e.reminder;
@@ -223,12 +232,12 @@ async function handle(i) {
     ]));}
   }
   if(name==='instagram') {
-    needStaff(i);await acknowledge(i);
-    if(sub==='list') {const sources=store.list(i.guildId,'feed');return i.editReply({content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
+    needStaff(i);
+    if(sub==='list') {const sources=store.list(i.guildId,'feed');return respond(i,{...privateReply(''),content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
     let f=item(i,'feed',selected(i));
-    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'});}
-    if(sub==='preview') {await destination(i,f.channel);const items=await loadFeed(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
-    f.paused=sub==='pause';f.settingsVersion=(f.settingsVersion||0)+1;if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into your scheduled roundup. If a roundup is overdue, it may be shared now.'});
+    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return respond(i,privateReply('Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'));}
+    if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await feedLoader(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}
+    f.paused=sub==='pause';f.settingsVersion=(f.settingsVersion||0)+1;if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return respond(i,privateReply(f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into your scheduled roundup. If a roundup is overdue, it may be shared now.'));
   }
   throw new UserError('This command has changed or is unavailable. Use /help for current commands.');
 }
@@ -236,7 +245,8 @@ async function handle(i) {
 async function dispatch(i) {
   if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.()&&!i.isChannelSelectMenu?.()&&!i.isRoleSelectMenu?.())return;
   console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
-  try {await handle(i);} catch(error) {
+  const started=Date.now();
+  try {await handle(i);console.log(`Completed ${i.commandName?'/'+i.commandName:'component'} in ${Date.now()-started}ms.`);} catch(error) {
     if(i.isAutocomplete?.()){console.error(`Could not load command suggestions: ${safeError(error)}`);try{await i.respond([]);}catch{}return;}
     await reportFailure(i,error);
   }

@@ -5,8 +5,20 @@ export async function acknowledge(i,update=false) {
   if(update)return i.deferUpdate();
   return i.deferReply({flags:MessageFlags.Ephemeral});
 }
-export function respond(i,payload) {
-  if(i.deferred || i.replied) {const {flags,...body}=payload;return i.editReply(body);}
+export async function respond(i,payload) {
+  if(i.deferred || i.replied) {
+    const {flags,...body}=payload;
+    try {return await i.editReply(body);}catch(error) {
+      // A failed confirmation must not rerun a send or mutation. A separate
+      // follow-up can still deliver its result if editing the original fails.
+      if(!i.followUp||[10015,10062].includes(Number(error.code)))throw error;
+      console.warn(`Could not edit the command reply (${error.code||error.name}); sending its result as a follow-up.`);
+      const fallbackFlags=flags??(i.ephemeral===false?undefined:MessageFlags.Ephemeral);
+      const result=await i.followUp({...body,...(fallbackFlags===undefined?{}:{flags:fallbackFlags})});
+      if(i.deferred&&i.deleteReply)try{await i.deleteReply();}catch{console.warn('The result was delivered, but Discord could not remove the original waiting reply.');}
+      return result;
+    }
+  }
   return i.reply(payload);
 }
 export function updateResponse(i,payload) {return i.deferred || i.replied?i.editReply(payload):i.update(payload);}

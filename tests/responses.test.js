@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reportFailure} from '../src/responses.js';
+import {reportFailure,respond} from '../src/responses.js';
 import {UserError} from '../src/user-error.js';
 test('permission errors explain the problem, include a reference, and edit deferred replies',async()=>{
   const logs=[],sent=[];
@@ -12,6 +12,17 @@ test('Instagram validation errors preserve the setup menu and send private corre
   const sent=[];
   await reportFailure({deferred:true,instagramSetupUpdate:true,followUp:async p=>sent.push(p),editReply:async()=>{throw Error('Must preserve the menu');}},new UserError('Choose a channel before saving.'),()=>{});
   assert.equal(sent[0].flags,64);assert.match(sent[0].content,/Choose a channel/);
+});
+
+test('confirmation fallback clears the old waiting reply and honors explicit privacy',async()=>{
+  const sent=[];let removed=0;
+  await respond({deferred:true,ephemeral:false,editReply:async()=>{throw Error('PATCH failed');},followUp:async p=>sent.push(p),deleteReply:async()=>{removed++;}},{content:'Done',flags:64});
+  assert.equal(sent[0].flags,64);assert.equal(removed,1);
+});
+
+test('expired interaction replies are not retried as follow-ups',async()=>{
+  let followups=0;
+  await assert.rejects(respond({deferred:true,editReply:async()=>{throw Object.assign(Error('Expired'),{code:10015});},followUp:async()=>{followups++;}},{content:'Done'}));assert.equal(followups,0);
 });
 test('expired replies log the delivery failure without throwing out of the gateway listener',async()=>{
   const logs=[];

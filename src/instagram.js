@@ -1,6 +1,7 @@
 import {ModalBuilder,ActionRowBuilder,TextInputBuilder,TextInputStyle,MessageFlags} from 'discord.js';
 import {DateTime} from 'luxon';
 import {UserError} from './user-error.js';
+import {respond} from './responses.js';
 import {allowedUrl,loadFeed} from './feeds.js';
 import {nextDigest,deliveryLabel,digestParts,DIGEST_ZONE} from './weekly-feeds.js';
 
@@ -84,11 +85,9 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       const items=await load(d.url);
       if(!items.length)throw new UserError('There are no posts to preview yet. You can still save this source.');
       const sample=digestParts({...d,role:null,name:d.name||'Instagram'},items.slice(0,3))[0];
-      await i.editReply({...sample,content:`**Sample roundup · Nothing has been posted or removed from your queue**\n${sample.content}`,allowedMentions:{parse:[]}});return true;
+      await respond(i,{...sample,flags:MessageFlags.Ephemeral,content:`**Sample roundup · Nothing has been posted or removed from your queue**\n${sample.content}`,allowedMentions:{parse:[]}});return true;
     }
-    i.instagramSetupUpdate=true;
-    await i.deferUpdate();
-    if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await i.editReply({content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
+    if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await i.update({content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
     if(action==='choose') {
       const source=i.values[0]==='new'?null:store.get(i.guildId,'feed',i.values[0]);
       if(i.values[0]!=='new'&&!source)throw new UserError('That source was removed. Open /instagram setup again.');
@@ -105,6 +104,8 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
     } else if(action==='scheduleform') {
       Object.assign(d,scheduleFields(Object.fromEntries(['zone','time','day','previews'].map(k=>[k,i.fields.getTextInputValue(k)]))));
     } else if(action==='save') {
+      i.instagramSetupUpdate=true;
+      await i.deferUpdate();
       if(!d.name||!d.url)throw new UserError('Choose Source to add a name and feed link before saving.');
       if(!d.channel)throw new UserError('Choose a channel from the menu before saving.');
       current(i,d);
@@ -113,6 +114,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       const changed=!old||old.url!==d.url;
       if(changed&&old?.pending?.length)throw new UserError('This source still has posts waiting. Keep its feed link until the roundup is delivered, or add a separate source.');
       const items=changed?await load(d.url):null;
+      needStaff(i);
       old=current(i,d);
       if(changed&&old?.pending?.length)throw new UserError('New posts arrived while you were editing. Keep this feed link and add a separate source.');
       const sources=store.list(i.guildId,'feed');
@@ -126,8 +128,8 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       store.put(i.guildId,'feed',f);
       d.sourceId=f.id;d.version=f.settingsVersion;
       store.put(i.guildId,'instagram-draft',d);
-      await i.editReply(panel(i,d,`Saved! ${f.paused?'This source remains paused. Resume it with /instagram resume.':`Next roundup: <t:${Math.floor(f.nextDigest/1000)}:F>.`} ${changed?'Only new posts will be collected; older posts will not be resent.':'Waiting posts are preserved.'}`));return true;
+      await respond(i,panel(i,d,`Saved! ${f.paused?'This source remains paused. Resume it with /instagram resume.':`Next roundup: <t:${Math.floor(f.nextDigest/1000)}:F>.`} ${changed?'Only new posts will be collected; older posts will not be resent.':'Waiting posts are preserved.'}`));return true;
     } else throw new UserError('This control is no longer available. Open /instagram setup again.');
-    store.put(i.guildId,'instagram-draft',d);await i.editReply(panel(i,d,'Changes are ready to review. Choose Save to apply them.'));return true;
+    store.put(i.guildId,'instagram-draft',d);await i.update(panel(i,d,'Changes are ready to review. Choose Save to apply them.'));return true;
   };
 }
