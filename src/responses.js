@@ -23,6 +23,11 @@ export async function reportFailure(i,error,log=console.error) {
   else if(Number(error.code)===10062)message='Discord expired this action. Run the command again.';
   else if(error.name==='UserError')message=safeError(error);
   else message='Something went wrong while processing this action. Please try again.';
-  try {await respond(i,{content:`${message}\nReference: ${reference}`,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]},embeds:[],components:[]});}
+  try {
+    const payload={content:`${message}\nReference: ${reference}`,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]},embeds:[],components:[]};
+    // Keep the setup controls available so a failed validation can be corrected.
+    if(i.instagramSetupUpdate&&i.deferred&&i.followUp)await i.followUp(payload);
+    else await respond(i,payload);
+  }
   catch(replyError) {log(`[${reference}] Could not send the error reply (${String(replyError.code || replyError.name)}). Verify the bot is online and Discord is reachable.`);}
 }

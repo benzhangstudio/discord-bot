@@ -34,9 +34,9 @@ export const commands = [
     sub('configure','Change an event’s reminders, length, or repetition',[id(),str('repeat','How often should this event happen?',false,{choices:choice(['none','daily','weekly'])}),integer('duration','How long is it, in minutes?',1,10080),integer('reminder','Minutes before the start; 0 means at the start',0,10080)]),
     sub('cancel','Cancel this event and stop its future reminders',[id()])
   ]},
-  {name:'feed',description:'Bring new posts to your server in a weekly roundup',options:[
-    sub('add','Choose a source and channel for weekly posts',[str('name','Give this source a name, such as Rosé updates',true,{max_length:80}),str('link','Paste a feed link from a source approved by the bot owner',true),channel(true),role]),
+  {name:'instagram',description:'Set up Instagram roundups for your server',options:[
+    sub('setup','Open the setup menu to add or change sources, channels, and delivery times'),
     sub('list','See your sources and how many new posts are waiting'),sub('preview','Take a private look at the latest post',[id()]),
-    sub('pause','Pause this source’s weekly posts',[id()]),sub('resume','Turn this source’s weekly posts back on',[id()]),sub('remove','Stop following this source; posted messages stay in the channel',[id()])
+    sub('pause','Pause this source’s roundups',[id()]),sub('resume','Turn this source’s roundups back on',[id()]),sub('remove','Stop following this source; posted messages stay in the channel',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',feed:'source'}[c.name]}:option)})),type:1,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,contexts:[0],integration_types:[0]}));

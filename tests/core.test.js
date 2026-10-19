@@ -59,9 +59,9 @@ test('Discord embed combined text and field limits are enforced',()=>{
   assert.throws(()=>validateEmbed({embed:{description:'ok',fields:Array(26).fill({name:'n',value:'v'})}}),/25 sections/);
   assert.equal(validateEmbed({embed:{description:'<#123456789012345678>'}}).embed.description,'<#123456789012345678>');
 });
-test('RSS destinations must be operator-approved HTTPS public hosts',()=>{
-  for(const url of ['http://feeds.example/rss','https://localhost/rss','https://127.0.0.1/rss','https://user:secret@feeds.example/rss','https://feeds.example:8443/rss'])assert.throws(()=>allowedUrl(url,'feeds.example'));
-  assert.equal(allowedUrl('https://feeds.example/rss','feeds.example').hostname,'feeds.example');
+test('RSS destinations accept public HTTPS sources without owner approval',()=>{
+  for(const url of ['http://feeds.example/rss','https://localhost/rss','https://127.0.0.1/rss','https://user:secret@feeds.example/rss','https://feeds.example:8443/rss'])assert.throws(()=>allowedUrl(url));
+  assert.equal(allowedUrl('https://feeds.example/rss').hostname,'feeds.example');
   for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','172.16.0.1','::1','::ffff:127.0.0.1','fc00::1','2001:db8::1'])assert.equal(publicAddress(ip),false,ip);
   assert.equal(publicAddress('8.8.8.8'),true);
 });

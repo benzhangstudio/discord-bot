@@ -14,7 +14,7 @@ test('saved message and source suggestions use names and stay within their serve
   const s=new Store(':memory:');s.put('mine','embed',{id:'a',name:'Welcome'});s.put('other','embed',{id:'b',name:'Private announcement'});s.put('mine','feed',{id:'f',name:'Music updates'});
   assert.deepEqual(suggestions(s,query('embed','message','wel'),{canManage:true}),[{name:'Welcome',value:'a'}]);
   assert.deepEqual(suggestions(s,query('embed','message'),{canManage:false}),[]);
-  assert.deepEqual(suggestions(s,query('feed','source','music'),{canManage:true}),[{name:'Music updates',value:'f'}]);s.close();
+  assert.deepEqual(suggestions(s,query('instagram','source','music'),{canManage:true}),[{name:'Music updates',value:'f'}]);s.close();
 });
 test('event suggestions never reveal inaccessible meetings or allow nonstaff management choices',()=>{
   const s=new Store(':memory:');s.put('mine','event',{id:'public',title:'Community night',channel:'public'});s.put('mine','event',{id:'secret',title:'Private meeting',channel:'secret'});

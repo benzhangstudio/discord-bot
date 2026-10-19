@@ -4,7 +4,8 @@ import {DateTime} from 'luxon';
 import {DEFAULT_ZONE,zone,parseTime,parseColor,validateEmbed,webUrl,rotationMember} from './domain.js';
 import {loadFeed,feedMessage} from './feeds.js';
 import {startWorker} from './worker.js';
-import {nextDigest} from './weekly-feeds.js';
+import {deliveryLabel} from './weekly-feeds.js';
+import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
 import {acknowledge,respond,updateResponse,reportFailure,safeError} from './responses.js';
 import {helpMenu} from './help.js';
@@ -13,7 +14,7 @@ import {suggestions,timezoneLabel} from './suggestions.js';
 export function createApp(client,store) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
-const selected=i=>i.options.getString({embed:'message',schedule:'event',feed:'source'}[i.commandName]) || i.options.getString('id');
+const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
 function staff(i) {const role=settings(i.guildId).staff;return i.memberPermissions?.has(P.ManageGuild) || Boolean(role && (i.member.roles?.cache?.has(role) || (Array.isArray(i.member.roles)&&i.member.roles.includes(role))));}
 function needStaff(i) {if(!staff(i)) throw new UserError('This is a staff action. Ask someone with Manage Server permission or the server’s Number One staff role to help.');}
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
@@ -61,9 +62,12 @@ function eventView(e) {
   ).setFooter({text:`Number One · ${e.cancelled?'Cancelled':e.complete?'Finished':'Open /schedule show to see the latest replies'}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
+const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole});
+
 async function handle(i) {
   if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
+  if(await instagram(i))return;
   const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
   if(i.isChatInputCommand()&&i.commandName==='help') {
     // Help is built entirely from local data. Send it as the initial response,
@@ -218,28 +222,19 @@ async function handle(i) {
       ['title','Title',e.title,150,true],['start',`Start · ${timezoneLabel(e.zone)}`.slice(0,45),startText,40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
     ]));}
   }
-  if(name==='feed') {
+  if(name==='instagram') {
     needStaff(i);await acknowledge(i);
-    if(sub==='list') {const sources=store.list(i.guildId,'feed');return i.editReply({content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':'Every Sunday at midnight, New York time'} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—ask the bot owner for help':''}`).join('\n\n').slice(0,1700)+'\n\nUse /feed preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /feed add to choose a source and a channel.',allowedMentions:{parse:[]}});}
-    if(sub==='add') {
-      if(store.list(i.guildId,'feed').length>=10)throw new UserError('You already follow 10 sources. Remove one you no longer need before adding another.');
-      const channel=await destination(i,opt.getChannel('channel').id),url=opt.getString('link')||opt.getString('url');
-      if(store.list(i.guildId,'feed').some(f=>f.url===url && f.channel===channel.id))throw new UserError('You already follow this source in that channel.');
-      const items=await loadFeed(url);
-      const now=Date.now();
-      const f=store.put(i.guildId,'feed',{name:opt.getString('name'),url,channel:channel.id,role:await pingRole(i,opt.getRole('role')?.id,channel),seen:items.map(x=>x.key),pending:[],paused:false,checked:now,nextCheck:now+86400000,nextDigest:nextDigest(now)});
-      return i.editReply({content:`**${f.name}** is ready! New posts will be shared in <#${f.channel}> every Sunday at midnight, New York time—the beginning of Sunday.\nYour first roundup is scheduled for <t:${Math.floor(f.nextDigest/1000)}:F>. Older posts won’t be resent.`,allowedMentions:{parse:[]}});
-    }
-    const f=item(i,'feed',selected(i));await destination(i,f.channel);
-    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Source removed. No more weekly posts will be sent from it. Messages already in the channel are unchanged.'});}
-    if(sub==='preview') {const items=await loadFeed(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
-    f.paused=sub==='pause';if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into the weekly roundup. If a roundup is overdue, it may be shared now.'});
+    if(sub==='list') {const sources=store.list(i.guildId,'feed');return i.editReply({content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
+    let f=item(i,'feed',selected(i));
+    if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return i.editReply({content:'Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'});}
+    if(sub==='preview') {await destination(i,f.channel);const items=await loadFeed(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return i.editReply({...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
+    f.paused=sub==='pause';f.settingsVersion=(f.settingsVersion||0)+1;if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return i.editReply({content:f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into your scheduled roundup. If a roundup is overdue, it may be shared now.'});
   }
   throw new UserError('This command has changed or is unavailable. Use /help for current commands.');
 }
 
 async function dispatch(i) {
-  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.())return;
+  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.()&&!i.isChannelSelectMenu?.()&&!i.isRoleSelectMenu?.())return;
   console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
   try {await handle(i);} catch(error) {
     if(i.isAutocomplete?.()){console.error(`Could not load command suggestions: ${safeError(error)}`);try{await i.respond([]);}catch{}return;}

@@ -9,7 +9,7 @@ export function suggestions(store,i,{canManage=false,canConfigure=false}={}) {
     if((i.commandName==='settings'&&!canConfigure)||(i.commandName==='schedule'&&!canManage))return [];
     return timezones.filter(([value,name])=>normalized(value+' '+name).includes(query)).slice(0,25).map(([value,name])=>({name,value}));
   }
-  const kind={embed:'embed',schedule:'event',feed:'feed'}[i.commandName];
+  const kind={embed:'embed',schedule:'event',instagram:'feed'}[i.commandName];
   if(!kind || (kind!=='event'&&!canManage))return [];
   return store.list(i.guildId,kind).filter(record=>{
     if(kind==='event') {

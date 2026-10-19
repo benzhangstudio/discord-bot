@@ -113,7 +113,7 @@ test('every message-edit form opens with readable labels and valid Discord lengt
 });
 test('empty saved lists offer a next step and delivery status omits internal failure details',async()=>{
   const h=harness();await h.app.handle(h.interaction('embed','list'));assert.match(h.outputs.at(-1).content,/No saved messages yet/);
-  await h.app.handle(h.interaction('feed','list'));assert.match(h.outputs.at(-1).content,/No sources yet/);
+  await h.app.handle(h.interaction('instagram','list'));assert.match(h.outputs.at(-1).content,/No sources yet/);
   h.store.put('server-a','feed',{id:'feed',name:'Updates',error:'XML parser schema stacktrace'});await h.app.handle(h.interaction('settings','status'));
   assert.match(h.outputs.at(-1).content,/Updates needs attention/);assert.doesNotMatch(h.outputs.at(-1).content,/XML|schema|stacktrace/);h.store.close();
 });
@@ -121,4 +121,25 @@ test('/help sends its menu immediately without deferring or editing a webhook re
   const h=harness();const i=h.interaction('help',null);
   i.deferReply=async()=>{throw Error('Help must not send a thinking response');};i.editReply=async()=>{throw Error('Help must not depend on editing a webhook response');};
   await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
+});
+
+test('production dispatcher routes Instagram setup and channel/role pickers to their saved draft',async()=>{
+  const h=harness();await h.app.dispatch(h.interaction('instagram','setup'));
+  const d=h.store.list('server-a','instagram-draft')[0];assert.ok(d);assert.equal(h.outputs.at(-1).flags,64);
+  for(const [action,value] of [['channel',h.channel.id],['role','345678901234567890']]) {
+    const i=h.interaction();Object.assign(i,{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',customId:`instagram:${d.id}:${action}`,values:[value]});
+    await h.app.dispatch(i);assert.equal(i.deferred,true);assert.equal(h.store.get('server-a','instagram-draft',d.id)[action],value);
+  }
+  const button=h.interaction();Object.assign(button,{isChatInputCommand:()=>false,isButton:()=>true,customId:`instagram:${d.id}:schedule`});await h.app.dispatch(button);assert.match(h.outputs.at(-1).title,/Delivery schedule/);assert.ok(!button.deferred);h.store.close();
+});
+
+test('a server staff role can configure Instagram without bot-owner access; regular members cannot',async()=>{
+  const h=harness({manager:false});await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);
+  h.store.put('server-a','settings',{id:'main',zone:'Europe/Paris',staff:'helpers'});h.member.roles.cache.set('helpers',{});
+  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft')[0].zone,'Europe/Paris');h.store.close();
+});
+
+test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{
+  const h=harness();await h.app.handle(h.interaction('feed','list'));assert.match(h.outputs.at(-1).content,/older or unavailable/);
+  h.store.put('server-a','feed',{id:'orphan',name:'Old source',channel:'gone'});await h.app.handle(h.interaction('instagram','remove',{source:'orphan'}));assert.equal(h.store.list('server-a','feed').length,0);h.store.close();
 });

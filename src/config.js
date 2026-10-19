@@ -10,7 +10,7 @@ export function loadConfig(env=process.env,file=new URL('../.env',import.meta.ur
   const values=parseEnv(source);
   // Hosting environment values take priority over the private file.
   for(const [key,value] of Object.entries(values))if(!env[key]?.trim())env[key]=value;
-  for(const key of ['DISCORD_TOKEN','DISCORD_APPLICATION_ID','DISCORD_TEST_GUILD_ID','FEED_ALLOWED_HOSTS'])if(env[key])env[key]=env[key].trim();
+  for(const key of ['DISCORD_TOKEN','DISCORD_APPLICATION_ID','DISCORD_TEST_GUILD_ID'])if(env[key])env[key]=env[key].trim();
   return env;
 }
 export function requireConfig(keys,env=process.env) {
