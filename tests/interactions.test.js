@@ -4,10 +4,11 @@ import {EventEmitter} from 'node:events';
 import {PermissionsBitField,PermissionFlagsBits as P,ActionRowBuilder} from 'discord.js';
 import {createApp} from '../src/app.js';
 import {Store} from '../src/store.js';
+import {WORKING_MESSAGE} from '../src/responses.js';
 import {commands} from '../src/commands.js';
 
-function harness({manager=true,visible=true,privateChannel=false,guildId='server-a',replyEditTimeoutMs=8000}={}) {
-  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{replyEditTimeoutMs,feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
+function harness({manager=true,visible=true,privateChannel=false,guildId='server-a',replyEditTimeoutMs=8000,operationTimeoutMs=15000}={}) {
+  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{replyEditTimeoutMs,operationTimeoutMs,feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
   const member={id:'123456789012345678',roles:{cache:new Map()}};
   const perms=new PermissionsBitField(manager?[P.ManageGuild,P.MentionEveryone]:[]);
   const channel={id:'234567890123456789',type:0,permissionsFor:target=>new PermissionsBitField(target==='everyone'?(privateChannel?[]:[P.ViewChannel]):target===member&&!visible?[]:[P.ViewChannel,P.SendMessages,P.EmbedLinks,P.MentionEveryone]),send:async p=>{sent.push(p);return {id:'posted',url:'https://discord.com/channels/server/channel/message'};}};
@@ -16,7 +17,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
   const interaction=(name,sub,values={})=>({
     guildId,guild,user:{id:member.id},member,memberPermissions:perms,commandName:name,inGuild:()=>true,isButton:()=>false,isModalSubmit:()=>false,isChatInputCommand:()=>true,
     options:{getSubcommand:()=>sub,getString:k=>values[k]??null,getInteger:k=>values[k]??null,getRole:k=>values[k]?{id:values[k]}:null,getUser:k=>values[k]?{id:values[k]}:null,getChannel:()=>channel},
-    reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);},
+    reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;if(p.content!==WORKING_MESSAGE)outputs.push(p);},
     editReply:async function(p){assert.ok(this.deferred||this.replied);outputs.push(p);},
     deferReply:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
     deferUpdate:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
@@ -80,7 +81,7 @@ test('regular members get immediate permission replies for every staff subcomman
 test('failed message publishing and channel permission checks finish with an error reply',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   h.channel.send=async()=>{throw Object.assign(Error('Missing Permissions'),{code:50013});};
-  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.deferred,true);assert.match(h.outputs[0].content,/permissions/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
+  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/permissions/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
 });
 
 test('an event cancelled during a channel lookup cannot be revived by configure',async()=>{
@@ -130,6 +131,17 @@ test('a stalled confirmation request cannot hold a successful embed send indefin
   const h=harness({replyEditTimeoutMs:10});h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=()=>new Promise(()=>{});i.followUp=async p=>followups.push(p);i.deleteReply=async()=>{throw Error('Must not delete the completed result');};
   await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,1);assert.match(followups[0].content,/Message shared/);assert.equal(followups[0].flags,64);h.store.close();
+});
+
+for(const stage of ['channel','role','member','send'])test(`Publish stops and reports a never-returning ${stage} request`,{timeout:1000},async()=>{
+  const h=harness({operationTimeoutMs:30}),never=()=>new Promise(()=>{});let attempts=0;
+  h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
+  if(stage==='channel'){h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=never;}
+  if(stage==='role')h.channel.guild.roles.fetch=never;
+  if(stage==='member')h.channel.guild.members.fetch=never;
+  if(stage==='send')h.channel.send=()=>{attempts++;return never();};
+  const i=h.interaction('embed','send',{message:'saved',...(stage==='role'?{role:'345678901234567890'}:{}),...(stage==='member'?{user:h.member.id}:{})});
+  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|timed out|did not confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/before retrying/);h.store.close();
 });
 
 test('embed copies are independent saved drafts and require a fresh publishing destination',async()=>{
@@ -188,7 +200,7 @@ test('legacy /events returns a useful reply without fetching a member',async()=>
 test('slow channel work is acknowledged before the REST request',async()=>{
   const h=harness();const e={id:'event',title:'Test',channel:h.channel.id,start:Date.now()+600000,duration:60,zone:'America/New_York',kind:'event',repeat:'none'};
   h.store.put('server-a','event',e);const i=h.interaction('schedule','show',{id:e.id});i.guild.channels.cache.clear();
-  i.guild.channels.fetch=async()=>{assert.equal(i.deferred,true);return h.channel;};
+  i.guild.channels.fetch=async()=>{assert.equal(i.replied,true);return h.channel;};
   await h.app.handle(i);assert.equal(h.outputs[0].embeds[0].toJSON().title,'Test');h.store.close();
 });
 test('forms remain the initial response and do not defer before showModal',async()=>{

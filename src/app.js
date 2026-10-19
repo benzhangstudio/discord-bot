@@ -7,11 +7,11 @@ import {startWorker} from './worker.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
-import {acknowledge,respond,updateResponse,reportFailure,safeError} from './responses.js';
+import {acknowledge,respond,updateResponse,reportFailure,safeError,step,withDeadline} from './responses.js';
 import {helpMenu} from './help.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
-export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000}={}) {
+export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000}={}) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
@@ -20,7 +20,7 @@ function needStaff(i) {if(!staff(i)) throw new UserError('This is a staff action
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
   let channel=i.guild.channels.cache?.get(id);
-  if(!channel){await acknowledge(i);channel=await i.guild.channels.fetch(id).catch(()=>null);}
+  if(!channel){await acknowledge(i);channel=await step(i,i.guild.channels.fetch(id)).catch(error=>{if(error.name==='UserError')throw error;return null;});}
   return checkDestination(i,channel,{writing,privateOnly});
 }
 function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
@@ -33,7 +33,7 @@ function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
 async function pingRole(i,roleId,channel) {
   if(!roleId) return;
   let role=i.guild.roles.cache?.get(roleId);
-  if(!role){await acknowledge(i);role=await i.guild.roles.fetch(roleId);}
+  if(!role){await acknowledge(i);role=await step(i,i.guild.roles.fetch(roleId));}
   if(!role || role.id===i.guildId || role.managed) throw new UserError('Choose a role created for your members, rather than @everyone or a role managed by another app.');
   if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw new UserError('That role cannot be notified here. Ask an administrator to make it mentionable, or give you and Number One the Mention Everyone permission in this channel.');
   return role.id;
@@ -83,14 +83,17 @@ async function publishEmbed(i,id,channelId,roleId,user) {
   if(!channelId)throw new UserError('Choose a channel below before publishing.');
   await acknowledge(i);
   const channel=await destination(i,channelId),role=await pingRole(i,roleId,channel);
-  if(user)await i.guild.members.fetch(user).catch(()=>{throw new UserError('Choose a current member of this server to notify.');});
+  if(user)await step(i,i.guild.members.fetch(user)).catch(error=>{if(error.name==='UserError')throw error;throw new UserError('Choose a current member of this server to notify.');});
   needStaff(i);const ready=item(i,'embed',id);validateEmbed(ready);
-  const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]},...(i.id?{nonce:i.id,enforceNonce:true}:{})});
+  const message=await step(i,()=>channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]},...(i.id?{nonce:i.id,enforceNonce:true}:{})}),{uncertain:true});
   console.log('Embed published; sending its confirmation.');
   return respond(i,privateReply(`Message shared: ${message.url}\nYour saved draft is still available with /embed edit.`),{editTimeoutMs:replyEditTimeoutMs});
 }
 
 async function handle(i) {
+  i.confirmationTransport=confirmationTransport||i.confirmationTransport;
+  i.operationTimeoutMs=operationTimeoutMs;
+  i.operationDeadline=Date.now()+operationTimeoutMs;
   if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   if(await instagram(i))return;
@@ -107,7 +110,7 @@ async function handle(i) {
     // rather than deferring and relying on a second webhook request.
     const payload=helpMenu(helpOptions());
     console.log('Sending /help menu as a direct reply.');
-    await i.reply(payload);
+    await respond(i,payload);
     console.log('Discord accepted the /help menu.');
     return;
   }
@@ -124,7 +127,7 @@ async function handle(i) {
       `**Upcoming events · page ${page}/${total}**\n`+events.slice((page-1)*5,page*5).map(e=>`**${clean(e.title).slice(0,150)}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')+'\n\nUse /schedule show and choose an event by name for details and replies.':
       'No upcoming events you can view right now. Check back soon.'+(staff(i)?'\n\nUse /schedule add to plan an event.':'');
     console.log(`Sending /schedule list directly (${events.length} visible events).`);
-    await i.reply(privateReply(content));
+    await respond(i,privateReply(content));
     console.log('Discord accepted /schedule list.');
     return;
   }
@@ -240,7 +243,7 @@ async function handle(i) {
       const raw=opt.getString('people')||opt.getString('assignees')||'';const assignees=raw.split(/[\s,]+/).filter(Boolean).map(v=>v.replace(/^<@!?|>$/g,''));
       if(assignees.length>30 || assignees.some(v=>!/^\d{17,20}$/.test(v)))throw new UserError('Mention up to 30 people in the order they should take turns, separated by spaces.');
       if(kind==='rotation' && (!assignees.length || repeat==='none'))throw new UserError('Choose Every day or Every week for the rotation, and mention the people who will take turns.');
-      for(const id of assignees)await i.guild.members.fetch(id).catch(()=>{throw new UserError('One of the people in this rotation is not a member of this server. Check the mentions and try again.');});
+      for(const id of assignees)await step(i,i.guild.members.fetch(id)).catch(error=>{if(error.name==='UserError')throw error;throw new UserError('One of the people in this rotation is not a member of this server. Check the mentions and try again.');});
       const duration=opt.getInteger('duration')||60;
       if((repeat==='daily' && duration>=1440)||(repeat==='weekly' && duration>=10080))throw new UserError('This event must finish before the next one begins. Shorten its duration or choose a less frequent repeat.');
       const role=await pingRole(i,opt.getRole('role')?.id,channel);needStaff(i);
@@ -252,7 +255,7 @@ async function handle(i) {
     if(sub==='edit')checkDestination(i,i.guild.channels.cache?.get(e.channel),{privateOnly:e.kind!=='event'});
     else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
     e=item(i,'event',e.id);needStaff(i);
-    if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);e=item(i,'event',e.id);if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');const sent=await channel.send(eventView(e));return respond(i,privateReply(`Event card posted: ${sent.url}`));}
+    if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);e=item(i,'event',e.id);if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');const sent=await step(i,channel.send(eventView(e)),{uncertain:true});return respond(i,privateReply(`Event card posted: ${sent.url}`));}
     if(sub==='configure') {
       if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');
       e.repeat=opt.getString('repeat')??e.repeat;e.duration=opt.getInteger('duration')??e.duration;e.reminder=opt.getInteger('reminder')??e.reminder;
@@ -270,7 +273,7 @@ async function handle(i) {
     if(sub==='list') {const sources=store.list(i.guildId,'feed');return respond(i,{...privateReply(''),content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
     let f=item(i,'feed',selected(i));
     if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return respond(i,privateReply('Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'));}
-    if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await feedLoader(f.url);if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}
+    if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await step(i,feedLoader(f.url));if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}
     f.paused=sub==='pause';f.settingsVersion=(f.settingsVersion||0)+1;if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return respond(i,privateReply(f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into your scheduled roundup. If a roundup is overdue, it may be shared now.'));
   }
   throw new UserError('This command has changed or is unavailable. Use /help for current commands.');

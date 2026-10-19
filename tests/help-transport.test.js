@@ -4,10 +4,11 @@ import {Client,ChatInputCommandInteraction,PermissionsBitField,PermissionFlagsBi
 import {UserError} from '../src/user-error.js';
 import {Store} from '../src/store.js';
 import {createApp} from '../src/app.js';
+const sdkConfirmation=(i,method,payload)=>method==='PATCH'?i.editReply(payload):i.followUp(payload);
 test('real Discord SDK serializes /help as one immediate public callback containing the menu',async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
   try {
-    const app=createApp(client,store);
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation});
     client.rest.post=async(route,options)=>{requests.push({route,body:options.body});return undefined;};
     client.rest.patch=async()=>{throw Error('Help should not use a second request');};
     const i=new ChatInputCommandInteraction(client,{
@@ -63,7 +64,7 @@ for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'fai
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[],guild='345678901234567890',channel='456789012345678901';let i;
   try {
     store.put(guild,'feed',{id:'saved',name:'Updates',channel,url:'https://example.com/rss'});
-    const app=createApp(client,store,{feedLoader:async()=>{assert.equal(i.deferred,true);if(failed)throw new UserError('The feed service is unavailable. Try again later.');return[{key:'p',title:'Latest post',link:'https://example.com/post'}];}});
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,feedLoader:async()=>{assert.equal(i.replied,true);if(failed)throw new UserError('The feed service is unavailable. Try again later.');return[{key:'p',title:'Latest post',link:'https://example.com/post'}];}});
     client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});};
     client.rest.patch=async(route,request)=>{
       requests.push({method:'PATCH',body:request.body});
@@ -74,7 +75,7 @@ for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'fai
       data:{id:'567890123456789012',name:'instagram',type:1,options:[{type:1,name:'preview',options:[{name:'source',type:3,value:'saved'}]}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,{type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks])}]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(requests.length,2);assert.equal(requests[0].body.type,5);assert.equal(requests[1].method,'PATCH');
+    await app.dispatch(i);assert.equal(requests.length,2);assert.equal(requests[0].body.type,4);assert.equal(requests[1].method,'PATCH');
     assert.match(requests[1].body.content,failed?/feed service is unavailable/:/Latest post/);assert.equal(requests[1].body.flags,undefined);assert.equal(i.replied,true);
   } finally {client.destroy();store.close();}
 });
@@ -83,9 +84,9 @@ test('real Discord SDK: a hung embed confirmation completes through a follow-up 
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[],guild='345678901234567890',channel='456789012345678901';let sent=0;
   try {
     store.put(guild,'embed',{id:'saved',name:'Welcome',embed:{description:'Hello'}});
-    const app=createApp(client,store,{replyEditTimeoutMs:5});
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,replyEditTimeoutMs:5});
     const result=content=>({id:'789012345678901234',channel_id:channel,type:0,content,author:{id:'234567890123456789',username:'Number One',discriminator:'0',avatar:null,bot:true},timestamp:new Date().toISOString(),edited_timestamp:null,tts:false,mention_everyone:false,mentions:[],mention_roles:[],attachments:[],embeds:[],components:[],flags:64});
-    client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});if(request.body.type===5)return;return result(request.body.content);};
+    client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});if(request.body.type===4)return;return result(request.body.content);};
     client.rest.patch=()=>new Promise(()=>{});
     client.rest.delete=async()=>{throw Error('Must not delete the completed waiting response');};
     const i=new ChatInputCommandInteraction(client,{
@@ -94,6 +95,6 @@ test('real Discord SDK: a hung embed confirmation completes through a follow-up 
     });
     const target={id:channel,type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks]),send:async()=>{sent++;return{id:'posted',url:'https://discord.com/channels/server/channel/posted'};}};
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,target]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,5);assert.match(requests[1].body.content,/Message shared/);assert.equal(requests[1].body.flags,64);assert.equal(i.replied,true);
+    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,4);assert.match(requests[1].body.content,/Message shared/);assert.equal(requests[1].body.flags,64);assert.equal(i.replied,true);
   } finally {client.destroy();store.close();}
 });

@@ -1,7 +1,7 @@
 import {ModalBuilder,ActionRowBuilder,TextInputBuilder,TextInputStyle,MessageFlags} from 'discord.js';
 import {DateTime} from 'luxon';
 import {UserError} from './user-error.js';
-import {respond} from './responses.js';
+import {respond,acknowledge,step,updateResponse,withDeadline} from './responses.js';
 import {allowedUrl,loadFeed} from './feeds.js';
 import {nextDigest,deliveryLabel,digestParts,DIGEST_ZONE} from './weekly-feeds.js';
 
@@ -80,14 +80,14 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
     if(!d||d.owner!==i.user.id||d.expiresAt<Date.now())throw new UserError('This setup menu has expired or belongs to someone else. Open your own with /instagram setup.');
     if(action==='source'||action==='schedule'){await i.showModal(form(d,action));return true;}
     if(action==='preview') {
-      await i.deferReply({flags:MessageFlags.Ephemeral});
+      await acknowledge(i);
       if(!d.url)throw new UserError('Choose Source and add your Instagram feed link first.');
-      const items=await load(d.url);
+      const items=await step(i,load(d.url));
       if(!items.length)throw new UserError('There are no posts to preview yet. You can still save this source.');
       const sample=digestParts({...d,role:null,name:d.name||'Instagram'},items.slice(0,3))[0];
       await respond(i,{...sample,flags:MessageFlags.Ephemeral,content:`**Sample roundup · Nothing has been posted or removed from your queue**\n${sample.content}`,allowedMentions:{parse:[]}});return true;
     }
-    if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await i.update({content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
+    if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await updateResponse(i,{content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
     if(action==='choose') {
       const source=i.values[0]==='new'?null:store.get(i.guildId,'feed',i.values[0]);
       if(i.values[0]!=='new'&&!source)throw new UserError('That source was removed. Open /instagram setup again.');
@@ -105,7 +105,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       Object.assign(d,scheduleFields(Object.fromEntries(['zone','time','day','previews'].map(k=>[k,i.fields.getTextInputValue(k)]))));
     } else if(action==='save') {
       i.instagramSetupUpdate=true;
-      await i.deferUpdate();
+      await withDeadline(i.deferUpdate(),8000,'Discord did not accept the setup action.');
       if(!d.name||!d.url)throw new UserError('Choose Source to add a name and feed link before saving.');
       if(!d.channel)throw new UserError('Choose a channel from the menu before saving.');
       current(i,d);
@@ -113,7 +113,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       let old=current(i,d);
       const changed=!old||old.url!==d.url;
       if(changed&&old?.pending?.length)throw new UserError('This source still has posts waiting. Keep its feed link until the roundup is delivered, or add a separate source.');
-      const items=changed?await load(d.url):null;
+      const items=changed?await step(i,load(d.url)):null;
       needStaff(i);
       old=current(i,d);
       if(changed&&old?.pending?.length)throw new UserError('New posts arrived while you were editing. Keep this feed link and add a separate source.');

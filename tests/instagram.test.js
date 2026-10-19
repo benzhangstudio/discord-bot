@@ -41,6 +41,12 @@ test('private preview never pings, activates a draft or consumes queued posts',a
   const h=harness();await h.configure();await h.run('role',['234567890123456789']);await h.run('preview');
   assert.equal(h.store.list('g','feed').length,0);assert.deepEqual(h.outputs.at(-1).allowedMentions,{parse:[]});assert.doesNotMatch(h.outputs.at(-1).content,/<@&/);await h.run('close');assert.equal(h.store.list('g','instagram-draft').length,0);h.store.close();
 });
+
+for(const action of ['preview','save'])test(`Instagram ${action} stops when its feed service never returns`,{timeout:1000},async()=>{
+  const h=harness();await h.configure();h.hook(()=>new Promise(()=>{}));
+  const i=h.interaction(action);i.operationTimeoutMs=10;
+  await assert.rejects(h.handle(i),/too long/);assert.equal(h.store.list('g','feed').length,0);assert.equal(h.store.list('g','instagram-draft')[0].name,'Rosé');h.store.close();
+});
 test('menus enforce owner, guild, expiry, staff membership and current channel permission',async()=>{
   const h=harness();await h.configure();
   for(const change of [{user:{id:'other'}},{guildId:'other'},{staff:false}]){const i=h.interaction('save');Object.assign(i,change);await assert.rejects(h.handle(i));}
