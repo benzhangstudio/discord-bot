@@ -20,9 +20,9 @@ export function helpMenu({page='home',canManage=false,canConfigure=false,timezon
       {name:'Need a hand?',value:'Choose a topic below for a short walkthrough. You can open /help anytime.'}
     ]},
     embeds:{title:'💌 Announcements & embeds',description:'Give your announcements a little personality with styled text, pictures, links, and colors.',fields:canManage?[
-      {name:'1 · Start a message',value:'Use **/embed create** and give it a name, such as “Welcome” or “Weekly news”.'},
-      {name:'2 · Make it yours',value:'Use the controls to edit your text, choose a color such as pink or blue, add pictures or sections, and add an author or small print. Your changes save automatically.'},
-      {name:'3 · Preview and share',value:'Use **/embed send** to choose your saved message and the channel. You can also choose a person or role to notify.'},
+      {name:'1 · Start a message',value:'Use **/embed create** and give your draft a name. A form opens for its saved name, title, main text, color, and optional message. Submit it to see your private preview.'},
+      {name:'2 · Make it yours',value:'**Edit form** changes the main details together. Use the other controls for pictures, sections, and author details. Changes save automatically. **Save & close** keeps your work for later; **Make a copy** starts an independent version.'},
+      {name:'3 · Preview and share',value:'Choose a channel and optional role/person notifications below the preview, then **Publish**. You can also use **/embed send**. Publishing keeps your saved draft so you can reuse it.'},
       {name:'Come back later',value:'**/embed list** shows your saved messages. With **/embed edit**, start typing the message’s name and choose a suggestion. **/embed delete** removes the saved message; copies already posted stay in their channels.'},
       {name:'Channel links & notifications',value:'You can include channel mentions in your text. To actually notify someone, choose the person or role when sending; mentions inside the embed do not send a notification.'}
     ]:[{name:'Want to share an announcement?',value:'Ask a staff member to create one. Building and publishing announcements is available to the people who manage Number One in your server.'}]},

@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
+import {PermissionsBitField,PermissionFlagsBits as P,ActionRowBuilder} from 'discord.js';
 import {createApp} from '../src/app.js';
 import {Store} from '../src/store.js';
 import {commands} from '../src/commands.js';
 
-function harness({manager=true,visible=true,privateChannel=false,guildId='server-a'}={}) {
-  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
+function harness({manager=true,visible=true,privateChannel=false,guildId='server-a',replyEditTimeoutMs=8000}={}) {
+  const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{replyEditTimeoutMs,feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
   const member={id:'123456789012345678',roles:{cache:new Map()}};
   const perms=new PermissionsBitField(manager?[P.ManageGuild,P.MentionEveryone]:[]);
   const channel={id:'234567890123456789',type:0,permissionsFor:target=>new PermissionsBitField(target==='everyone'?(privateChannel?[]:[P.ViewChannel]):target===member&&!visible?[]:[P.ViewChannel,P.SendMessages,P.EmbedLinks,P.MentionEveryone]),send:async p=>{sent.push(p);return {id:'posted',url:'https://discord.com/channels/server/channel/message'};}};
@@ -47,9 +47,9 @@ for(const [name,values] of Object.entries(scenarios))test(`command audit: /${nam
     h.store.put('server-a','feed',{id:'saved',name:'Saved source',url:'https://example.com/rss',channel:h.channel.id,pending:[],seen:[],zone:'Asia/Seoul',time:'09:00',delivery:'daily'});
     const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
     await h.app.handle(i);assert.ok(i.replied||i.deferred);assert.ok(h.outputs.length>0,'A defer alone is not a completed reply');
-    const modal=name==='schedule edit',slow=['embed send','schedule add','schedule post','instagram preview'].includes(name);
+    const modal=name==='schedule edit'||name==='embed create',slow=['embed send','schedule add','schedule post','instagram preview'].includes(name);
     if(!modal&&!slow){assert.ok(!i.deferred,'Local commands must not depend on deferred webhook edits');assert.equal(i.replied,true);}
-    if(modal)assert.ok(h.outputs[0].custom_id.startsWith('eventform:'));
+    if(modal)assert.ok(h.outputs[0].custom_id.startsWith(name==='embed create'?'embedform:':'eventform:'));
     if(name==='settings timezone')assert.equal(h.store.get('server-a','settings','main').zone,'Asia/Seoul');
     if(name==='embed send'||name==='schedule post')assert.equal(h.sent.length,1);
     if(name==='instagram preview')assert.deepEqual(h.outputs.at(-1).allowedMentions,{parse:[]});
@@ -108,6 +108,42 @@ test('invalid reminder settings do not partially overwrite an existing event',as
 
 test('staff access cannot be delegated to everyone or an app-managed role',async()=>{
   const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/@everyone/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
+});
+
+test('combined embed form saves a renamed draft, closes, reopens and publishes from its builder',async()=>{
+  const h=harness();await h.app.handle(h.interaction('embed','create',{name:'Welcome'}));
+  const d=h.store.list('server-a','embed')[0];assert.equal(h.outputs[0].custom_id,`embedform:${d.id}:form`);assert.equal(h.outputs[0].components.length,5);
+  const form=h.interaction();Object.assign(form,{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>false,customId:`embedform:${d.id}:form`,fields:{getTextInputValue:k=>({name:'Member welcome',title:'Welcome!',description:'Visit <#234567890123456789>',color:'blue',content:'Hello everyone'})[k]}});
+  await h.app.handle(form);const panel=h.outputs.at(-1);assert.match(panel.content,/Saved automatically/);assert.equal(panel.components.length,5);for(const row of panel.components)ActionRowBuilder.from(row).toJSON();
+  const saved=h.store.get('server-a','embed',d.id);assert.equal(saved.name,'Member welcome');assert.equal(saved.embed.color,0x3498db);assert.ok(saved.updatedAt);
+  const button=action=>Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:`embed:${d.id}:${action}`});
+  await h.app.handle(button('save'));assert.deepEqual(h.outputs.at(-1).components,[]);assert.match(h.outputs.at(-1).content,/is saved/);
+  await h.app.handle(h.interaction('embed','edit',{message:d.id}));assert.equal(h.outputs.at(-1).embeds[0].toJSON().title,'Welcome!');
+  for(const [action,value] of [['channel',h.channel.id],['role','345678901234567890'],['user',h.member.id]]) {
+    const i=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',isUserSelectMenu:()=>action==='user',customId:`embed:${d.id}:${action}`,values:[value]});await h.app.dispatch(i);assert.equal(i.replied,true);
+  }
+  const publish=button('publish');publish.id='987654321098765432';await h.app.handle(publish);
+  assert.equal(h.sent.length,1);assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[h.member.id]});assert.equal(h.sent[0].nonce,publish.id);assert.equal(h.sent[0].enforceNonce,true);assert.ok(h.store.get('server-a','embed',d.id));assert.match(h.outputs.at(-1).content,/Message shared/);h.store.close();
+});
+
+test('a stalled confirmation request cannot hold a successful embed send indefinitely or trigger a repost', {timeout:2000},async()=>{
+  const h=harness({replyEditTimeoutMs:10});h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
+  const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=()=>new Promise(()=>{});i.followUp=async p=>followups.push(p);i.deleteReply=async()=>{throw Error('Must not delete the completed result');};
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,1);assert.match(followups[0].content,/Message shared/);assert.equal(followups[0].flags,64);h.store.close();
+});
+
+test('embed copies are independent saved drafts and require a fresh publishing destination',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Original',sendChannel:h.channel.id,sendRole:'345678901234567890',sendUser:h.member.id,embed:{description:'Hello'}});
+  const i=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'embed:saved:copy'});await h.app.handle(i);
+  const copy=h.store.list('server-a','embed').find(d=>d.id!=='saved');assert.equal(copy.name,'Original (copy)');assert.equal(copy.sendChannel,undefined);assert.equal(copy.sendRole,undefined);assert.equal(copy.sendUser,undefined);
+  copy.embed.description='Changed';h.store.put('server-a','embed',copy);assert.equal(h.store.get('server-a','embed','saved').embed.description,'Hello');h.store.close();
+});
+
+test('missing publishing destinations and invalid form submissions preserve saved work',async()=>{
+  const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Original',embed:{description:'Keep this'}});
+  const button=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'embed:saved:publish'});await h.app.dispatch(button);assert.match(h.outputs.at(-1).content,/Choose a channel/);assert.equal(h.sent.length,0);
+  const form=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>false,customId:'embedform:saved:form',fields:{getTextInputValue:k=>({name:'Renamed',title:'',description:'',color:'',content:''})[k]}});await h.app.dispatch(form);
+  assert.equal(h.store.get('server-a','embed','saved').name,'Original');assert.equal(h.store.get('server-a','embed','saved').embed.description,'Keep this');h.store.close();
 });
 test('only staff can create embeds, while all members can use help',async()=>{
   const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Manage Server/);

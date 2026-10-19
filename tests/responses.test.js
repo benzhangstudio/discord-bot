@@ -14,10 +14,10 @@ test('Instagram validation errors preserve the setup menu and send private corre
   assert.equal(sent[0].flags,64);assert.match(sent[0].content,/Choose a channel/);
 });
 
-test('confirmation fallback clears the old waiting reply and honors explicit privacy',async()=>{
+test('confirmation fallback preserves its completed reply and honors explicit privacy',async()=>{
   const sent=[];let removed=0;
   await respond({deferred:true,ephemeral:false,editReply:async()=>{throw Error('PATCH failed');},followUp:async p=>sent.push(p),deleteReply:async()=>{removed++;}},{content:'Done',flags:64});
-  assert.equal(sent[0].flags,64);assert.equal(removed,1);
+  assert.equal(sent[0].flags,64);assert.equal(removed,0);
 });
 
 test('expired interaction replies are not retried as follow-ups',async()=>{

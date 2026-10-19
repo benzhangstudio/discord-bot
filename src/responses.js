@@ -5,19 +5,21 @@ export async function acknowledge(i,update=false) {
   if(update)return i.deferUpdate();
   return i.deferReply({flags:MessageFlags.Ephemeral});
 }
-export async function respond(i,payload) {
+export async function respond(i,payload,{editTimeoutMs=8000}={}) {
   if(i.deferred || i.replied) {
     const {flags,...body}=payload;
-    try {return await i.editReply(body);}catch(error) {
+    let timer;
+    try {return await Promise.race([i.editReply(body),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(Error('Reply edit timed out'),{code:'REPLY_TIMEOUT'})),editTimeoutMs);})]);}catch(error) {
       // A failed confirmation must not rerun a send or mutation. A separate
       // follow-up can still deliver its result if editing the original fails.
       if(!i.followUp||[10015,10062].includes(Number(error.code)))throw error;
       console.warn(`Could not edit the command reply (${error.code||error.name}); sending its result as a follow-up.`);
       const fallbackFlags=flags??(i.ephemeral===false?undefined:MessageFlags.Ephemeral);
       const result=await i.followUp({...body,...(fallbackFlags===undefined?{}:{flags:fallbackFlags})});
-      if(i.deferred&&i.deleteReply)try{await i.deleteReply();}catch{console.warn('The result was delivered, but Discord could not remove the original waiting reply.');}
+      // Discord's first follow-up after deferReply completes the original
+      // waiting response. Do not delete it: that would delete the result too.
       return result;
-    }
+    } finally {clearTimeout(timer);}
   }
   return i.reply(payload);
 }

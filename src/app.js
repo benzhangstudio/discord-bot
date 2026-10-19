@@ -11,7 +11,7 @@ import {acknowledge,respond,updateResponse,reportFailure,safeError} from './resp
 import {helpMenu} from './help.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
-export function createApp(client,store,{feedLoader=loadFeed}={}) {
+export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000}={}) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
@@ -41,13 +41,26 @@ async function pingRole(i,roleId,channel) {
 function modal(id,title,fields) {
   return new ModalBuilder().setCustomId(id).setTitle(title).addComponents(fields.map(([name,label,value='',max=1000,required=false])=>new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(name).setLabel(label).setStyle(max>300?TextInputStyle.Paragraph:TextInputStyle.Short).setRequired(required).setMaxLength(max).setValue(String(value).slice(0,max)))));
 }
-function editor(d) {
-  const buttons=[['text','Text & color'],['media','Pictures & links'],['field','Add or edit a section'],['branding','Author & small print'],['clearfields','Remove all sections']];
-  return {content:`**${d.name}**\nYour changes save automatically. This is your private preview. When you’re ready, use **/embed send**, choose this message by name, and pick a channel. You can choose who to notify before sending.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the controls below to create your announcement.',color:0xe5a1b3})],components:[{type:1,components:buttons.map(([action,label])=>({type:2,style:2,label,custom_id:`embed:${d.id}:${action}`}))}],allowedMentions:{parse:[]}};
+function saveDraft(i,d) {d.updatedAt=Date.now();return store.put(i.guildId,'embed',d);}
+function editor(d,i) {
+  d={...d};
+  if(i?.guild?.channels.cache&&!i.guild.channels.cache.has(d.sendChannel))delete d.sendChannel;
+  if(i?.guild?.roles.cache&&!i.guild.roles.cache.has(d.sendRole))delete d.sendRole;
+  const buttons=[['form','Edit form'],['media','Pictures & links'],['field','Add or edit a section'],['branding','Author & small print'],['clearfields','Clear sections']];
+  const row=(...components)=>({type:1,components});
+  const select=(type,action,placeholder,value,extra={})=>({type,custom_id:`embed:${d.id}:${action}`,placeholder,min_values:action==='channel'?1:0,max_values:1,...extra,...(value?{default_values:[{id:value,type:{8:'channel',6:'role',5:'user'}[type]}]}:{})});
+  return {content:`**${d.name}** · Saved automatically${d.updatedAt?` <t:${Math.floor(d.updatedAt/1000)}:R>`:''}\nUse **Edit form** for the main details. Choose a channel and optional notifications below, then **Publish**. **Save & close** keeps your draft; reopen it anytime with /embed edit. Publishing keeps the saved copy.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the controls below to create your announcement.',color:0xe5a1b3})],components:[
+    row(...buttons.map(([action,label])=>({type:2,style:2,label,custom_id:`embed:${d.id}:${action}`}))),
+    row(select(8,'channel','Choose where to publish',d.sendChannel,{channel_types:[0,5]})),
+    row(select(6,'role','Optional: notify a role (clear to disable)',d.sendRole)),
+    row(select(5,'user','Optional: notify a person (clear to disable)',d.sendUser)),
+    row(...[['publish','Publish',1],['save','Save & close',3],['copy','Make a copy',2]].map(([action,label,style])=>({type:2,style,label,custom_id:`embed:${d.id}:${action}`})))
+  ],allowedMentions:{parse:[]}};
 }
 function editModal(d,action) {
   const e=d.embed;
   const fields={
+    form:[['name','Saved draft name',d.name,80,true],['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color, e.g. pink or E5A1B3',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
     text:[['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color name or code, e.g. pink or E5A1B3',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
     media:[['url','Title link',e.url,500],['image','Main picture link',e.image?.url,500],['thumbnail','Small picture link',e.thumbnail?.url,500]],
     field:[['name','Section heading','',256,true],['value','Section text','',1024,true],['inline','Place beside other sections? yes or no','no',3],['number','Section to replace (leave blank to add one)','',2]],
@@ -66,10 +79,28 @@ function eventView(e) {
 
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
+async function publishEmbed(i,id,channelId,roleId,user) {
+  if(!channelId)throw new UserError('Choose a channel below before publishing.');
+  await acknowledge(i);
+  const channel=await destination(i,channelId),role=await pingRole(i,roleId,channel);
+  if(user)await i.guild.members.fetch(user).catch(()=>{throw new UserError('Choose a current member of this server to notify.');});
+  needStaff(i);const ready=item(i,'embed',id);validateEmbed(ready);
+  const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]},...(i.id?{nonce:i.id,enforceNonce:true}:{})});
+  console.log('Embed published; sending its confirmation.');
+  return respond(i,privateReply(`Message shared: ${message.url}\nYour saved draft is still available with /embed edit.`),{editTimeoutMs:replyEditTimeoutMs});
+}
+
 async function handle(i) {
   if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   if(await instagram(i))return;
+  if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
+    needStaff(i);const [,id,action]=i.customId.split(':'),d=item(i,'embed',id);
+    const key={channel:'sendChannel',role:'sendRole',user:'sendUser'}[action];
+    if(!key)throw new UserError('Open /embed edit to use the latest builder.');
+    if(action==='channel')checkDestination(i,i.guild.channels.cache?.get(i.values[0]));
+    d[key]=i.values[0]||null;saveDraft(i,d);return i.update(editor(d,i));
+  }
   const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
   if(i.isChatInputCommand()&&i.commandName==='help') {
     // Help is built entirely from local data. Send it as the initial response,
@@ -111,7 +142,16 @@ async function handle(i) {
     const [kind,id,action,value]=i.customId.split(':');
     if(kind==='embed') {
       needStaff(i);const d=item(i,'embed',id);
-      if(action==='clearfields') {delete d.embed.fields;validateEmbed(d);store.put(i.guildId,'embed',d);return updateResponse(i,editor(d));}
+      if(action==='publish')return publishEmbed(i,id,d.sendChannel,d.sendRole,d.sendUser);
+      if(action==='save'){saveDraft(i,d);return updateResponse(i,{content:`**${d.name}** is saved. Open /embed edit and choose it by name whenever you want to continue.`,embeds:[],components:[],allowedMentions:{parse:[]}});}
+      if(action==='copy'){
+        if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved drafts. Delete one before making a copy.');
+        const copy={...d,name:(d.name.slice(0,73)+' (copy)'),owner:i.user.id};delete copy.id;
+        // A copied announcement should require a fresh publishing destination.
+        delete copy.sendChannel;delete copy.sendRole;delete copy.sendUser;
+        saveDraft(i,copy);return updateResponse(i,editor(copy,i));
+      }
+      if(action==='clearfields') {delete d.embed.fields;validateEmbed(d);saveDraft(i,d);return updateResponse(i,editor(d,i));}
       return i.showModal(editModal(d,action));
     }
     if(kind==='rsvp') {
@@ -129,7 +169,8 @@ async function handle(i) {
     needStaff(i);const [kind,id,action]=i.customId.split(':');const read=k=>i.fields.getTextInputValue(k).trim();
     if(kind==='embedform') {
       const d=item(i,'embed',id),e=d.embed;
-      if(action==='text') {
+      if(action==='text'||action==='form') {
+        if(action==='form'){d.name=read('name');if(!d.name)throw new UserError('Give your saved draft a name.');}
         for(const key of ['title','description']) {const v=read(key);if(v)e[key]=v;else delete e[key];}
         const color=read('color');
         if(color)e.color=parseColor(color);else delete e.color;d.content=read('content');
@@ -143,9 +184,9 @@ async function handle(i) {
         const author=read('author');if(author) {e.author={name:author};if(read('authorurl'))e.author.url=webUrl(read('authorurl'));if(read('icon'))e.author.icon_url=webUrl(read('icon'));} else delete e.author;
         const footer=read('footer');if(footer)e.footer={text:footer};else delete e.footer;
       }
-      validateEmbed(d);new EmbedBuilder(e).toJSON();store.put(i.guildId,'embed',d);
-      if(i.isFromMessage())return updateResponse(i,editor(d));
-      return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
+      validateEmbed(d);new EmbedBuilder(e).toJSON();saveDraft(i,d);
+      if(i.isFromMessage())return updateResponse(i,editor(d,i));
+      return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});
     }
     if(kind==='eventform') {
       let e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
@@ -177,22 +218,15 @@ async function handle(i) {
     needStaff(i);
     if(sub==='create') {
       if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved messages. Delete one you no longer need before making another.');
-      const d=store.put(i.guildId,'embed',{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0xe5a1b3},content:''});
-      return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
+      const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0xe5a1b3},content:''});
+      return i.showModal(editModal(d,'form'));
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,privateReply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
     const d=item(i,'embed',selected(i));
-    if(sub==='edit')return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});
+    if(sub==='edit')return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});
     if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,privateReply('Saved message deleted. Any copies already posted in channels are unchanged.'));}
-    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);store.put(i.guildId,'embed',d);return respond(i,{...editor(d),flags:MessageFlags.Ephemeral});}
-    if(sub==='send') {
-      await acknowledge(i);
-      const channel=await destination(i,opt.getChannel('channel').id);const role=await pingRole(i,opt.getRole('role')?.id,channel),user=opt.getUser('user')?.id;
-      if(user)await i.guild.members.fetch(user).catch(()=>{throw new UserError('Choose a member of this server.');});
-      needStaff(i);const ready=item(i,'embed',d.id);validateEmbed(ready);
-      const message=await channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]}});
-      return respond(i,privateReply(`Message shared: ${message.url}`));
-    }
+    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);saveDraft(i,d);return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});}
+    if(sub==='send')return publishEmbed(i,d.id,opt.getChannel('channel').id,opt.getRole('role')?.id,opt.getUser('user')?.id);
   }
   if(name==='schedule') {
     if(sub==='show') {const e=item(i,'event',selected(i));await destination(i,e.channel,{writing:false});return respond(i,{...eventView(e),flags:MessageFlags.Ephemeral});}
@@ -243,7 +277,7 @@ async function handle(i) {
 }
 
 async function dispatch(i) {
-  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.()&&!i.isChannelSelectMenu?.()&&!i.isRoleSelectMenu?.())return;
+  if(!i.isChatInputCommand()&&!i.isButton()&&!i.isModalSubmit()&&!i.isStringSelectMenu?.()&&!i.isAutocomplete?.()&&!i.isChannelSelectMenu?.()&&!i.isRoleSelectMenu?.()&&!i.isUserSelectMenu?.())return;
   console.log(`Received ${i.isChatInputCommand()?'/'+i.commandName:'component'}${i.createdTimestamp?` (${Math.max(0,Date.now()-i.createdTimestamp)}ms old)`:''}`);
   const started=Date.now();
   try {await handle(i);console.log(`Completed ${i.commandName?'/'+i.commandName:'component'} in ${Date.now()-started}ms.`);} catch(error) {
