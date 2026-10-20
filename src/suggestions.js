@@ -3,7 +3,7 @@ const timezones=[['America/New_York','New York · Eastern time'],['America/Chica
 const normalized=value=>String(value).toLowerCase().replace(/[_/]/g,' ');
 export const timezoneLabel=(value='America/New_York')=>timezones.find(([zone])=>zone===value)?.[1] || value.split('/').at(-1).replace(/_/g,' ');
 export function suggestions(store,i,{canManage=false,canConfigure=false}={}) {
-  if(!i.inGuild())return [];
+  if(!i.inGuild() || !canManage)return [];
   const focused=i.options.getFocused(true),query=normalized(focused.value);
   if(focused.name==='zone') {
     if((i.commandName==='settings'&&!canConfigure)||(i.commandName==='schedule'&&!canManage))return [];

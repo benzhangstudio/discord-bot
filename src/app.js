@@ -1,4 +1,5 @@
 import {UserError} from './user-error.js';
+import {canManageServer,MANAGEMENT_ONLY_MESSAGE} from './permissions.js';
 import {PermissionFlagsBits as P,MessageFlags,RESTEvents,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
 import {DEFAULT_ZONE,zone,parseTime,parseColor,validateEmbed,webUrl,rotationMember} from './domain.js';
@@ -15,8 +16,12 @@ export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
-function staff(i) {const role=settings(i.guildId).staff;return i.memberPermissions?.has(P.ManageGuild) || Boolean(role && (i.member.roles?.cache?.has(role) || (Array.isArray(i.member.roles)&&i.member.roles.includes(role))));}
-function needStaff(i) {if(!staff(i)) throw new UserError('This is a staff action. Ask someone with Manage Server permission or the server’s Number One staff role to help.');}
+function staff(i) {return canManageServer(i.memberPermissions);}
+function needStaff(i) {
+  if (!staff(i)) {
+    throw new UserError(MANAGEMENT_ONLY_MESSAGE);
+  }
+}
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
   let channel=i.guild.channels.cache?.get(id);
@@ -94,8 +99,17 @@ async function handle(i) {
   i.confirmationTransport=confirmationTransport||i.confirmationTransport;
   i.operationTimeoutMs=operationTimeoutMs;
   i.operationDeadline=Date.now()+operationTimeoutMs;
-  if(i.isAutocomplete?.())return i.respond(suggestions(store,i,{canManage:i.inGuild()&&staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild))}));
+  if (i.isAutocomplete?.()) {
+    if (!i.inGuild() || !staff(i)) {
+      return i.respond([]);
+    } else {
+      return i.respond(suggestions(store,i,{canManage:true,canConfigure:true}));
+    }
+  }
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
+  if (i.isChatInputCommand()) {
+    needStaff(i);
+  }
   if(await instagram(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
     needStaff(i);const [,id,action]=i.customId.split(':'),d=item(i,'embed',id);
@@ -207,15 +221,13 @@ async function handle(i) {
     if(!i.memberPermissions.has(P.ManageGuild))throw new UserError('Ask someone with Manage Server permission to change these settings.');
     const s=settings(i.guildId);
     if(sub==='timezone')s.zone=zone(opt.getString('zone'));
-    if(sub==='staff'){const role=opt.getRole('role');if(!role||role.id===i.guildId||role.managed)throw new UserError('Choose a member role for your staff, rather than @everyone or a role managed by another app.');s.staff=role.id;}
-    if(sub==='clear-staff')delete s.staff;
     if(sub==='status') {
       const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A weekly post could not be confirmed. Check the chosen channel and ask the bot owner to review it.');
       for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check Number One’s access to its channel and ask the bot owner for help.');
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and channel access, or ask the bot owner for help.`);
       return respond(i,privateReply(issues.length?[...new Set(issues)].join('\n').slice(0,1900):'Everything looks good—no recent reminder or weekly-post problems have been recorded.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,privateReply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nExtra staff role: ${s.staff?'<@&'+s.staff+'>':'not set'}\nMembers with Manage Server permission can always manage Number One. Existing events keep their original timezone.`));
+    store.put(i.guildId,'settings',s);return respond(i,privateReply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator** or **Manage Server** permission. Custom staff roles do not grant access. Existing events keep their original timezone.`));
   }
   if(name==='embed') {
     needStaff(i);

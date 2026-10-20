@@ -31,7 +31,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 // adding an exercised scenario fails the suite instead of silently missing it.
 const scenarios={
   help:{},
-  'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings staff':{role:'345678901234567890'},'settings clear-staff':{},'settings status':{},
+  'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings status':{},
   'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},
   'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
   'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
@@ -40,13 +40,14 @@ test('every registered subcommand has a complete reply or modal scenario',()=>{
   const registered=commands.flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
   assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
 });
-for(const [name,values] of Object.entries(scenarios))test(`command audit: /${name} finishes with a visible response`,{timeout:2000},async()=>{
+for(const access of ['manager','administrator'])for(const [name,values] of Object.entries(scenarios))test(`command audit (${access}): /${name} finishes with a visible response`,{timeout:2000},async()=>{
   const h=harness();
   try {
     h.store.put('server-a','embed',{id:'saved',name:'Saved announcement',content:'',embed:{description:'Hello',fields:[{name:'Section',value:'Details'}]}});
     h.store.put('server-a','event',{id:'saved',title:'Saved event',channel:h.channel.id,start:Date.now()+3600000,duration:60,reminder:30,repeat:'none',kind:'event',zone:'America/New_York',rsvps:{}});
     h.store.put('server-a','feed',{id:'saved',name:'Saved source',url:'https://example.com/rss',channel:h.channel.id,pending:[],seen:[],zone:'Asia/Seoul',time:'09:00',delivery:'daily'});
     const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
+    if(access==='administrator')i.memberPermissions=new PermissionsBitField([P.Administrator]);
     await h.app.handle(i);assert.ok(i.replied||i.deferred);assert.ok(h.outputs.length>0,'A defer alone is not a completed reply');
     const modal=name==='schedule edit'||name==='embed create',slow=['embed send','schedule add','schedule post','instagram preview'].includes(name);
     if(!modal&&!slow){assert.ok(!i.deferred,'Local commands must not depend on deferred webhook edits');assert.equal(i.replied,true);}
@@ -69,12 +70,35 @@ test('unknown saved names across commands get immediate useful replies without n
   }
 });
 
-test('regular members get immediate permission replies for every staff subcommand',async()=>{
-  const publicNames=new Set(['help','schedule list','schedule show']);
+test('regular members get immediate permission replies for every registered slash command',async()=>{
   for(const [name,values] of Object.entries(scenarios)) {
-    if(publicNames.has(name))continue;
     const h=harness({manager:false}),[command,sub]=name.split(' '),i=h.interaction(command,sub,values);
     await h.app.dispatch(i);assert.match(h.outputs[0].content,/Manage Server|staff action/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
+  }
+});
+
+for(const access of ['moderator','legacy staff role','missing permissions'])test(`${access} cannot invoke any slash command or mutate saved data`,async()=>{
+  for(const [name,values] of Object.entries(scenarios)) {
+    const h=harness({manager:false});
+    h.store.put('server-a','settings',{id:'main',staff:'helpers',zone:'Asia/Seoul'});
+    h.member.roles.cache.set('helpers',{});
+    const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
+    if(access==='moderator')i.memberPermissions=new PermissionsBitField([P.ManageMessages,P.KickMembers,P.ManageChannels]);
+    if(access==='missing permissions')i.memberPermissions=null;
+    i.options=new Proxy({}, {get:()=>{throw Error('Unauthorized options must not be processed');}});
+    const before=h.store.db.prepare('SELECT * FROM records').all();
+    await h.app.dispatch(i);
+    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,64);assert.match(h.outputs[0].content,/You do not have permission.*Administrator or Manage Server/);assert.deepEqual(h.outputs[0].components,[]);
+    assert.deepEqual(h.store.db.prepare('SELECT * FROM records').all(),before);assert.equal(h.sent.length,0);h.store.close();
+  }
+});
+
+test('unauthorized autocomplete returns no names or timezone suggestions without reading saved data',async()=>{
+  for(const command of ['embed','schedule','instagram','settings']) {
+    const h=harness({manager:false});const i=Object.assign(h.interaction(command,'show'),{isChatInputCommand:()=>false,isAutocomplete:()=>true,respond:async p=>h.outputs.push(p)});
+    i.options={getFocused:()=>{throw Error('Must deny before reading options');}};
+    h.store.list=()=>{throw Error('Must not read server data');};
+    await h.app.dispatch(i);assert.deepEqual(h.outputs,[[]]);h.store.close();
   }
 });
 
@@ -107,8 +131,8 @@ test('invalid reminder settings do not partially overwrite an existing event',as
   await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(h.outputs[0].content,/finish before/);h.store.close();
 });
 
-test('staff access cannot be delegated to everyone or an app-managed role',async()=>{
-  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/@everyone/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
+test('retired staff-role commands cannot grant access',async()=>{
+  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/command has changed/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
 });
 
 test('combined embed form saves a renamed draft, closes, reopens and publishes from its builder',async()=>{
@@ -157,9 +181,9 @@ test('missing publishing destinations and invalid form submissions preserve save
   const form=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>false,customId:'embedform:saved:form',fields:{getTextInputValue:k=>({name:'Renamed',title:'',description:'',color:'',content:''})[k]}});await h.app.dispatch(form);
   assert.equal(h.store.get('server-a','embed','saved').name,'Original');assert.equal(h.store.get('server-a','embed','saved').embed.description,'Keep this');h.store.close();
 });
-test('only staff can create embeds, while all members can use help',async()=>{
+test('members cannot create embeds or open help',async()=>{
   const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Manage Server/);
-  await h.app.handle(h.interaction('help',null));assert.match(h.outputs[0].embeds[0].toJSON().title,/Number One/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
+  await assert.rejects(h.app.handle(h.interaction('help',null)),/Administrator or Manage Server/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
 });
 test('embed form saves edits and publication only permits explicit mentions',async()=>{
   const h=harness();await h.app.handle(h.interaction('embed','create',{name:'Welcome'}));
@@ -181,7 +205,7 @@ test('staff meetings require a private channel and future local time',async()=>{
 test('private schedule details are withheld and RSVP requires channel access',async()=>{
   const h=harness({manager:false,visible:false,privateChannel:true});
   const event={id:'meeting',title:'Private',channel:h.channel.id,start:Date.now()+600000,duration:60,rsvps:{}};h.store.put('server-a','event',event);
-  await assert.rejects(h.app.handle(h.interaction('schedule','show',{event:'meeting'})),/cannot view/);
+  await assert.rejects(h.app.handle(h.interaction('schedule','show',{event:'meeting'})),/Manage Server/);
   const button=h.interaction();Object.assign(button,{isButton:()=>true,isChatInputCommand:()=>false,customId:`rsvp:meeting:${event.start}:going`});
   await assert.rejects(h.app.handle(button),/cannot view/);assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{});h.store.close();
 });
@@ -264,7 +288,7 @@ test('empty schedule replies immediately without a thinking response or channel 
 });
 
 test('schedule list hides inaccessible, uncached, cancelled, completed and expired events without fetching',async()=>{
-  const h=harness({manager:false}),start=Date.now()+600000;
+  const h=harness(),start=Date.now()+600000;
   for(const [id,extra] of [['visible',{}],['hidden',{channel:'hidden'}],['uncached',{channel:'missing'}],['cancelled',{cancelled:true}],['complete',{complete:true}],['expired',{start:Date.now()-7200000}]])h.store.put('server-a','event',{id,title:id,channel:h.channel.id,start,duration:60,...extra});
   h.channel.guild.channels.cache.set('hidden',{type:0,permissionsFor:()=>new PermissionsBitField([])});
   h.channel.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
@@ -273,8 +297,8 @@ test('schedule list hides inaccessible, uncached, cancelled, completed and expir
 });
 
 test('schedule empty state also covers servers containing only inaccessible or inactive events',async()=>{
-  const h=harness({manager:false,visible:false});h.store.put('server-a','event',{id:'private',title:'Secret meeting',channel:h.channel.id,start:Date.now()+600000,duration:60});
-  await h.app.handle(h.interaction('schedule','list'));assert.match(h.outputs[0].content,/No upcoming events/);assert.doesNotMatch(h.outputs[0].content,/Secret|schedule add/);h.store.close();
+  const h=harness({visible:false});h.store.put('server-a','event',{id:'private',title:'Secret meeting',channel:h.channel.id,start:Date.now()+600000,duration:60});
+  await h.app.handle(h.interaction('schedule','list'));assert.match(h.outputs[0].content,/No upcoming events/);assert.doesNotMatch(h.outputs[0].content,/Secret/);h.store.close();
 });
 
 test('production dispatcher routes Instagram setup and channel/role pickers to their saved draft',async()=>{
@@ -287,10 +311,10 @@ test('production dispatcher routes Instagram setup and channel/role pickers to t
   const button=h.interaction();Object.assign(button,{isChatInputCommand:()=>false,isButton:()=>true,customId:`instagram:${d.id}:schedule`});await h.app.dispatch(button);assert.match(h.outputs.at(-1).title,/Delivery schedule/);assert.ok(!button.deferred);h.store.close();
 });
 
-test('a server staff role can configure Instagram without bot-owner access; regular members cannot',async()=>{
+test('a legacy staff role does not bypass Administrator or Manage Server requirements',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);
   h.store.put('server-a','settings',{id:'main',zone:'Europe/Paris',staff:'helpers'});h.member.roles.cache.set('helpers',{});
-  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft')[0].zone,'Europe/Paris');h.store.close();
+  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(h.outputs.at(-1).content,/Administrator or Manage Server/);h.store.close();
 });
 
 test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{

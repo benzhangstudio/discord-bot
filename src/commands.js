@@ -9,9 +9,9 @@ const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
 export const commands = [
   {name:'help',description:'Open the help menu and find a quick walkthrough'},
-  {name:'settings',description:'Choose your server’s timezone and who can manage Number One',default_member_permissions:'32',options:[
+  {name:'settings',description:'Choose your server’s timezone and check delivery status',default_member_permissions:'32',options:[
     sub('view','See your server’s current settings'),sub('timezone','Choose the timezone for new events',[str('zone','Type a city or choose a timezone, such as New York or Seoul',true,{autocomplete:true})]),
-    sub('staff','Choose a role that can manage announcements, events, and feeds',[{...role,required:true}]),sub('clear-staff','Remove the extra staff role'),sub('status','Check whether reminders and weekly posts need attention')
+    sub('status','Check whether reminders and weekly posts need attention')
   ]},
   {name:'embed',description:'Create and share announcements with pictures, links, and colors',options:[
     sub('create','Start a new styled message',[str('name','Give your saved message a name, such as Welcome',true,{max_length:80})]),
@@ -39,4 +39,4 @@ export const commands = [
     sub('list','See your sources and how many new posts are waiting'),sub('preview','Take a private look at the latest post',[id()]),
     sub('pause','Pause this source’s roundups',[id()]),sub('resume','Turn this source’s roundups back on',[id()]),sub('remove','Stop following this source; posted messages stay in the channel',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,default_member_permissions:'32',contexts:[0],integration_types:[0]}));

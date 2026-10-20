@@ -20,6 +20,8 @@ Slow actions first send a normal private receipt, never a thinking callback. The
 
 Release requirements are recorded in AGENTS.md. Before each push, inspect response paths and test never-settling backend steps and both confirmation attempts, plus permission and saved-work checks.
 
+All slash-command definitions default to Manage Server permission (Administrators are included). A runtime gate independently denies ordinary members, moderator-only roles, legacy staff roles, and missing permission data before reading options or saved records—even if Discord command permissions are overridden or an older command is cached. Denials are immediate private messages naming the required Administrator or Manage Server permission. Unauthorized autocomplete returns no suggestions.
+
 Command failures produce a private error reply with a reference ID and a matching console diagnostic. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
 
 ## Embed builder
@@ -32,13 +34,13 @@ Command failures produce a private error reply with a reference ID and a matchin
 
 ## Scheduler
 
-`/settings timezone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. `/settings staff` adds a management role; Manage Server always grants management access.
+`/settings timezone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. Every slash command, including /help and schedule viewing, requires Administrator or Manage Server. Custom staff roles do not grant access. The former /settings staff and /settings clear-staff commands have been retired.
 
 `/schedule add title:Staff meeting start:2026-12-01T19:00 channel:#staff kind:staff-meeting repeat:weekly reminder:30`
 
 Use a future `YYYY-MM-DD HH:mm` local time with a 24-hour clock. The older format with T between the date and time and explicit timezone offsets are also accepted. Invalid or ambiguous daylight-saving times require correction. Daily/weekly repetition follows the event’s local calendar. Default duration: 60 minutes; default reminder: 30 minutes before start. Each occurrence sends one reminder, including response buttons. Reminder 0 posts at the start instead. Each event can optionally notify a role. Choose saved events by name in the event option; suggestions only show channels the requester can access.
 
-Staff meetings and rotations require a destination hidden from @everyone. Review the channel’s other role/member access rules yourself; anyone with access to that channel can view its event details and RSVP. `/schedule list` and `/schedule show` privately display only events whose channels the requester can view.
+Staff meetings and rotations require a destination hidden from @everyone. Review the channel’s other role/member access rules yourself; anyone with access to that channel can view its event details and RSVP. `/schedule list` and `/schedule show` are management-only slash commands and privately display only accessible events. Members can still use RSVP buttons on posted event cards; those are not slash commands.
 
 For rotations, choose Staff rotation, Every day or Every week, and mention members in turn order in the people option. Each occurrence assigns the next person and notifies them with the reminder. All selected people must be current server members. `/schedule post` publishes an event card in the event’s channel. `/schedule edit` changes title, start, description and location; editing resets current replies. `/schedule configure` changes repetition, duration and reminder. `/schedule cancel` cancels future delivery. Existing posted cards are snapshots; `/schedule show` gives current counts/details. Old occurrence buttons stop accepting replies.
 

@@ -75,6 +75,7 @@ test('delivery claims prevent repeat sends, including after an ambiguous send fa
 });
 test('command schema has valid option order, descriptions and guild-only entry points',()=>{
   for(const command of commands) {
+    assert.equal(command.default_member_permissions,'32',`${command.name} must require Manage Server by default`);
     assert.deepEqual(command.contexts,[0]);assert.deepEqual(command.integration_types,[0]);
     assert.ok(command.description.length<=100);
     for(const sub of command.options || []) {

@@ -9,3 +9,5 @@
 - Wispbyte automatically pulls on restart when AUTO_UPDATE=1. After a pushed update, ask the user to restart, not manually replace files or separately pull.
 
 - Do not add unsolicited DM fallbacks. Deliver command results through the original interaction.
+
+- Every slash command, including help and read-only schedule commands, requires Administrator or Manage Server. Do not grant access through custom staff roles. Deny unauthorized invocations privately before options/data access; autocomplete must return no suggestions. Test every registered subcommand for both allowed permissions and denied users before pushing.

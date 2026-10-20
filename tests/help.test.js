@@ -16,6 +16,6 @@ test('member help focuses on participation; staff and administrator instructions
   const member=JSON.stringify(helpMenu({page:'events'}));assert.ok(!member.includes('/schedule add'));assert.ok(member.includes('/schedule list'));
   const staff=JSON.stringify(helpMenu({page:'embeds',canManage:true}));assert.ok(staff.includes('/embed create'));
   const setup=JSON.stringify(helpMenu({page:'setup'}));assert.ok(!setup.includes('/settings staff'));
-  assert.ok(JSON.stringify(helpMenu({page:'setup',canConfigure:true})).includes('/settings staff'));
+  assert.ok(JSON.stringify(helpMenu({page:'setup',canConfigure:true})).includes('Administrator'));
   assert.throws(()=>helpMenu({page:'missing'}),/Open \/help/);
 });

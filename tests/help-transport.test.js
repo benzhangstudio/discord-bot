@@ -4,7 +4,22 @@ import {Client,ChatInputCommandInteraction,PermissionsBitField,PermissionFlagsBi
 import {UserError} from '../src/user-error.js';
 import {Store} from '../src/store.js';
 import {createApp} from '../src/app.js';
+import {commands} from '../src/commands.js';
 const sdkConfirmation=(i,method,payload)=>method==='PATCH'?i.editReply(payload):i.followUp(payload);
+
+for(const command of commands)for(const sub of command.options||[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one private permission message`,{timeout:2000},async()=>{
+  const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
+  try {
+    const app=createApp(client,store);
+    client.rest.post=async(route,options)=>{requests.push(options.body);};
+    client.rest.patch=async()=>{throw Error('Permission denials must be initial replies');};
+    const i=new ChatInputCommandInteraction(client,{
+      id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-token',version:1,guild_id:'345678901234567890',channel:{id:'456789012345678901',type:0},
+      data:{id:'567890123456789012',name:command.name,type:1,options:sub?[{name:sub.name,type:1,options:[]}]:[]},member:{user:{id:'678901234567890123',username:'Member',discriminator:'0',avatar:null},roles:[],permissions:'0'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
+    });
+    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].type,4);assert.equal(requests[0].data.flags&64,64);assert.match(requests[0].data.content,/You do not have permission.*Administrator or Manage Server/);assert.equal(i.deferred,false);assert.deepEqual(store.db.prepare('SELECT * FROM records').all(),[]);
+  } finally {client.destroy();store.close();}
+});
 test('real Discord SDK serializes /help as one immediate public callback containing the menu',async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
   try {
@@ -36,7 +51,7 @@ test('real Discord SDK sends an empty schedule as one immediate private callback
 });
 
 const fastCases=[
-  ['settings','timezone',[{name:'zone',type:3,value:'Asia/Seoul'}]],['settings','view',[]],['settings','clear-staff',[]],['settings','status',[]],
+  ['settings','timezone',[{name:'zone',type:3,value:'Asia/Seoul'}]],['settings','view',[]],['settings','status',[]],
   ['embed','create',[{name:'name',type:3,value:'Welcome'}]],['embed','list',[]],['embed','edit',[{name:'message',type:3,value:'saved'}]],['embed','remove-section',[{name:'message',type:3,value:'saved'},{name:'number',type:4,value:1}]],['embed','delete',[{name:'message',type:3,value:'saved'}]],
   ['instagram','setup',[]],['instagram','list',[]],['instagram','pause',[{name:'source',type:3,value:'saved'}]],['instagram','resume',[{name:'source',type:3,value:'saved'}]],['instagram','remove',[{name:'source',type:3,value:'saved'}]]
 ];

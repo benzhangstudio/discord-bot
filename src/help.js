@@ -47,7 +47,7 @@ export function helpMenu({page='home',canManage=false,canConfigure=false,timezon
     ]},
     setup:{title:'⚙️ Server settings',description:canConfigure?'A few choices to make Number One fit your server.':'These settings are managed by your server’s administrators.',fields:canConfigure?[
       {name:'Set your timezone',value:`Use **/settings timezone**, type a city such as **New York** or **Seoul**, and choose a suggestion. Right now new events use **${timezoneLabel(timezone)}**. Existing events and Instagram sources keep their own timezone. Instagram delivery has its own schedule in /instagram setup.`},
-      {name:'Choose who can help',value:'Use **/settings staff** to choose a role that can manage announcements, schedules, and feeds. **/settings clear-staff** removes that extra access. Members with Manage Server permission can always manage Number One.'},
+      {name:'Who can use commands?',value:'Every slash command requires **Administrator** or **Manage Server** permission. A custom staff role alone does not grant access.'},
       {name:'Review your settings',value:'**/settings view** shows the current choices. **/settings status** checks for delivery problems. If something goes wrong, share the error reference with the bot owner.'}
     ]:[{name:'Need something changed?',value:'Ask someone with Manage Server permission to choose the timezone or staff role. You can still browse events and RSVP without managing the bot.'}]}
   };

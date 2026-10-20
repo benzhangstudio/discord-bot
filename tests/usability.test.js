@@ -19,10 +19,10 @@ test('saved message and source suggestions use names and stay within their serve
 test('event suggestions never reveal inaccessible meetings or allow nonstaff management choices',()=>{
   const s=new Store(':memory:');s.put('mine','event',{id:'public',title:'Community night',channel:'public'});s.put('mine','event',{id:'secret',title:'Private meeting',channel:'secret'});
   const i=query('schedule','event');i.guild.channels.cache.set('public',{permissionsFor:()=>new PermissionsBitField([P.ViewChannel])});i.guild.channels.cache.set('secret',{permissionsFor:()=>new PermissionsBitField([])});
-  assert.deepEqual(suggestions(s,i),[{name:'Community night',value:'public'}]);i.options.getSubcommand=()=> 'cancel';assert.deepEqual(suggestions(s,i),[]);s.close();
+  assert.deepEqual(suggestions(s,i,{canManage:true}),[{name:'Community night',value:'public'}]);i.options.getSubcommand=()=> 'cancel';assert.deepEqual(suggestions(s,i),[]);s.close();
 });
 test('timezone suggestions accept city names and keep timezone changes staff-only',()=>{
-  const s=new Store(':memory:');assert.equal(suggestions(s,query('settings','zone','new york'),{canConfigure:true})[0].value,'America/New_York');
+  const s=new Store(':memory:');assert.equal(suggestions(s,query('settings','zone','new york'),{canConfigure:true,canManage:true})[0].value,'America/New_York');
   assert.equal(suggestions(s,query('schedule','zone','seoul'),{canManage:true})[0].value,'Asia/Seoul');
   assert.deepEqual(suggestions(s,query('settings','zone','new york')),[]);s.close();
 });
