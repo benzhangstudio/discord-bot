@@ -32,7 +32,7 @@ test('both stalled confirmation attempts terminate and preserve the completed re
   const i={replied:true,confirmationTransport:()=>new Promise(()=>{})};let error;
   try{await respond(i,{content:'Message shared: private link'},{editTimeoutMs:5,fallbackTimeoutMs:5});}catch(e){error=e;}
   assert.equal(error.replyDeliveryFailed,true);assert.equal(error.result.content,'Message shared: private link');
-  const dm=[];i.user={send:async p=>dm.push(p)};await reportFailure(i,error,()=>{});assert.equal(dm.length,1);assert.match(dm[0].content,/Message shared/);
+  let directMessages=0;i.user={send:async()=>{directMessages++;}};const logs=[];await reportFailure(i,error,line=>logs.push(line));assert.equal(directMessages,0);assert.ok(logs.some(line=>line.includes('Result delivery failed')));
 });
 test('slow actions immediately show a normal private message, never a thinking callback',async()=>{
   const sent=[];const i={reply:async p=>sent.push(p),deferReply:()=>{throw Error('No thinking callback');}};await acknowledge(i);assert.equal(sent[0].content,WORKING_MESSAGE);assert.equal(sent[0].flags,64);assert.match(sent[0].content,/30 seconds/);

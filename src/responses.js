@@ -47,7 +47,6 @@ export async function reportFailure(i,error,log=console.error) {
   const reference=randomUUID().slice(0,8),code=String(error.code || error.name || 'Error');
   log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   if(error.replyDeliveryFailed){
-    if(i.user?.send)try{await withDeadline(i.user.send({...error.result,flags:undefined,components:[],allowedMentions:{parse:[]}}),8000,'Private result delivery timed out.');return;}catch{}
     log(`[${reference}] Result delivery failed on both independent attempts; request was not repeated. The initial reply contains the check-before-retrying instruction.`);return;
   }
   let message;
