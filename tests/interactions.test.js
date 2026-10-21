@@ -57,13 +57,13 @@ for(const [name,values] of Object.entries(scenarios)) {
 test('only the server owner can grant, revoke or list added access',async()=>{
   for(const sub of ['add','remove','list']) {
     const h=harness(),i=h.interaction('access',sub,{user:'345678901234567890'});
-    await h.app.dispatch(i);assert.match(h.outputs[0].content,/Only this Discord server’s owner/);assert.deepEqual(h.store.list('server-a','access'),[]);h.store.close();
+    await h.app.dispatch(i);assert.match(h.outputs[0].content,/Only the server owner/);assert.deepEqual(h.store.list('server-a','access'),[]);h.store.close();
   }
   const h=harness(),target='345678901234567890';
   const owner=(sub,values)=>{const i=h.interaction('access',sub,values);i.user={id:i.guild.ownerId};return i;};
   await h.app.handle(owner('add',{user:target}));assert.ok(h.store.get('server-a','access',target));
   const approved=h.interaction('help');approved.user={id:target};approved.memberPermissions=new PermissionsBitField([]);await h.app.handle(approved);assert.match(h.outputs.at(-1).embeds[0].toJSON().title,/Commands/);
-  const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(h.outputs.at(-1).content,/Only this Discord server’s owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
+  const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(h.outputs.at(-1).content,/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
   await h.app.handle(owner('list',{}));assert.match(h.outputs.at(-1).content,new RegExp(target));
   await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);
   const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(h.outputs.at(-1).content,/You do not have permission/);h.store.close();
@@ -96,7 +96,7 @@ test('help sends no DM until the manual button is clicked, then sends all pages 
 test('members cannot use the manual button and blocked DMs get a clear interaction reply',async()=>{
   const member=harness({manager:false});let sends=0;
   const denied=Object.assign(member.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});denied.user.send=async()=>{sends++;};await member.app.dispatch(denied);assert.equal(sends,0);assert.match(member.outputs[0].content,/You do not have permission/);member.store.close();
-  const h=harness();const blocked=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});blocked.user.send=async()=>{throw Object.assign(Error('Cannot send messages'),{code:50007});};await h.app.dispatch(blocked);assert.match(h.outputs.at(-1).content,/Enable direct messages/);assert.equal(h.outputs.at(-1).flags,64);h.store.close();
+  const h=harness();const blocked=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});blocked.user.send=async()=>{throw Object.assign(Error('Cannot send messages'),{code:50007});};await h.app.dispatch(blocked);assert.match(h.outputs.at(-1).content,/Enable direct messages/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
 });
 
 for(const mode of ['stalled','partial'])test(`manual DM delivery handles ${mode} requests without claiming success or retrying`,{timeout:1000},async()=>{
@@ -171,7 +171,7 @@ test('unauthorized autocomplete returns no names or timezone suggestions without
 test('failed message publishing and channel permission checks finish with an error reply',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   h.channel.send=async()=>{throw Object.assign(Error('Missing Permissions'),{code:50013});};
-  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/permissions/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
+  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/permissions/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
 });
 
 test('an event cancelled during a channel lookup cannot be revived by configure',async()=>{
@@ -299,7 +299,7 @@ test('forms remain the initial response and do not defer before showModal',async
 });
 test('the production dispatcher replies to permission failures instead of swallowing them',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('embed','create',{name:'Test'}));
-  assert.match(h.outputs[0].content,/Manage Server/);assert.match(h.outputs[0].content,/Reference:/);h.store.close();
+  assert.match(h.outputs[0].content,/Manage Server/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
 });
 
 test('clearing the only embed content is rejected without corrupting its saved template',async()=>{
@@ -350,7 +350,7 @@ test('empty schedule replies immediately without a thinking response or channel 
   const h=harness();const i=h.interaction('schedule','list');
   i.deferReply=async()=>{throw Error('Must reply directly');};i.editReply=async()=>{throw Error('Must not edit a webhook');};
   i.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,64);assert.match(h.outputs[0].content,/No upcoming events/);assert.match(h.outputs[0].content,/schedule add/);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.match(h.outputs[0].content,/No upcoming events/);assert.match(h.outputs[0].content,/schedule add/);h.store.close();
 });
 
 test('schedule list hides inaccessible, uncached, cancelled, completed and expired events without fetching',async()=>{
@@ -386,4 +386,34 @@ test('a legacy staff role does not bypass Administrator or Manage Server require
 test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{
   const h=harness();await h.app.handle(h.interaction('feed','list'));assert.match(h.outputs.at(-1).content,/older or unavailable/);
   h.store.put('server-a','feed',{id:'orphan',name:'Old source',channel:'gone'});await h.app.handle(h.interaction('instagram','remove',{source:'orphan'}));assert.equal(h.store.list('server-a','feed').length,0);h.store.close();
+});
+
+// Check visibility across the deployed command inventory, including owner-only access.
+for(const [name,values] of Object.entries(scenarios))test(`reply visibility and user-facing result: /${name}`,async()=>{
+  const h=harness();
+  h.store.put('server-a','embed',{id:'saved',name:'Saved',embed:{description:'Hello',fields:[{name:'Info',value:'Details'}]}});
+  h.store.put('server-a','event',{id:'saved',title:'Public event',channel:h.channel.id,start:Date.now()+3600000,duration:60,repeat:'none',zone:'UTC',kind:'event',rsvps:{}});
+  h.store.put('server-a','feed',{id:'saved',name:'Posts',url:'https://example.com/rss',channel:h.channel.id});
+  const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
+  if(command==='access')i.user={id:i.guild.ownerId};
+  await h.app.dispatch(i);
+  const payload=h.outputs.at(-1);
+  assert.ok(payload, 'Every command must finish with a reply or form');
+  assert.doesNotMatch(JSON.stringify(payload),/Reference:|Request received|HTTP_429|REPLY_TIMEOUT|stack trace/);
+  if(payload.custom_id)return h.store.close(); // Modal replies have no visibility flag.
+  const privateExpected=(command==='embed'&&['edit','list','remove-section'].includes(sub))||(command==='instagram'&&['setup','preview'].includes(sub))||(command==='access'&&sub==='list');
+  assert.equal(Boolean(payload.flags&64),privateExpected);
+  h.store.close();
+});
+
+for(const sub of ['list','show','configure','cancel','post'])test(`restricted schedules remain private: /schedule ${sub}`,async()=>{
+  const h=harness({privateChannel:true});
+  h.store.put('server-a','event',{id:'saved',title:'Confidential meeting',channel:h.channel.id,start:Date.now()+3600000,duration:60,repeat:'none',zone:'UTC',kind:'staff-meeting',rsvps:{}});
+  await h.app.dispatch(h.interaction('schedule',sub,{event:'saved'}));
+  assert.equal(h.outputs.at(-1).flags,64);h.store.close();
+});
+
+test('owner-only access denial is a public explanation without a diagnostic code',async()=>{
+  const h=harness();await h.app.dispatch(h.interaction('access','add',{user:'345678901234567890'}));
+  assert.equal(h.outputs[0].flags,undefined);assert.match(h.outputs[0].content,/Only the server owner/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
 });

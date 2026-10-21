@@ -7,7 +7,7 @@ export function parseTime(text, timezone) {
   text=text.trim().replace(/^(\d{4}-\d{2}-\d{2}) /,'$1T');
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?$/.test(text)) throw new UserError('Enter the date and time as YYYY-MM-DD HH:mm, using a 24-hour clock. For example, December 1 at 7 p.m. is 2026-12-01 19:00.');
   const t = DateTime.fromISO(text, {zone: timezone, setZone: true});
-  if (!t.isValid) throw new UserError('Invalid date or time.');
+  if (!t.isValid) throw new UserError('That date or time is not valid. Check the day, month, and time, then try again.');
   if (!/(Z|[+-]\d{2}:\d{2})$/.test(text)) {
     if (t.toFormat("yyyy-MM-dd'T'HH:mm") !== text.slice(0,16)) throw new UserError('That local time does not exist because of daylight saving. Choose another time.');
     if (t.getPossibleOffsets().length > 1) throw new UserError('That time occurs twice when the clocks change. Choose a time outside the repeated hour, or add -04:00 or -05:00 to choose which one.');

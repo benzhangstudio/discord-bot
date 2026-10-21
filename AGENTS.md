@@ -15,3 +15,5 @@
 - /help must stay concise: every command, required inputs, and a one-line summary. Detailed help is sent only when an authorized user clicks DM full manual, only to that clicker. Handle blocked/partial/stalled DMs; do not reintroduce unsolicited DM fallbacks.
 
 - Public-facing replies must be actual success or actionable errors, not request-received receipts or developer timeout disclaimers. Prefer one final initial response for fast actions. For longer work, acknowledge before expiry and finish the loading state. Respect Discord 429 Retry-After/retry_after; never immediately try another route to evade a rate limit. Keep completed side effects separate from failed confirmation delivery in diagnostics.
+
+- Normal command results and actionable errors are public by default. Keep unpublished drafts, feed setup/previews, owner-approved access lists, restricted schedules, RSVP acknowledgements, and unauthorized-user denials private. Apply the same visibility before a delayed acknowledgement and to fallback replies. Internal error references belong only in logs, never in Discord replies.

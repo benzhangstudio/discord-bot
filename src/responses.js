@@ -30,8 +30,8 @@ export async function withDeadline(promise,ms=15000,message='This request took t
 export function step(i,promise,{uncertain=false}={}) {
   i.operationDeadline??=Date.now()+(i.operationTimeoutMs??15000);
   const remaining=i.operationDeadline-Date.now();
-  if(remaining<=0)throw new UserError('This request timed out before the next step. Your saved work is safe. Check the destination before retrying.');
-  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'Discord or the feed service took too long to respond. Your saved work is safe; try again later.');
+  if(remaining<=0)throw new UserError('This request took too long. Please try again.');
+  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'The service took too long to respond. Please try again later.');
 }
 export async function acknowledge(i,update=false) {
   if (i.deferred || i.replied || acknowledgements.has(i)) return;
@@ -40,11 +40,12 @@ export async function acknowledge(i,update=false) {
   i.acknowledgementScheduled=true;
   pending.timer=setTimeout(()=>{
     pending.timer=null;
-    pending.promise=withDeadline(i.deferReply({flags:MessageFlags.Ephemeral}),8000,'Discord did not acknowledge the request.').catch(error=>{pending.error=error;});
+    pending.promise=withDeadline(i.deferReply(i.privateResponse?{flags:MessageFlags.Ephemeral}:{}),8000,'Discord did not acknowledge the request.').catch(error=>{pending.error=error;});
   },i.acknowledgementDelayMs??1500);
   acknowledgements.set(i,pending);
 }
 export async function respond(i,payload,{editTimeoutMs=8000,fallbackTimeoutMs=8000}={}) {
+  if(i.privateResponse && payload.flags===undefined)payload={...payload,flags:MessageFlags.Ephemeral};
   await finishAcknowledgement(i);
   if(i.deferred || i.replied) {
     const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);
@@ -55,7 +56,7 @@ export async function respond(i,payload,{editTimeoutMs=8000,fallbackTimeoutMs=80
       if(error.code==='HTTP_429'){error.replyDeliveryFailed=true;error.result=payload;throw error;}
       if([10015,10062].includes(Number(error.code)))throw error;
       console.warn(`Confirmation update failed (${error.code||error.name}); trying a separate, time-limited follow-up.`);
-      const fallbackFlags=flags??(i.ephemeral===false?undefined:MessageFlags.Ephemeral);
+      const fallbackFlags=flags??(i.ephemeral===true||i.privateResponse?MessageFlags.Ephemeral:undefined);
       const fallback={...body,...(fallbackFlags===undefined?{}:{flags:fallbackFlags})};
       if(!transport&&!i.followUp)throw error;
       try{return await withDeadline(transport?transport(i,'POST',fallback,{timeoutMs:fallbackTimeoutMs}):i.followUp(fallback),fallbackTimeoutMs,'Discord could not deliver the result. Check the destination before repeating the action.');}
@@ -78,11 +79,12 @@ export async function reportFailure(i,error,log=console.error) {
   log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   let message;
   if(Number(error.code)===50013 || Number(error.code)===50001)message='Number One cannot access that channel or perform that action. Ask a server administrator to check its permissions.';
-  else if(Number(error.code)===10062)message='Discord expired this action. Run the command again.';
+  else if(code==='HTTP_429'||Number(error.code)===429)message='Number One is busy right now. Please wait a moment and try again.';
+  else if(Number(error.code)===10062)message='This action has expired. Run the command again.';
   else if(error.name==='UserError')message=safeError(error);
   else message='Something went wrong while processing this action. Please try again.';
   try {
-    const payload={content:`${message}\nReference: ${reference}`,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]},embeds:[],components:[]};
+    const payload={content:message,...(i.privateResponse||i.ephemeral||i.instagramSetupUpdate?{flags:MessageFlags.Ephemeral}:{}),allowedMentions:{parse:[]},embeds:[],components:[]};
     // Keep the setup controls available so a failed validation can be corrected.
     if(i.instagramSetupUpdate&&i.deferred){const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);await withDeadline(transport?transport(i,'POST',payload):i.followUp(payload),8000,'Discord could not deliver the error.');}
     else await respond(i,payload);

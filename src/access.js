@@ -15,10 +15,10 @@ export function createAccessCommands(store) {
       return false;
     }
     if (!isServerOwner(i)) {
-      throw new UserError('Only this Discord server’s owner can add, remove, or list command access.');
+      throw new UserError('Only the server owner can manage command access. Ask them to add or remove members.');
     }
     const sub=i.options.getSubcommand(false);
-    const reply=content=>respond(i,{content,flags:64,allowedMentions:{parse:[]}});
+    const reply=content=>respond(i,{content,allowedMentions:{parse:[]}});
     if (sub==='list') {
       const records=store.list(i.guildId,'access');
       const total=Math.max(1,Math.ceil(records.length/20));

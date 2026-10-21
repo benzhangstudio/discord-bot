@@ -49,7 +49,7 @@ test('failed delayed acknowledgement is cleared so a user-facing error can still
   const sent=[];const i={acknowledgementDelayMs:2,deferReply:async()=>{throw Error('Acknowledgement failed');},reply:async p=>sent.push(p)};
   await acknowledge(i);await new Promise(resolve=>setTimeout(resolve,10));
   await assert.rejects(respond(i,{content:'Done'}),/Acknowledgement failed/);assert.equal(i.acknowledgementScheduled,false);
-  await reportFailure(i,Error('Backend unavailable'),()=>{});assert.equal(sent.length,1);assert.match(sent[0].content,/Something went wrong/);assert.equal(sent[0].flags,64);
+  await reportFailure(i,Error('Backend unavailable'),()=>{});assert.equal(sent.length,1);assert.match(sent[0].content,/Something went wrong/);assert.equal(sent[0].flags,undefined);
 });
 
 test('429 retry waits for Retry-After before repeating the same confirmation request', {timeout:1000},async()=>{
@@ -67,5 +67,5 @@ test('a long 429 cooldown stops confirmation attempts and does not immediately t
   await assert.rejects(sendInteractionResponse(i,'PATCH',{content:'Done'},{request:h.request,timeoutMs:10}),{code:'HTTP_429'});assert.equal(h.calls.length,1);
 });
 test('expired operation budget never starts a late mutation',async()=>{
-  let writes=0;assert.throws(()=>step({operationDeadline:Date.now()-1},()=>{writes++;}),/timed out/);assert.equal(writes,0);
+  let writes=0;assert.throws(()=>step({operationDeadline:Date.now()-1},()=>{writes++;}),/took too long/);assert.equal(writes,0);
 });

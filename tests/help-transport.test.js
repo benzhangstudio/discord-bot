@@ -60,7 +60,7 @@ test('real Discord SDK serializes /help as one immediate public callback contain
   } finally {client.destroy();store.close();}
 });
 
-test('real Discord SDK sends an empty schedule as one immediate private callback',async()=>{
+test('real Discord SDK sends an empty schedule as one immediate public callback',async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
   try {
     const app=createApp(client,store);
@@ -70,7 +70,7 @@ test('real Discord SDK sends an empty schedule as one immediate private callback
       id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-interaction-token',version:1,guild_id:'345678901234567890',channel:{id:'456789012345678901',type:0},
       data:{id:'567890123456789012',name:'schedule',type:1,options:[{type:1,name:'list'}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
-    await app.handle(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.equal(requests[0].body.data.flags&64,64);
+    await app.handle(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.equal((requests[0].body.data.flags||0)&64,0);
     assert.match(requests[0].body.data.content,/No upcoming events/);assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
@@ -94,7 +94,7 @@ for(const [name,sub,options] of fastCases)test(`real Discord SDK: /${name} ${sub
     });
     await app.handle(i);assert.equal(requests.length,1);
     if(name==='embed'&&sub==='create'){assert.equal(requests[0].type,9);assert.equal(requests[0].data.components.length,5);}
-    else {assert.equal(requests[0].type,4);assert.equal(requests[0].data.flags&64,64);assert.ok(requests[0].data.content||requests[0].data.embeds?.length);}
+    else {assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,(['edit','list','remove-section'].includes(sub)&&name==='embed')||sub==='setup'?64:0);assert.ok(requests[0].data.content||requests[0].data.embeds?.length);}
     assert.equal(i.deferred,false);
     if(sub==='timezone')assert.equal(store.get(guild,'settings','main').zone,'Asia/Seoul');
   } finally {client.destroy();store.close();}
@@ -134,6 +134,6 @@ test('real Discord SDK: a hung embed confirmation completes through a follow-up 
     });
     const target={id:channel,type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks]),send:async()=>{sent++;await new Promise(resolve=>setTimeout(resolve,10));return{id:'posted',url:'https://discord.com/channels/server/channel/posted'};}};
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,target]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,5);assert.match(requests[1].body.content,/Message sent/);assert.equal(requests[1].body.flags,64);assert.equal(i.replied,true);
+    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,5);assert.match(requests[1].body.content,/Message sent/);assert.ok(!requests[1].body.flags);assert.equal(i.replied,true);
   } finally {client.destroy();store.close();}
 });
