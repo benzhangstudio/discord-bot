@@ -16,7 +16,7 @@ function fakeRest() {
 test('startup sync replaces old global commands and removes verified server overrides',async()=>{
   const rest=fakeRest(),logs=[];await syncApplicationCommands({applicationId:'app',rest,log:s=>logs.push(s)});
   assert.deepEqual(rest.writes,[{route:'/applications/app/commands',body:commands},{route:'/applications/app/guilds/one/commands',body:[]}]);
-  assert.deepEqual(rest.data.get('/applications/app/guilds/one/commands'),[]);assert.ok(logs.some(s=>s.includes('/events')));assert.ok(logs.at(-1).includes('Verified 5 global commands'));
+  assert.deepEqual(rest.data.get('/applications/app/guilds/one/commands'),[]);assert.ok(logs.some(s=>s.includes('/events')));assert.ok(logs.at(-1).includes('Verified 6 global commands'));
 });
 test('test registration replaces and verifies only the selected guild command set',async()=>{
   const rest=fakeRest();await registerCommands(rest,'app','test',()=>{});

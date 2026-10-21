@@ -27,10 +27,10 @@ test('database restart preserves saved state, weekly batch progress and delivery
   const path=join(tmpdir(),`number-one-persistence-${randomUUID()}.sqlite`);
   let s;
   try {
-    s=new Store(path);s.put('guild','embed',{id:'saved',name:'Welcome',embed:{description:'Saved'}});
+    s=new Store(path);s.put('guild','access',{id:'approved-user',grantedBy:'owner'});s.put('guild','embed',{id:'saved',name:'Welcome',embed:{description:'Saved'}});
     s.put('guild','feed',{id:'feed',pending:[{key:'post'}],batch:{slot:123,part:1,parts:[{content:'First'},{content:'Second'}]}});
     assert.equal(s.claim('digest:guild:feed:123:0'),true);s.delivered('digest:guild:feed:123:0','sent','message');s.close();
-    s=new Store(path);assert.equal(s.get('guild','embed','saved').name,'Welcome');assert.equal(s.get('guild','feed','feed').batch.part,1);
+    s=new Store(path);assert.equal(s.get('guild','access','approved-user').grantedBy,'owner');assert.equal(s.get('guild','embed','saved').name,'Welcome');assert.equal(s.get('guild','feed','feed').batch.part,1);
     assert.equal(s.get('guild','feed','feed').pending[0].key,'post');assert.equal(s.claim('digest:guild:feed:123:0'),false);
   } finally {s?.close();for(const suffix of ['','-wal','-shm'])rmSync(path+suffix,{force:true});}
 });
@@ -75,7 +75,7 @@ test('delivery claims prevent repeat sends, including after an ambiguous send fa
 });
 test('command schema has valid option order, descriptions and guild-only entry points',()=>{
   for(const command of commands) {
-    assert.equal(command.default_member_permissions,'32',`${command.name} must require Manage Server by default`);
+    assert.equal(command.default_member_permissions,command.name==='access'?'32':null,'Runtime access checks must support owner-approved users');
     assert.deepEqual(command.contexts,[0]);assert.deepEqual(command.integration_types,[0]);
     assert.ok(command.description.length<=100);
     for(const sub of command.options || []) {

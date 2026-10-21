@@ -9,14 +9,25 @@ import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
 import {acknowledge,respond,updateResponse,reportFailure,safeError,step,withDeadline} from './responses.js';
-import {helpMenu} from './help.js';
+import {helpMenu,manualMessages} from './help.js';
+import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
 export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000}={}) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
-function staff(i) {return canManageServer(i.memberPermissions);}
+function staff(i) {
+  if (canManageServer(i.memberPermissions)) {
+    return true;
+  } else if (isServerOwner(i)) {
+    return true;
+  } else if (i.guildId && i.user?.id && store.get(i.guildId,'access',i.user.id)) {
+    return true;
+  } else {
+    return false;
+  }
+}
 function needStaff(i) {
   if (!staff(i)) {
     throw new UserError(MANAGEMENT_ONLY_MESSAGE);
@@ -82,6 +93,8 @@ function eventView(e) {
   ).setFooter({text:`Number One · ${e.cancelled?'Cancelled':e.complete?'Finished':'Open /schedule show to see the latest replies'}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
+const accessCommands=createAccessCommands(store);
+const manualRequests=new Map();
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
@@ -110,6 +123,7 @@ async function handle(i) {
   if (i.isChatInputCommand()) {
     needStaff(i);
   }
+  if(await accessCommands(i))return;
   if(await instagram(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
     needStaff(i);const [,id,action]=i.customId.split(':'),d=item(i,'embed',id);
@@ -118,7 +132,7 @@ async function handle(i) {
     if(action==='channel')checkDestination(i,i.guild.channels.cache?.get(i.values[0]));
     d[key]=i.values[0]||null;saveDraft(i,d);return i.update(editor(d,i));
   }
-  const helpOptions=()=>({canManage:staff(i),canConfigure:Boolean(i.memberPermissions?.has(P.ManageGuild)),timezone:settings(i.guildId).zone});
+  const helpOptions=()=>({canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
   if(i.isChatInputCommand()&&i.commandName==='help') {
     // Help is built entirely from local data. Send it as the initial response,
     // rather than deferring and relying on a second webhook request.
@@ -144,6 +158,38 @@ async function handle(i) {
     await respond(i,privateReply(content));
     console.log('Discord accepted /schedule list.');
     return;
+  }
+  if (i.isButton() && i.customId==='help:manual') {
+    needStaff(i);
+    const key=i.guildId+':'+i.user.id;
+    if ((manualRequests.get(key)||0)>Date.now()) {
+      throw new UserError('The manual was just requested. Check your DMs, or wait 30 seconds before trying again.');
+    }
+    // Remove expired entries; the map stores only recent manual requests.
+    for (const [saved,expires] of manualRequests) {
+      if (expires<=Date.now()) manualRequests.delete(saved);
+    }
+    manualRequests.set(key,Date.now()+30000);
+    await acknowledge(i);
+    const pages=manualMessages({timezone:settings(i.guildId).zone});
+    let delivered=0;
+    try {
+      for (const page of pages) {
+        needStaff(i);
+        await step(i,()=>i.user.send(page));
+        delivered++;
+      }
+    } catch(error) {
+      if (delivered>0) {
+        throw new UserError('Manual delivery stopped after '+delivered+' of '+pages.length+' pages. Check your DMs before requesting it again.');
+      } else if (Number(error.code)===50007) {
+        manualRequests.delete(key);
+        throw new UserError('I could not DM you. Enable direct messages from this server, then click DM full manual again.');
+      } else {
+        throw new UserError('The manual could not be delivered in full. Check your DMs and privacy settings before requesting it again.');
+      }
+    }
+    return respond(i,privateReply('Full manual sent to your DMs.'));
   }
   if(i.isStringSelectMenu?.()) {
     if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
@@ -218,7 +264,7 @@ async function handle(i) {
   if(!i.isChatInputCommand())return;
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
   if(name==='settings') {
-    if(!i.memberPermissions.has(P.ManageGuild))throw new UserError('Ask someone with Manage Server permission to change these settings.');
+    needStaff(i);
     const s=settings(i.guildId);
     if(sub==='timezone')s.zone=zone(opt.getString('zone'));
     if(sub==='status') {
@@ -227,7 +273,7 @@ async function handle(i) {
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and channel access, or ask the bot owner for help.`);
       return respond(i,privateReply(issues.length?[...new Set(issues)].join('\n').slice(0,1900):'Everything looks good—no recent reminder or weekly-post problems have been recorded.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,privateReply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator** or **Manage Server** permission. Custom staff roles do not grant access. Existing events keep their original timezone.`));
+    store.put(i.guildId,'settings',s);return respond(i,privateReply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator**, **Manage Server**, or approval from this server’s owner. Existing events keep their original timezone.`));
   }
   if(name==='embed') {
     needStaff(i);

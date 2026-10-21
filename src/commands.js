@@ -8,6 +8,11 @@ const labels={event:'Community event','staff-meeting':'Staff meeting',rotation:'
 const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
 export const commands = [
+  {name:'access',description:'Server owner: manage additional command access',options:[
+    sub('add','Server owner: allow a member to use commands',[{type:6,name:'user',description:'Choose a member of this server',required:true}]),
+    sub('remove','Server owner: remove a member’s added access',[{type:6,name:'user',description:'Choose the person to remove',required:true}]),
+    sub('list','Server owner: list approved members',[integer('page','Page number',1,100)])
+  ]},
   {name:'help',description:'Open the help menu and find a quick walkthrough'},
   {name:'settings',description:'Choose your server’s timezone and check delivery status',default_member_permissions:'32',options:[
     sub('view','See your server’s current settings'),sub('timezone','Choose the timezone for new events',[str('zone','Type a city or choose a timezone, such as New York or Seoul',true,{autocomplete:true})]),
@@ -39,4 +44,4 @@ export const commands = [
     sub('list','See your sources and how many new posts are waiting'),sub('preview','Take a private look at the latest post',[id()]),
     sub('pause','Pause this source’s roundups',[id()]),sub('resume','Turn this source’s roundups back on',[id()]),sub('remove','Stop following this source; posted messages stay in the channel',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,default_member_permissions:'32',contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,default_member_permissions:c.name==='access'?'32':null,contexts:[0],integration_types:[0]}));

@@ -1,56 +1,52 @@
-import {UserError} from './user-error.js';
 import {EmbedBuilder} from 'discord.js';
-import {DateTime} from 'luxon';
-import {timezoneLabel} from './suggestions.js';
-const categories=[
-  ['home','Getting started','Meet Number One and find your way around','👋'],
-  ['embeds','Announcements & embeds','Create and share a styled message','💌'],
-  ['events','Events & schedules','Find events, RSVP, or plan something new','📅'],
-  ['feeds','Instagram','Follow new Instagram posts in scheduled roundups','📰'],
-  ['setup','Server settings','Choose a timezone and who can manage things','⚙️']
-];
-export function helpMenu({page='home',canManage=false,canConfigure=false,timezone='America/New_York'}={}) {
-  if(!categories.some(([value])=>value===page))throw new UserError('That help page is no longer available. Open /help again.');
-  const example=DateTime.now().setZone(timezone).plus({days:1}).set({hour:19,minute:0}).toFormat('yyyy-MM-dd HH:mm');
-  const pages={
-    home:{title:'Welcome to Number One 👋',description:'A little help keeping your community connected. Choose a topic from the menu below.',fields:[
-      {name:'📅 See what’s coming up',value:'Find upcoming events, check the details, and let everyone know if you’re going.'},
-      {name:'💌 Make an announcement',value:canManage?'Build a styled message, preview it, and share it in a channel.':'Your server’s staff can create and share styled announcements.'},
-      {name:'📰 Catch up on new posts',value:'Catch up on Instagram posts in your server’s chosen channel.'},
-      {name:'Need a hand?',value:'Choose a topic below for a short walkthrough. You can open /help anytime.'}
-    ]},
-    embeds:{title:'💌 Announcements & embeds',description:'Give your announcements a little personality with styled text, pictures, links, and colors.',fields:canManage?[
-      {name:'1 · Start a message',value:'Use **/embed create** and give your draft a name. A form opens for its saved name, title, main text, color, and optional message. Submit it to see your private preview.'},
-      {name:'2 · Make it yours',value:'**Edit form** changes the main details together. Use the other controls for pictures, sections, and author details. Changes save automatically. **Save & close** keeps your work for later; **Make a copy** starts an independent version.'},
-      {name:'3 · Preview and share',value:'Choose a channel and optional role/person notifications below the preview, then **Publish**. You can also use **/embed send**. Publishing keeps your saved draft so you can reuse it.'},
-      {name:'Come back later',value:'**/embed list** shows your saved messages. With **/embed edit**, start typing the message’s name and choose a suggestion. **/embed delete** removes the saved message; copies already posted stay in their channels.'},
-      {name:'Channel links & notifications',value:'You can include channel mentions in your text. To actually notify someone, choose the person or role when sending; mentions inside the embed do not send a notification.'}
-    ]:[{name:'Want to share an announcement?',value:'Ask a staff member to create one. Building and publishing announcements is available to the people who manage Number One in your server.'}]},
-    events:{title:'📅 Events & schedules',description:'Keep up with community events, meetings, and who’s on duty.',fields:[
-      {name:'Find your next event',value:'Use **/schedule list** to see upcoming events. With **/schedule show**, start typing an event’s name and choose a suggestion for its time, location, and details.'},
-      {name:'Let people know you’re coming',value:'Choose **Going**, **Maybe**, or **Can’t make it** on an event card. You can change your answer later. Open **/schedule show** again to see the latest replies.'},
-      ...(canManage?[
-        {name:'Plan an event',value:`Use **/schedule add**. Choose a title, start time, and channel. Use a date and time like **${example}**, using a 24-hour clock. New events use **${timezoneLabel(timezone)}**; choose a different city in the zone option if needed.`},
-        {name:'Make it recurring',value:'Choose daily or weekly repetition for regular events. For staff rotations, choose “rotation” and provide the people in the order they should take turns. Staff meetings and rotations need a staff-only channel.'},
-        {name:'Remind, share, or change plans',value:'Choose how many minutes before the event to send its reminder; use 0 for a message at the start. Use **/schedule post** to share a card, **edit** for details, **configure** for reminders or repetition, and **cancel** to stop the event and its future reminders.'}
-      ]:[]),
-      {name:'Private meetings stay private',value:'You’ll only see events in channels you can access. Discord shows event times in your own local time.'}
-    ]},
-    feeds:{title:'📸 Instagram',description:'Catch up on new posts with a daily or weekly roundup tailored to your server.',fields:[
-      {name:'When does it arrive?',value:'Your server’s staff choose the delivery day, time, and timezone. Empty roundups are skipped. Discord shows the next delivery in your own local time.'},
-      ...(canManage?[
-        {name:'Set it up in one menu',value:'Open **/instagram setup**. Choose **Source** to add a name and an RSS/Atom link from an Instagram feed service. Pick a channel, an optional role to notify, and daily or weekly delivery. **Schedule** lets you choose the time, timezone, weekly day, and link previews. Choose **Save** when ready. No bot-owner approval is needed.'},
-        {name:'Preview or change settings',value:'Use **Preview** before saving. To edit a source later, open **/instagram setup** and choose it from the top menu. Waiting posts are preserved when you change delivery settings.'},
-        {name:'Manage your sources',value:'**/instagram list** shows your sources and waiting posts. Choose a source by name with **/instagram preview**, **pause**, **resume**, or **remove**. Pausing stops both collection and delivery.'},
-        {name:'Which link do I need?',value:'Use the RSS/Atom link supplied by your Instagram feed service. An Instagram profile link alone will not work. Posts and stories depend on that service’s coverage. Existing posts are not resent when you add a source.'}
-      ]:[{name:'Want Instagram posts in your server?',value:'Ask your server’s staff to open /instagram setup. They can choose a source, channel, delivery time, and timezone without contacting the bot owner.'}])
-    ]},
-    setup:{title:'⚙️ Server settings',description:canConfigure?'A few choices to make Number One fit your server.':'These settings are managed by your server’s administrators.',fields:canConfigure?[
-      {name:'Set your timezone',value:`Use **/settings timezone**, type a city such as **New York** or **Seoul**, and choose a suggestion. Right now new events use **${timezoneLabel(timezone)}**. Existing events and Instagram sources keep their own timezone. Instagram delivery has its own schedule in /instagram setup.`},
-      {name:'Who can use commands?',value:'Every slash command requires **Administrator** or **Manage Server** permission. A custom staff role alone does not grant access.'},
-      {name:'Review your settings',value:'**/settings view** shows the current choices. **/settings status** checks for delivery problems. If something goes wrong, share the error reference with the bot owner.'}
-    ]:[{name:'Need something changed?',value:'Ask someone with Manage Server permission to choose the timezone or staff role. You can still browse events and RSVP without managing the bot.'}]}
-  };
-  const selected=pages[page];
-  return {content:'',embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle(selected.title).setDescription(selected.description).addFields(selected.fields).setFooter({text:'Number One • Choose a topic from the menu below'})],components:[{type:1,components:[{type:3,custom_id:'help:topic',placeholder:'What would you like help with?',min_values:1,max_values:1,options:categories.map(([value,label,description,emoji])=>({value,label,description,emoji:{name:emoji},default:value===page}))}]}],allowedMentions:{parse:[]}};
+import {commands} from './commands.js';
+import {UserError} from './user-error.js';
+
+const summaries={
+  help:'Show this command list.',
+  'embed create':'Open the draft form.', 'embed edit':'Reopen a saved draft.', 'embed list':'List saved drafts.', 'embed delete':'Delete a saved draft.', 'embed remove-section':'Remove a numbered section.', 'embed send':'Publish a saved draft.',
+  'schedule add':'Create an event, meeting, or rotation.', 'schedule list':'List upcoming events.', 'schedule show':'View details and replies.', 'schedule edit':'Change details or the start time.', 'schedule post':'Post an event card.', 'schedule configure':'Change reminders, duration, or repeats.', 'schedule cancel':'Stop the event and future reminders.',
+  'instagram setup':'Set up sources, channels, and delivery.', 'instagram list':'List sources and queued posts.', 'instagram preview':'Preview the latest post.', 'instagram pause':'Stop collection and delivery.', 'instagram resume':'Resume a paused source.', 'instagram remove':'Remove a source.',
+  'settings view':'View server settings.', 'settings timezone':'Set the default timezone.', 'settings status':'Check delivery problems.',
+  'access add':'Allow a member to use commands.', 'access remove':'Remove an owner-granted permission.', 'access list':'List owner-approved members.'
+};
+const labels={help:'Help',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
+export function referenceFields() {
+  const order=['help','embed','schedule','instagram','settings','access'];
+  return [...commands].sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name)).map(command=>{
+    const entries=command.options||[null];
+    const lines=entries.map(sub=>{
+      const key=command.name+(sub?' '+sub.name:'');
+      const inputs=(sub?.options||[]).filter(option=>option.required).map(option=>option.name).join(' ');
+      return '\u0060/'+key+(inputs?' '+inputs:'')+'\u0060 — '+(summaries[key]||sub?.description||command.description);
+    });
+    return {name:labels[command.name]||command.name,value:lines.join('\n')};
+  });
+}
+export function helpMenu({page='home'}={}) {
+  if(!['home','embeds','events','feeds','setup'].includes(page))throw new UserError('Open /help for the current command list.');
+  return {content:'',embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle('Number One · Commands').setDescription('Choose a command, then fill in the shown inputs. Optional settings appear in Discord.').addFields(referenceFields()).setFooter({text:'Access: Administrator, Manage Server, or approval from this server’s owner.'})],components:[{type:1,components:[{type:2,style:2,custom_id:'help:manual',label:'DM full manual'}]}],allowedMentions:{parse:[]}};
+}
+export function manualMessages({timezone='UTC'}={}) {
+  const pages=[
+    new EmbedBuilder().setTitle('Number One · Command reference').setDescription('Required inputs follow each command. Choose saved drafts, events, and sources by name.').addFields(referenceFields()),
+    new EmbedBuilder().setTitle('Number One · Embeds and schedules').addFields(
+      {name:'Build an embed',value:'Use /embed create and name the draft. Complete the form: saved name, title, main text, color, and optional message. Edit form changes those details together. Other controls add images, links, sections, author information, and small print. Colors accept names such as blue or a six-character color code.'},
+      {name:'Save and publish',value:'Changes save automatically after submitting each form. Save & close keeps the draft; /embed edit reopens it. Make a copy creates an independent draft. Select a channel and optional person/role notifications, then Publish—or use /embed send. Publishing keeps the saved copy. Deleting a draft does not delete posted messages. Closing an unsubmitted form does not save what you typed.'},
+      {name:'Mentions and permissions',value:'Channel mentions can go in the text. Use the notification pickers to ping a person or role; mentions inside an embed do not notify them. Everyone/here pings are suppressed. You and the bot need permission to use the destination. The bot needs View Channel, Send Messages, and Embed Links. An unmentionable role also requires Mention Everyone for you and the bot.'},
+      {name:'Create a schedule',value:'Use /schedule add with a title, start, and channel. Enter dates as YYYY-MM-DD HH:mm using a 24-hour clock, such as 2026-12-01 19:00. Choose an optional timezone, reminder, duration, location, and description. Your server default is '+timezone+'. Default duration: 60 minutes; reminder: 30 minutes before the start. Reminder 0 means at the start.'},
+      {name:'Repeats, rotations, and RSVPs',value:'Events can run once, daily, or weekly. For a staff rotation, choose rotation, daily/weekly repetition, and mention people in turn order. Meetings and rotations require a channel hidden from @everyone. Post an event card for Going/Maybe/Can’t make it buttons; members with channel access may reply. /schedule show gives current replies. Editing the start resets RSVPs. Cancel stops future reminders; posted cards remain.'},
+      {name:'Time and missed events',value:'Repeats follow the event’s local calendar, including daylight-saving changes. Invalid or ambiguous start times require correction. Discord timestamps display in each reader’s local time. After downtime, expired events are skipped; reminders catch up only while the event is still in progress.'}
+    ),
+    new EmbedBuilder().setTitle('Number One · Instagram, access, and bot information').addFields(
+      {name:'Instagram setup',value:'Use /instagram setup. Source takes a name and an RSS/Atom link from your chosen Instagram feed service. A profile URL alone does not work. Choose the posting channel, an optional role notification, daily/weekly delivery, local time, weekday, and timezone. Schedule also controls link previews. Preview sends a private sample without posting or consuming queued items. Save activates changes.'},
+      {name:'Collection and delivery',value:'Sources are checked daily and again when a roundup is due. Empty roundups are skipped. New sources do not resend older posts. Changing the schedule preserves waiting posts. Pause stops collection and posting; resume can deliver an overdue roundup. After downtime, accumulated posts are delivered when the bot returns. There is a limit of 10 sources per server.'},
+      {name:'Feed requirements and limits',value:'Posts and stories depend on the feed service’s coverage and retention. The bot does not directly scrape Instagram or guarantee stories. Public HTTPS RSS/Atom links only; redirects and private network addresses are rejected. A feed must be under 2 MB. Do not post private feed links publicly. Change an account’s feed link only after its queue is empty, or add a separate source.'},
+      {name:'Who can use slash commands?',value:'Server administrators, members with Manage Server, and people approved by this server’s owner. Owner-approved access applies only to this server and remains until removed. Channel permissions still apply. Ordinary members receive a private denial when they invoke a command. Autocomplete does not reveal saved names to unauthorized users.'},
+      {name:'Owner-managed access',value:'Only the current server owner can use /access add user, /access remove user, and /access list. Added people must be current human members. A maximum of 100 people can be approved. Removing a grant does not remove Administrator or Manage Server permissions; those are managed in Discord. Approved users cannot approve others.'},
+      {name:'Settings, saved data, and problems',value:'Use /settings timezone for new events and Instagram setups; existing items keep their own timezone. /settings status reports delivery issues. Saved drafts, schedules, sources, approvals, and queues persist across restarts and are separate for each server. If a send is uncertain, check its destination before retrying. Error replies include a reference for support. The bot must remain online for automatic posts and reminders.'},
+      {name:'This manual',value:'This DM was requested with DM full manual. No unsolicited DM fallback is used. Reopen /help to request an updated copy.'}
+    )
+  ];
+  return pages.map((embed,index)=>({embeds:[embed.setColor(0xe5a1b3).setFooter({text:'Number One manual · '+(index+1)+'/'+pages.length})],allowedMentions:{parse:[]}}));
 }

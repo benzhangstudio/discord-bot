@@ -20,13 +20,13 @@ Slow actions first send a normal private receipt, never a thinking callback. The
 
 Release requirements are recorded in AGENTS.md. Before each push, inspect response paths and test never-settling backend steps and both confirmation attempts, plus permission and saved-work checks.
 
-All slash-command definitions default to Manage Server permission (Administrators are included). A runtime gate independently denies ordinary members, moderator-only roles, legacy staff roles, and missing permission data before reading options or saved records—even if Discord command permissions are overridden or an older command is cached. Denials are immediate private messages naming the required Administrator or Manage Server permission. Unauthorized autocomplete returns no suggestions.
+Every slash command is authorized at runtime for server administrators, members with Manage Server, and users approved by that Discord server’s owner. Grants are saved per server and persist across restarts. Only the current server owner can use /access add user, /access remove user, and /access list (100 grants maximum). Added people must be current human members. Removing a grant does not revoke Discord permissions. Approved users cannot grant others or bypass channel permissions. General commands are visible in Discord so approved non-managers can invoke them; ordinary members get an immediate private permission denial, and unauthorized autocomplete returns no names. /access retains Manage Server as its Discord default and also enforces owner-only access at runtime.
 
 Command failures produce a private error reply with a reference ID and a matching console diagnostic. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
 
 ## Embed builder
 
-`/help` opens a public dropdown menu with short walkthroughs for getting started, announcements, events, Instagram, and server settings. The instructions reflect the reader’s permissions. Anyone in the channel can choose a topic, updating the same public help message; there is nothing to configure or design.
+`/help` immediately shows a public command reference: every command, required inputs, and a one-line summary. DM full manual sends a three-message manual to the authorized person who clicks it. The button never sends to the original invoker or another person automatically. It rechecks access, limits requests to once per 30 seconds per person/server, handles blocked DMs with a private instruction, and reports partial or stalled delivery without retrying pages. Old topic menus update to the new reference. The manual includes workflows, permissions, timezone rules, feed limitations, saved data, and troubleshooting.
 
 `/embed create name:Welcome` creates a saved draft and immediately opens a five-field form for the saved name, title, main text, color, and accompanying message. Submitting shows the private builder. Cancelling the form leaves the starter draft available in /embed list. Controls edit text/color, pictures/title links, information sections, and author/small print. Colors accept names such as pink or blue as well as color codes. Optional blank values clear those properties. To replace a section, enter its position in Add or edit a section; `/embed remove-section` removes one section. Saved messages are shared by authorized staff in that server; changes save automatically with a last-saved timestamp. Save & close keeps the draft for /embed edit. Make a copy creates an independent draft without copying its publishing destination or notifications. Drafts persist across restarts. The builder includes channel, role, and person pickers plus Publish; notifications are revalidated before sending.
 
@@ -34,7 +34,7 @@ Command failures produce a private error reply with a reference ID and a matchin
 
 ## Scheduler
 
-`/settings timezone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. Every slash command, including /help and schedule viewing, requires Administrator or Manage Server. Custom staff roles do not grant access. The former /settings staff and /settings clear-staff commands have been retired.
+`/settings timezone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. Every slash command, including /help and schedule viewing, requires Administrator, Manage Server, or explicit approval from the server owner. Custom staff roles alone do not grant access. The former /settings staff and /settings clear-staff commands have been retired.
 
 `/schedule add title:Staff meeting start:2026-12-01T19:00 channel:#staff kind:staff-meeting repeat:weekly reminder:30`
 

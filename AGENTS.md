@@ -10,4 +10,6 @@
 
 - Do not add unsolicited DM fallbacks. Deliver command results through the original interaction.
 
-- Every slash command, including help and read-only schedule commands, requires Administrator or Manage Server. Do not grant access through custom staff roles. Deny unauthorized invocations privately before options/data access; autocomplete must return no suggestions. Test every registered subcommand for both allowed permissions and denied users before pushing.
+- Every slash command requires Administrator, Manage Server, or an explicit user grant made by the current Discord server owner. Grants are server-scoped. Only the current server owner may manage grants through /access; administrators and approved users cannot grant others. Do not infer access from custom staff roles. Deny unauthorized invocations privately before options/data access; autocomplete must return no suggestions. Test every registered subcommand for both allowed permissions and denied users before pushing.
+
+- /help must stay concise: every command, required inputs, and a one-line summary. Detailed help is sent only when an authorized user clicks DM full manual, only to that clicker. Handle blocked/partial/stalled DMs; do not reintroduce unsolicited DM fallbacks.

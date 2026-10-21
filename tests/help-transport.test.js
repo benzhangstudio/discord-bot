@@ -1,11 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Client,ChatInputCommandInteraction,PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
+import {Client,ChatInputCommandInteraction,ButtonInteraction,PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {UserError} from '../src/user-error.js';
 import {Store} from '../src/store.js';
 import {createApp} from '../src/app.js';
 import {commands} from '../src/commands.js';
 const sdkConfirmation=(i,method,payload)=>method==='PATCH'?i.editReply(payload):i.followUp(payload);
+
+test('real Discord SDK manual button sends all pages only to the clicker and confirms in the interaction', {timeout:3000},async()=>{
+  const client=new Client({intents:[]}),store=new Store(':memory:'),clicker='678901234567890123',guild='345678901234567890',channel='456789012345678901',dm='789012345678901234',requests=[];
+  const user={id:clicker,username:'Manager',discriminator:'0',avatar:null};
+  const message=(id,channelId,content='',embeds=[])=>({id,channel_id:channelId,type:0,content,embeds,author:{id:'234567890123456789',username:'Number One',discriminator:'0',avatar:null,bot:true},timestamp:new Date().toISOString(),edited_timestamp:null,tts:false,mention_everyone:false,mentions:[],mention_roles:[],attachments:[],components:[],flags:0});
+  try {
+    client.user=client.users._add({id:'234567890123456789',username:'Number One',discriminator:'0',avatar:null,bot:true});
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation});
+    client.rest.post=async(route,request)=>{
+      requests.push({route,body:request.body});
+      if(route==='/users/@me/channels')return{id:dm,type:1,recipients:[user],last_message_id:null};
+      if(route===`/channels/${dm}/messages`)return message('890123456789012345',dm,'',request.body.embeds);
+      return undefined;
+    };
+    client.rest.patch=async(route,request)=>{requests.push({route,body:request.body});return message('901234567890123456',channel,request.body.content);};
+    const i=new ButtonInteraction(client,{
+      id:'123456789012345678',application_id:'234567890123456789',type:3,token:'test-only-token',version:1,guild_id:guild,channel:{id:channel,type:0},data:{component_type:2,custom_id:'help:manual'},
+      message:message('567890123456789012',channel),member:{user,roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
+    });
+    await app.handle(i);
+    const opens=requests.filter(r=>r.route==='/users/@me/channels'),pages=requests.filter(r=>r.route===`/channels/${dm}/messages`);
+    assert.equal(opens.length,1);assert.equal(opens[0].body.recipient_id,clicker);assert.equal(pages.length,3);
+    assert.ok(pages.every(r=>r.body.embeds.length===1));assert.match(requests.at(-1).body.content,/Full manual sent to your DMs/);assert.equal(i.deferred,false);
+  } finally {client.destroy();store.close();}
+});
 
 for(const command of commands)for(const sub of command.options||[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one private permission message`,{timeout:2000},async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
@@ -31,7 +56,7 @@ test('real Discord SDK serializes /help as one immediate public callback contain
       data:{id:'567890123456789012',name:'help',type:1},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     await app.handle(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.ok(!(requests[0].body.data.flags & 64));
-    assert.match(requests[0].body.data.embeds[0].title,/Number One/);assert.equal(requests[0].body.data.components[0].components[0].custom_id,'help:topic');assert.equal(i.replied,true);assert.equal(i.deferred,false);
+    assert.match(requests[0].body.data.embeds[0].title,/Number One/);assert.equal(requests[0].body.data.components[0].components[0].custom_id,'help:manual');assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 
