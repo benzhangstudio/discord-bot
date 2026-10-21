@@ -17,47 +17,40 @@ Official reference: https://wispbyte.com/kb/github-integration and https://wispb
 
 ## Routine updates
 
-1. Edit the same local Rose folder. Commit and push changes to a development branch.
-2. GitHub Actions runs syntax checks and offline tests. Review the checks before moving the change to the production branch. Checks do not test live Discord or Instagram.
+1. Edit and test in the same local Rose folder. Publish the reviewed code to GitHub main through the connected GitHub account; no pull request is required for routine updates.
+2. GitHub Actions runs syntax checks and offline tests. Wait for checks on main to pass before restarting Wispbyte. Checks do not test live Discord or Instagram.
 3. Back up the live data folder and restart Number One with `AUTO_UPDATE=1`. Wispbyte pulls the configured production branch during startup. Keep the startup file at `src/index.js`; do not replace files, clone again or separately pull for routine updates. It updates and verifies the command list automatically.
 4. Confirm Number One is online and try `/help`. Templates, schedules, RSVPs, and feed subscriptions remain in the server-local database.
 
 GitHub Actions tests code; Wispbyte's configured auto-update performs deployment on restart. Do not put a GitHub token in a repository URL or commit a Wispbyte API key.
 
-## Dashboard and HTTPS rollout
+## Public dashboard and HTTPS
 
-The same `src/index.js` now starts the dashboard and existing Discord bot. Keep the startup setting unchanged. No additional Node process or Discord gateway connection is needed. Public defaults use `number-one.wispbyte.app` and bind **0.0.0.0:16243**, matching this server's assigned port. `AGE_PORT` overrides `SERVER_PORT`; `SERVER_PORT` overrides the default 16243. Storage is `data/age-verification.sqlite`, separate from existing bot data and retained across updates.
+The existing `src/index.js` starts both the bot and the public multi-server dashboard. Keep this startup file unchanged. Wispbyte's subdomain serves `https://number-one.wispbyte.app`; Node listens on **0.0.0.0:16243** behind its HTTPS proxy. `AGE_PORT` overrides `SERVER_PORT`, which otherwise overrides the default 16243. Requests require the public Host header and `X-Forwarded-Proto: https`; plain HTTP fails closed. Dashboard errors are logged separately while the bot can continue.
 
-Wispbyte's subdomain proxy supplies the public HTTPS connection; Node serves HTTP behind it. No certificate, private key or self-signed browser certificate is shipped. The application checks the public Host header and requires `X-Forwarded-Proto: https` on hosted requests. Direct HTTP receives 426. If Wispbyte does not forward that header or preserve Host, the portal fails closed; inspect the actual proxy configuration before relaxing anything. The bot continues if web startup fails, with an actionable console error.
+The public workflow is: **Discord sign-in → choose community → configure that community on the website (if authorized) or submit a synthetic test case (if open)**. Server owners, Administrators and people with Manage Server may configure roles. Only the owner and configured reviewers can review cases. Only the current owner can access that server's audit and privacy administration. Members never need developer, GitHub or Wispbyte access.
 
-### First restart: public page only
+### Operator setup, once for the whole bot
 
-1. Wait for the production GitHub checks to pass.
-2. Restart in Wispbyte with auto-update enabled. Leave the JavaScript startup filename at `src/index.js`.
-3. Look for `Number One dashboard listening on 0.0.0.0:16243; public verification locked pending configuration.` and the existing bot's successful startup messages. If another assigned port is in `SERVER_PORT`, the log shows that port instead. If Wispbyte still routes the subdomain to 16243, privately set `AGE_PORT=16243` in the root `.env`.
-4. Visit `https://number-one.wispbyte.app`: confirm no certificate warning and a Number One dashboard instead of the Wispbyte placeholder. Open `/verify`: it must say verification is not open yet. No demo identity switcher or functional login should be exposed.
-5. If the old Wispbyte placeholder remains, share the dashboard startup/error line (no secrets). If the response says unexpected host or missing HTTPS forwarding, resolve the Wispbyte proxy settings before proceeding. Code tests cannot verify the live proxy or certificate.
-
-`AGE_MODE` defaults to `setup` in hosted startup. This serves only public pages and configuration status; all login, reviewer and submission routes return unavailable. Public demo mode is rejected. `DASHBOARD_ENABLED=0` disables the web listener for rollback without changing the bot startup file. Invalid web configuration or port conflict logs an error while the Discord bot continues.
-
-### Second restart: Discord synthetic Beta
-
-Do this only after the public HTTPS page is verified. Add to Wispbyte's **existing root `.env`**, preserving its current credentials (use `.env.example` as a reference, never overwrite the real file):
+Keep your existing private `DISCORD_TOKEN` and `DISCORD_APPLICATION_ID`. Add only the application OAuth secret to Wispbyte's existing root environment file, preserving all current lines:
 
 ```dotenv
-AGE_ORIGIN=https://number-one.wispbyte.app
-AGE_PORT=16243
-AGE_MODE=discord
-AGE_CLIENT_SECRET=YOUR_DISCORD_OAUTH_CLIENT_SECRET
-AGE_GUILD_ID=YOUR_ONE_SERVER_ID
-AGE_REVIEWER_ROLE_ID=YOUR_CUSTOM_REVIEWER_ROLE_ID
-AGE_VERIFIED_ROLE_ID=YOUR_BETA_TEST_ROLE_ID
+AGE_CLIENT_SECRET=YOUR_PRIVATE_DISCORD_OAUTH_SECRET
 ```
 
-The existing `DISCORD_TOKEN` and `DISCORD_APPLICATION_ID` are reused automatically. Add the exact redirect `https://number-one.wispbyte.app/auth/callback` in the same Discord application's OAuth2 settings. Reviewer and test verified roles must differ and cannot be @everyone. The bot needs Manage Roles and a higher role than the test verified role. The server owner also receives reviewer access. Use a dedicated test role with no access to adult-only channels: synthetic approval cannot establish a real member's age.
+In the same Discord application's OAuth2 page, register exactly `https://number-one.wispbyte.app/auth/callback`. The dashboard asks for `identify guilds` consent and uses one callback for every server. No per-server environment settings are needed. Obsolete `AGE_GUILD_ID`, `AGE_REVIEWER_ROLE_ID` and `AGE_VERIFIED_ROLE_ID` are ignored; server managers choose roles on the website.
 
-Restart, then verify Discord sign-in, shared claims, manual minor denial, role grant and DM results using synthetic fixtures. Removing a reviewer's custom role must revoke subsequent dashboard API access. See the Beta README for exact test and recovery steps. No provider or real-ID handling is live; credentials and successful live tests are required before claiming the Discord sandbox is connected.
+With a nonempty client secret present, hosted startup automatically chooses Discord mode. If your private environment explicitly contains `AGE_MODE=setup`, remove that line or change it to `AGE_MODE=discord`: setup is an intentional maintenance lock. Without an application secret, sign-in remains unavailable. Never use demo mode on Wispbyte. `DASHBOARD_ENABLED=0` disables the listener if you need to roll back web hosting while keeping the bot running. `AGE_ORIGIN` defaults to the HTTPS address above; `AGE_DB` defaults to `data/age-verification.sqlite` and should remain private/persistent.
 
+### After a GitHub update
+
+1. Wait for checks on main to pass, then manually restart/refresh Wispbyte using the established auto-update-on-start workflow. Publishing GitHub code does not itself restart Wispbyte.
+2. Leave startup at `src/index.js`. Look for `Number One dashboard listening on 0.0.0.0:16243; public verification synthetic-only with Discord sign-in.` and the normal successful bot startup. A locked message means the application secret is missing or maintenance mode is enabled. A different port means check `SERVER_PORT` or privately set `AGE_PORT=16243` to match the subdomain allocation.
+3. Open `https://number-one.wispbyte.app/verify`. Sign in with Discord, approve access to your server list, and choose a community. If Number One is absent, a manager can use Add Number One to install it there.
+4. On that website, choose the community's reviewer and test verified roles, acknowledge synthetic-only testing, and enable its Beta. The bot needs Manage Roles and a role above the test verified role. Use a test role that does not unlock age-restricted content; synthetic cases cannot prove real age.
+5. Share the generated member link. Use a second member/reviewer account to test claims, decisions, role grant, closed-DM behavior and privacy requests. Repeat in another community and confirm data/settings remain separate. Removing membership/reviewer rights must revoke subsequent access.
+
+The old single-server tables are not exposed under any community; their synthetic evidence is cleared, and any remaining legacy metadata stays offline for maintenance. New settings/cases use guild-scoped tables in the same private dashboard database. Existing bot data stays in its original store. See [age-verification/README.md](age-verification/README.md) for the full workflow, local demo and recovery steps. Real ID uploads/provider processing are disabled, and live Discord success must be verified after restart rather than inferred from offline tests.
 ## Rollback
 
 Revert the problematic code change in GitHub, wait for checks, and pull the revert on Wispbyte. Keep a database backup from before updates that change storage formats; a code revert alone cannot reverse a future database migration. Avoid reinstalling the server to perform routine code updates.

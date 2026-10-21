@@ -7,7 +7,7 @@ export function hostedConfig(env=process.env) {
   if(env.DASHBOARD_ENABLED === '0') return null;
   const c=config({
     ...env,
-    AGE_MODE:env.AGE_MODE || 'setup',
+    AGE_MODE:env.AGE_MODE || (env.AGE_CLIENT_SECRET?.trim() ? 'discord' : 'setup'),
     AGE_ORIGIN:env.AGE_ORIGIN || 'https://number-one.wispbyte.app',
     AGE_PORT:env.AGE_PORT || env.SERVER_PORT || '16243',
     AGE_CLIENT_ID:env.AGE_CLIENT_ID || env.DISCORD_APPLICATION_ID,
@@ -24,7 +24,6 @@ export async function startHostedDashboard(env=process.env) {
   mkdirSync(dirname(path),{recursive:true});
   const store=new Store(path);
   store.purge();
-  store.db.exec("UPDATE cases SET roleState='uncertain' WHERE roleState='pending'; UPDATE cases SET dmState='uncertain' WHERE dmState='pending';");
   const server=application(c,store);
   server.requestTimeout=15000;server.headersTimeout=10000;
   const purge=setInterval(()=>store.purge(),60000);purge.unref();

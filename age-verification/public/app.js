@@ -1,33 +1,52 @@
-const $ = id => document.getElementById(id);
-let me, selected, evidenceTimer;
-function message(text) { $('message').textContent = text; }
-async function api(path, data) {
-  const r = await fetch(path,{method:data ? 'POST':'GET',headers:data ? {'Content-Type':'application/json','X-CSRF-Token':me?.csrf || ''}:{},...(data ? {body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(45000)});
-  const result = await r.json();if(!r.ok) throw new Error(result.error);return result;
-}
-function action(fn) { return async event => {event?.preventDefault();const controls = [...document.querySelectorAll('button')];controls.forEach(b=>b.disabled=true);message('Working…');try{await fn();}catch(e){message(e.name==='TimeoutError'?'Request timed out. Refresh to inspect the saved result before trying again.':e.message);}finally{controls.forEach(b=>b.disabled=false);}}; }
-function row(parent,text) {const el=document.createElement('div');el.className='row';const p=document.createElement('p');p.textContent=text;el.append(p);parent.append(el);return el;}
-function button(parent,label,fn,cls='') {const b=document.createElement('button');b.textContent=label;b.className=cls;b.onclick=action(fn);parent.append(b);return b;}
+const $=id=>document.getElementById(id);
+let session,context,guild=new URL(location.href).searchParams.get('guild')||'',selected,evidenceTimer,busy=false;
+function message(text){$('message').textContent=text;}
 function clearEvidence(){clearTimeout(evidenceTimer);selected=null;$('evidence').hidden=true;$('dob').textContent='';}
-document.addEventListener('visibilitychange',()=>{if(document.hidden)clearEvidence();});
-async function refresh() {
-  clearEvidence();me=await api('/api/me');$('portal').hidden=false;$('login').hidden=true;$('who').textContent=`Signed in: ${me.id}${me.owner?' · server owner':me.reviewer?' · reviewer':''}`;
-  $('case').textContent=me.case ? `Status: ${me.case.status} · Role: ${me.case.roleState} · DM: ${me.case.dmState}`:'No submission yet.';
-  $('submission').hidden=!!me.case;$('review').hidden=!me.reviewer;$('admin').hidden=!me.owner;
-  if(me.reviewer){
-    const queue=await api('/api/queue');$('queue').replaceChildren();if(!queue.length) $('queue').textContent='No cases waiting.';
-    for(const c of queue){const el=row($('queue'),`${c.id} · ${c.status} · ${c.claimant && c.claimUntil>Date.now()?'claimed by '+c.claimant:'unclaimed'} · Role: ${c.roleState} · DM: ${c.dmState}`);
-      if(c.status==='pending') button(el,'Claim & view',async()=>{clearEvidence();await api('/api/claim',{id:c.id});const e=await api('/api/evidence?id='+encodeURIComponent(c.id));selected=c.id;$('dob').textContent=e.dob;$('portrait').src=e.portrait;$('evidence').hidden=false;evidenceTimer=setTimeout(clearEvidence,590000);message('Claimed for 10 minutes. Only portrait and full DOB are released.');});
-      if(me.owner && c.roleState==='uncertain') button(el,'Check Discord role status',async()=>{await api('/api/admin/reconcile',{id:c.id});await refresh();message('Role reconciled from current Discord membership. DM delivery remains uncertain if shown.');});
+function hideServer(){clearEvidence();context=null;$('portal').hidden=true;$('settings').hidden=true;$('review').hidden=true;$('admin').hidden=true;$('queue').replaceChildren();$('requests').replaceChildren();$('audit').textContent='';$('settingsForm').reset();}
+async function api(path,data){
+  const response=await fetch(path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json','X-CSRF-Token':session?.csrf||''}:{},...(data?{body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(60000)});
+  const result=await response.json();if(!response.ok){if(result.inviteUrl){$('install').href=result.inviteUrl;$('installMessage').hidden=false;}throw new Error(result.error);}return result;
+}
+function serverApi(path,data){return api('/api/guilds/'+encodeURIComponent(guild)+'/'+path,data);}
+function action(fn){return async event=>{event?.preventDefault();if(busy)return;busy=true;const controls=[...document.querySelectorAll('button,select')];controls.forEach(el=>el.disabled=true);message('Working…');$('installMessage').hidden=true;
+  try{await fn();}catch(error){clearEvidence();message(error.name==='TimeoutError'?'Request timed out. Refresh to inspect the saved result before trying again.':error.message);}finally{busy=false;controls.forEach(el=>el.disabled=false);}};}
+function row(parent,text){const el=document.createElement('div');el.className='row';const p=document.createElement('p');p.textContent=text;el.append(p);parent.append(el);return el;}
+function button(parent,label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=action(fn);parent.append(b);return b;}
+function options(id,roles,chosen){const select=$(id);select.replaceChildren(new Option('Choose a role',''));for(const role of roles)select.add(new Option(role.name,role.id));select.value=chosen||'';}
+async function loadServer(){
+  hideServer();if(!guild)return;assertGuild();const info=await serverApi('context');context=info;$('portal').hidden=false;$('serverName').textContent=info.name;$('share').value=info.shareUrl;
+  $('availability').textContent=info.enabled?'Synthetic Beta is open for this server.':info.manager?'Finish server setup below to open the synthetic Beta.':'Verification is not open for this server yet. Its owner or a server manager can configure it here.';
+  $('case').textContent=info.case?`Status: ${info.case.status} · Role: ${info.case.roleState} · DM: ${info.case.dmState}`:'No submission in this server yet.';$('submission').hidden=!!info.case||!info.enabled;
+  if(info.reviewer){$('review').hidden=false;const queue=await serverApi('queue');if(!queue.length)$('queue').textContent='No cases waiting in this server.';
+    for(const item of queue){const el=row($('queue'),`${item.id} · ${item.status} · ${item.claimant&&item.claimUntil>Date.now()?'claimed by '+item.claimant:'unclaimed'} · Role: ${item.roleState} · DM: ${item.dmState}`);
+      if(item.status==='pending'&&info.enabled)button(el,'Claim & view',async()=>{clearEvidence();await serverApi('claim',{id:item.id});const evidence=await serverApi('evidence?id='+encodeURIComponent(item.id));selected=item.id;$('dob').textContent=evidence.dob;$('portrait').src=evidence.portrait;$('evidence').hidden=false;evidenceTimer=setTimeout(clearEvidence,590000);message('Claimed for 10 minutes. Only portrait and full date of birth are released.');});
+      if(info.owner&&item.roleState==='uncertain')button(el,'Check Discord role status',async()=>{await serverApi('admin/reconcile',{id:item.id});await loadServer();message('Role status checked. No grant or DM was resent.');});
     }
   }
-  if(me.owner){const a=await api('/api/admin');$('requests').replaceChildren();for(const p of a.requests){const el=row($('requests'),`${p.id} · ${p.member} · ${p.kind} · ${p.state}`);if(p.kind==='delete'&&p.state==='open') button(el,'Fulfill deletion & revoke role',async()=>{await api('/api/admin/delete',{requestId:p.id});await refresh();message('Deletion completed.');});}$('audit').textContent=a.audit.map(e=>`${new Date(e.at).toISOString()} ${e.action} · ${e.actor || 'anonymous'} · ${e.caseId || ''}`).join('\n');}
+  if(info.owner){$('admin').hidden=false;const data=await serverApi('admin');for(const request of data.requests){const el=row($('requests'),`${request.id} · ${request.member} · ${request.kind} · ${request.state}`);if(request.kind==='delete'&&request.state==='open')button(el,'Fulfill deletion & remove test role',async()=>{await serverApi('admin/delete',{requestId:request.id});await loadServer();message('Deleted this server’s records. Other servers are unaffected.');});}$('audit').textContent=data.audit.map(e=>`${new Date(e.at).toISOString()} ${e.action} · ${e.actor||'anonymous'} · ${e.caseId||''}`).join('\n');}
+  if(info.manager){const data=await serverApi('settings');options('reviewerRole',data.roles,data.settings?.reviewerRole);options('verifiedRole',data.roles.filter(r=>r.canVerify),data.settings?.verifiedRole);$('enabled').checked=!!data.settings?.enabled;$('settings').hidden=false;}
 }
-$('demoLogin').onclick=action(async()=>{await api('/api/demo-login',{identity:$('identity').value});await refresh();message('Demo session started. All Discord actions are simulated.');});
+function assertGuild(){if(!session.guilds.some(g=>g.id===guild))throw new Error('This server is not in your Discord account’s server list. Join it and sign in again, or choose another server.');}
+async function refresh(){
+  hideServer();session=await api('/api/session');$('login').hidden=true;$('signedIn').hidden=false;$('who').textContent='Signed in with Discord: '+session.id;
+  options('guild',session.guilds.map(g=>({id:g.id,name:g.name+(g.manageable?' · manage server':'')})),guild);$('noServers').hidden=session.guilds.length>0;
+  await loadServer();
+}
+$('guild').onchange=action(async()=>{guild=$('guild').value;history.replaceState(null,'','/verify'+(guild?'?guild='+encodeURIComponent(guild):''));await loadServer();message(guild?'Server selected.':'Choose a server to continue.');});
 $('refresh').onclick=action(async()=>{await refresh();message('Updated.');});
+$('demoLogin').onclick=action(async()=>{await api('/api/demo-login',{identity:$('identity').value});await refresh();message('Local demo. All Discord actions are simulated.');});
 $('logout').onclick=action(async()=>{await api('/api/logout',{});location.reload();});
-$('submission').onsubmit=action(async()=>{await api('/api/submit',{fixture:$('fixture').value,consent:$('consent').checked});await refresh();message('Synthetic submission is ready for manual review.');});
-for(const [id,decision] of [['approve','approved'],['deny','denied']]) $(id).onclick=action(async()=>{const result=await api('/api/decision',{id:selected,decision});await refresh();message(`Decision saved: ${result.status}. Role: ${result.roleState}. DM: ${result.dmState}. Uncertain delivery requires inspection in Discord; do not repeat the decision.`);});
-$('delete').onclick=action(async()=>{const r=await api('/api/privacy',{kind:'delete'});message(`Deletion request ${r.id} is open for the server owner.`);});
-$('export').onclick=action(async()=>{await api('/api/privacy',{kind:'export'});const data=await api('/api/privacy/export');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='number-one-privacy-export.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Privacy export downloaded.');});
-(async()=>{try{const c=await api('/api/config');if(c.mode==='setup'){$('login').hidden=false;$('mode').textContent='Verification is not open yet. The server owner is configuring Discord sign-in. No submissions or reviewer access are available.';return;}$('mode').textContent=c.mode==='demo'?'Local demo · no Discord credentials or real identity processing.':'Discord sign-in · synthetic documents only. No real identity provider is connected.';$(c.mode==='demo'?'demo':'discord').hidden=false;try{await refresh();}catch(e){$('portal').hidden=true;$('login').hidden=false;if(!e.message.includes('Sign in'))message(e.message);}}catch(e){message(e.message);}})();
+$('settingsForm').onsubmit=action(async()=>{await serverApi('settings',{reviewerRole:$('reviewerRole').value,verifiedRole:$('verifiedRole').value,enabled:$('enabled').checked,betaAcknowledged:$('betaAcknowledged').checked});await loadServer();message('Settings saved for this server. Share its member link above.');});
+$('submission').onsubmit=action(async()=>{await serverApi('submit',{fixture:$('fixture').value,consent:$('consent').checked});await loadServer();message('Test case submitted to this server’s reviewers.');});
+for(const[id,decision]of[['approve','approved'],['deny','denied']])$(id).onclick=action(async()=>{const result=await serverApi('decision',{id:selected,decision});await loadServer();message(`Decision saved: ${result.status}. Role: ${result.roleState}. DM: ${result.dmState}. Inspect Discord if delivery is uncertain; do not repeat the decision.`);});
+$('delete').onclick=action(async()=>{const data=await serverApi('privacy',{kind:'delete'});message(`Deletion request ${data.id} is open for this server’s owner.`);});
+$('export').onclick=action(async()=>{await serverApi('privacy',{kind:'export'});const data=await serverApi('privacy/export');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='number-one-'+guild+'-privacy.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Downloaded your data for this server.');});
+$('copyLink').onclick=action(async()=>{await navigator.clipboard.writeText($('share').value);message('Member link copied.');});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearEvidence();});
+action(async()=>{try{
+  const config=await api('/api/config');message('');$('login').hidden=false;
+  if(config.mode==='setup'){$('mode').textContent='Discord sign-in is temporarily unavailable while the bot operator completes the connection. Members and server owners never need hosting or developer access.';return;}
+  $('mode').textContent=config.mode==='demo'?'Local synthetic demo only.':'Members, reviewers and server managers all sign in here. Choose a server after signing in.';
+  $(config.mode==='demo'?'demo':'discord').hidden=false;$('discord').href='/auth/login'+(guild?'?guild='+encodeURIComponent(guild):'');$('addBot').href=config.inviteUrl||'#';
+  try{await refresh();}catch(error){hideServer();if(!session){$('signedIn').hidden=true;$('login').hidden=false;}if(!error.message.startsWith('Sign in'))message(error.message);}
+}catch(error){message(error.message);}})();
