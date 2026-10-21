@@ -30,6 +30,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 // adding an exercised scenario fails the suite instead of silently missing it.
 const scenarios={
   help:{},
+  'portal open':{},'portal setup':{},
   'access add':{user:'345678901234567890'},'access remove':{user:'345678901234567890'},'access list':{},
   'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings status':{},
   'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},

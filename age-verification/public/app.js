@@ -24,7 +24,7 @@ async function loadServer(){
     }
   }
   if(info.owner){$('admin').hidden=false;const data=await serverApi('admin');for(const request of data.requests){const el=row($('requests'),`${request.id} · ${request.member} · ${request.kind} · ${request.state}`);if(request.kind==='delete'&&request.state==='open')button(el,'Fulfill deletion & remove test role',async()=>{await serverApi('admin/delete',{requestId:request.id});await loadServer();message('Deleted this server’s records. Other servers are unaffected.');});}$('audit').textContent=data.audit.map(e=>`${new Date(e.at).toISOString()} ${e.action} · ${e.actor||'anonymous'} · ${e.caseId||''}`).join('\n');}
-  if(info.manager){const data=await serverApi('settings');options('reviewerRole',data.roles,data.settings?.reviewerRole);options('verifiedRole',data.roles.filter(r=>r.canVerify),data.settings?.verifiedRole);$('enabled').checked=!!data.settings?.enabled;$('settings').hidden=false;}
+  if(info.manager){const data=await serverApi('settings');options('reviewerRole',data.roles,data.settings?.reviewerRole);options('verifiedRole',data.roles.filter(r=>r.canVerify),data.settings?.verifiedRole);$('enabled').checked=!!data.settings?.enabled;$('settings').hidden=false;if(location.hash==='#settings')$('settings').scrollIntoView({block:'start'});}
 }
 function assertGuild(){if(!session.guilds.some(g=>g.id===guild))throw new Error('This server is not in your Discord account’s server list. Join it and sign in again, or choose another server.');}
 async function refresh(){

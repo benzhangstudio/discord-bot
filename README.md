@@ -26,6 +26,12 @@ Every slash command is authorized at runtime for server administrators, members 
 
 Normal successes and actionable errors appear publicly in the channel. Error reference IDs and technical diagnostics stay in server logs. Unpublished drafts, feed setup/previews, owner-approved access lists, restricted schedules, RSVP acknowledgements, and unauthorized-user denials remain private. Visibility is selected before delayed acknowledgements and preserved by confirmation fallbacks. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
 
+## Server portal
+
+`/portal open` replies publicly with a button for the current server's member portal, ready to share. `/portal setup` opens that server's website setup. Both are global commands, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an owner-approved command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied privately before options or data access.
+
+Each community's owner/manager signs in with Discord and chooses reviewer and Beta test roles on the website. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Website reviewer/configuration rights are checked independently; an owner-granted slash-command permission does not grant website management. Members use the shared link without needing slash-command access. Real-ID uploads remain disabled.
+
 ## Embed builder
 
 `/help` immediately shows a public category menu. Each category lists its commands, required inputs, and one-line summaries. No DM manual is offered. Old manual buttons explain that the feature was removed and direct users to /help.

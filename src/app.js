@@ -12,6 +12,7 @@ import {acknowledge,respond,updateResponse,reportFailure,safeError,step,cancelAc
 import {helpMenu} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
+import {portalMessage} from './portal.js';
 
 export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000,acknowledgementDelayMs}={}) {
 const reply=content=>({content,allowedMentions:{parse:[]}});
@@ -159,6 +160,9 @@ async function handle(i) {
     d[key]=i.values[0]||null;saveDraft(i,d);return i.update(editor(d,i));
   }
   const helpOptions=()=>({canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
+  if(i.isChatInputCommand()&&i.commandName==='portal') {
+    return respond(i,portalMessage(i.guildId,i.options.getSubcommand(false)));
+  }
   if(i.isChatInputCommand()&&i.commandName==='help') {
     // Help is built entirely from local data. Send it as the initial response,
     // rather than deferring and relying on a second webhook request.

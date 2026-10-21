@@ -14,6 +14,10 @@ export const commands = [
     sub('list','Server owner: list approved members',[integer('page','Page number',1,100)])
   ]},
   {name:'help',description:'Open the help menu and find a quick walkthrough'},
+  {name:'portal',description:'Open this server’s public verification portal',options:[
+    sub('open','Get this server’s portal link to open or share with members'),
+    sub('setup','Open website setup for this server’s reviewer and Beta test roles')
+  ]},
   {name:'settings',description:'Choose your server’s timezone and check delivery status',default_member_permissions:'32',options:[
     sub('view','See your server’s current settings'),sub('timezone','Choose the timezone for new events',[str('zone','Type a city or choose a timezone, such as New York or Seoul',true,{autocomplete:true})]),
     sub('status','Check whether reminders and weekly posts need attention')

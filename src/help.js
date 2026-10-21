@@ -4,15 +4,16 @@ import {UserError} from './user-error.js';
 
 const summaries={
   help:'Show this command list.',
+  'portal open':'Open or share this server’s member portal.', 'portal setup':'Choose this server’s roles on the website.',
   'embed create':'Open the draft form.', 'embed edit':'Reopen a saved draft.', 'embed list':'List saved drafts.', 'embed delete':'Delete a saved draft.', 'embed remove-section':'Remove a numbered section.', 'embed send':'Publish a saved draft.',
   'schedule add':'Create an event, meeting, or rotation.', 'schedule list':'List upcoming events.', 'schedule show':'View details and replies.', 'schedule edit':'Change details or the start time.', 'schedule post':'Post an event card.', 'schedule configure':'Change reminders, duration, or repeats.', 'schedule cancel':'Stop the event and future reminders.',
   'instagram setup':'Set up sources, channels, and delivery.', 'instagram list':'List sources and queued posts.', 'instagram preview':'Preview the latest post.', 'instagram pause':'Stop collection and delivery.', 'instagram resume':'Resume a paused source.', 'instagram remove':'Remove a source.',
   'settings view':'View server settings.', 'settings timezone':'Set the default timezone.', 'settings status':'Check delivery problems.',
   'access add':'Allow a member to use commands.', 'access remove':'Remove an owner-granted permission.', 'access list':'List owner-approved members.'
 };
-const labels={help:'Help',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
+const labels={help:'Help',portal:'Portal',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
 export function referenceFields() {
-  const order=['help','embed','schedule','instagram','settings','access'];
+  const order=['help','portal','embed','schedule','instagram','settings','access'];
   return [...commands].sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name)).map(command=>{
     const entries=command.options||[null];
     const lines=entries.map(sub=>{
@@ -25,6 +26,7 @@ export function referenceFields() {
 }
 const topics=[
   {value:'home',label:'All categories',description:'Choose which commands to view.'},
+  {value:'portal',label:'Portal',description:'Open this server’s portal or website setup.',root:'portal'},
   {value:'embeds',label:'Embeds',description:'Create, edit, and publish saved messages.',root:'embed'},
   {value:'events',label:'Schedules',description:'Events, meetings, and rotations.',root:'schedule'},
   {value:'feeds',label:'Instagram',description:'Sources and automatic roundups.',root:'instagram'},

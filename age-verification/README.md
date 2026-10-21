@@ -2,6 +2,8 @@
 
 Members, server owners, managers and reviewers use the same public site: **https://number-one.wispbyte.app/verify**. They need a Discord account, not GitHub, Wispbyte, environment variables or developer access. The bot operator maintains the application credentials once. Every community configures its own roles through the website.
 
+Staff can use `/portal open` for the current server's shareable member link, or `/portal setup` for its website settings. These global slash commands require the existing bot staff permissions and do not require the operator to enable each community. Website authorization is checked separately.
+
 ## Public workflow
 
 1. Sign in with Discord. OAuth requests `identify guilds` to show the account's communities; no email is requested. The server list is private to that account.
