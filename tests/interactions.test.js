@@ -318,7 +318,7 @@ test('simultaneous RSVPs retain both members after asynchronous permission check
 test('help dropdown updates the original menu without requiring staff access',async()=>{
   const h=harness({manager:false});const i=h.interaction();
   Object.assign(i,{isChatInputCommand:()=>false,isStringSelectMenu:()=>true,customId:'help:topic',values:['events']});
-  await h.app.dispatch(i);assert.ok(!i.deferred&&i.replied);assert.match(h.outputs[0].embeds[0].toJSON().title,/Number One/);assert.equal(h.outputs[0].components[0].components[0].type,2);h.store.close();
+  await h.app.dispatch(i);assert.ok(!i.deferred&&i.replied);assert.match(h.outputs[0].embeds[0].toJSON().title,/Number One/);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
 });
 test('command autocomplete responds with saved names without deferring or exposing another server',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'ours',name:'Welcome'});h.store.put('other','embed',{id:'secret',name:'Secret'});
@@ -343,7 +343,7 @@ test('empty saved lists offer a next step and delivery status omits internal fai
 test('/help sends its menu immediately without deferring or editing a webhook reply',async()=>{
   const h=harness();const i=h.interaction('help',null);
   i.deferReply=async()=>{throw Error('Help must not send a thinking response');};i.editReply=async()=>{throw Error('Help must not depend on editing a webhook response');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].components[0].components[0].type,2);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
 });
 
 test('empty schedule replies immediately without a thinking response or channel lookup',async()=>{

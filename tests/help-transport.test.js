@@ -56,7 +56,7 @@ test('real Discord SDK serializes /help as one immediate public callback contain
       data:{id:'567890123456789012',name:'help',type:1},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     await app.handle(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.ok(!(requests[0].body.data.flags & 64));
-    assert.match(requests[0].body.data.embeds[0].title,/Number One/);assert.equal(requests[0].body.data.components[0].components[0].custom_id,'help:manual');assert.equal(i.replied,true);assert.equal(i.deferred,false);
+    assert.match(requests[0].body.data.embeds[0].title,/Number One/);assert.equal(requests[0].body.data.components[0].components[0].custom_id,'help:topic');assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 
