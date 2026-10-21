@@ -1,5 +1,7 @@
 # Number One
 
+The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243. `/verify` contains the synthetic-only Age Verification Beta v0.1. Public verification stays locked until Discord settings are complete. See [WISPBYTE.md](WISPBYTE.md) for rollout and [age-verification/README.md](age-verification/README.md) for demo/test steps. No real ID uploads are accepted; slash-command permissions are unchanged.
+
 One working folder for Number One. Edit and run this project in place. Slash commands only; each Discord server has separate SQLite data. No theme-bot code is used.
 
 Production hosting is **Wispbyte**, with GitHub supplying code updates. See [WISPBYTE.md](WISPBYTE.md) for deployment and maintenance. Local startup below is for temporary testing only. GitHub Actions checks each push and pull request without using bot credentials.
