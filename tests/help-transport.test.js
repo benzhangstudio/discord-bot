@@ -28,7 +28,7 @@ test('real Discord SDK manual button sends all pages only to the clicker and con
     await app.handle(i);
     const opens=requests.filter(r=>r.route==='/users/@me/channels'),pages=requests.filter(r=>r.route===`/channels/${dm}/messages`);
     assert.equal(opens.length,1);assert.equal(opens[0].body.recipient_id,clicker);assert.equal(pages.length,3);
-    assert.ok(pages.every(r=>r.body.embeds.length===1));assert.match(requests.at(-1).body.content,/Full manual sent to your DMs/);assert.equal(i.deferred,false);
+    assert.ok(pages.every(r=>r.body.embeds.length===1));assert.match(requests.at(-1).body.data.content,/Full manual sent to your DMs/);assert.equal(requests.filter(r=>r.body.type===4).length,1);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 
@@ -100,11 +100,11 @@ for(const [name,sub,options] of fastCases)test(`real Discord SDK: /${name} ${sub
   } finally {client.destroy();store.close();}
 });
 
-for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'failure':'success'} completes its deferred response`,{timeout:2000},async()=>{
+for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'failure':'success'} sends only its final response`,{timeout:2000},async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[],guild='345678901234567890',channel='456789012345678901';let i;
   try {
     store.put(guild,'feed',{id:'saved',name:'Updates',channel,url:'https://example.com/rss'});
-    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,feedLoader:async()=>{assert.equal(i.replied,true);if(failed)throw new UserError('The feed service is unavailable. Try again later.');return[{key:'p',title:'Latest post',link:'https://example.com/post'}];}});
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,feedLoader:async()=>{assert.equal(i.acknowledgementScheduled,true);if(failed)throw new UserError('The feed service is unavailable. Try again later.');return[{key:'p',title:'Latest post',link:'https://example.com/post'}];}});
     client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});};
     client.rest.patch=async(route,request)=>{
       requests.push({method:'PATCH',body:request.body});
@@ -115,8 +115,7 @@ for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'fai
       data:{id:'567890123456789012',name:'instagram',type:1,options:[{type:1,name:'preview',options:[{name:'source',type:3,value:'saved'}]}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,{type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks])}]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(requests.length,2);assert.equal(requests[0].body.type,4);assert.equal(requests[1].method,'PATCH');
-    assert.match(requests[1].body.content,failed?/feed service is unavailable/:/Latest post/);assert.equal(requests[1].body.flags,undefined);assert.equal(i.replied,true);
+    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.match(requests[0].body.data.content,failed?/feed service is unavailable/:/Latest post/);assert.equal(requests[0].body.data.flags,64);assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 
@@ -124,17 +123,17 @@ test('real Discord SDK: a hung embed confirmation completes through a follow-up 
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[],guild='345678901234567890',channel='456789012345678901';let sent=0;
   try {
     store.put(guild,'embed',{id:'saved',name:'Welcome',embed:{description:'Hello'}});
-    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,replyEditTimeoutMs:5});
+    const app=createApp(client,store,{confirmationTransport:sdkConfirmation,replyEditTimeoutMs:5,acknowledgementDelayMs:2});
     const result=content=>({id:'789012345678901234',channel_id:channel,type:0,content,author:{id:'234567890123456789',username:'Number One',discriminator:'0',avatar:null,bot:true},timestamp:new Date().toISOString(),edited_timestamp:null,tts:false,mention_everyone:false,mentions:[],mention_roles:[],attachments:[],embeds:[],components:[],flags:64});
-    client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});if(request.body.type===4)return;return result(request.body.content);};
+    client.rest.post=async(route,request)=>{requests.push({method:'POST',body:request.body});if(request.body.type===5)return;return result(request.body.content);};
     client.rest.patch=()=>new Promise(()=>{});
     client.rest.delete=async()=>{throw Error('Must not delete the completed waiting response');};
     const i=new ChatInputCommandInteraction(client,{
       id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-interaction-token',version:1,guild_id:guild,channel:{id:channel,type:0},
       data:{id:'567890123456789012',name:'embed',type:1,options:[{type:1,name:'send',options:[{name:'message',type:3,value:'saved'},{name:'channel',type:7,value:channel}]}],resolved:{channels:{[channel]:{id:channel,name:'announcements',type:0,permissions:'3072'}}}},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
-    const target={id:channel,type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks]),send:async()=>{sent++;return{id:'posted',url:'https://discord.com/channels/server/channel/posted'};}};
+    const target={id:channel,type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks]),send:async()=>{sent++;await new Promise(resolve=>setTimeout(resolve,10));return{id:'posted',url:'https://discord.com/channels/server/channel/posted'};}};
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,target]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,4);assert.match(requests[1].body.content,/Message shared/);assert.equal(requests[1].body.flags,64);assert.equal(i.replied,true);
+    await app.dispatch(i);assert.equal(sent,1);assert.equal(requests.length,2);assert.equal(requests[0].body.type,5);assert.match(requests[1].body.content,/Message sent/);assert.equal(requests[1].body.flags,64);assert.equal(i.replied,true);
   } finally {client.destroy();store.close();}
 });

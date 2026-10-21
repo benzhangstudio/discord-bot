@@ -2,7 +2,28 @@ import https from 'node:https';
 
 // Interaction confirmations use a separate connection, not the shared SDK queue.
 // Never log the URL: its path contains the private interaction token.
-export function sendInteractionResponse(i,method,payload,{request=https.request,timeoutMs=8000}={}) {
+const cooldowns=new WeakMap();
+export async function sendInteractionResponse(i,method,payload,{request=https.request,timeoutMs=8000}={}) {
+  let limits=cooldowns.get(request);
+  if (!limits) {limits=new Map();cooldowns.set(request,limits);}
+  const deadline=Date.now()+timeoutMs;
+  for (let attempt=0;attempt<3;attempt++) {
+    const wait=Math.max(0,(limits.get(i.applicationId)||0)-Date.now());
+    if (wait>0) {
+      if (wait>=deadline-Date.now()) throw Object.assign(Error('Discord confirmation is rate limited'),{code:'HTTP_429',retryAfterMs:wait});
+      await new Promise(resolve=>setTimeout(resolve,wait));
+    }
+    try {
+      return await requestOnce(i,method,payload,{request,timeoutMs:Math.max(1,deadline-Date.now())});
+    } catch(error) {
+      if (error.code!=='HTTP_429' || !Number.isFinite(error.retryAfterMs)) throw error;
+      const delay=error.retryAfterMs+25;
+      limits.set(i.applicationId,Date.now()+delay);
+      if (attempt===2 || delay>=deadline-Date.now()) throw error;
+    }
+  }
+}
+function requestOnce(i,method,payload,{request,timeoutMs}) {
   if(!/^\d{17,20}$/.test(i.applicationId)||!i.token)throw Error('Missing interaction credentials');
   const {allowedMentions,flags,...body}=payload;
   if(allowedMentions)body.allowed_mentions={...allowedMentions};
@@ -15,11 +36,23 @@ export function sendInteractionResponse(i,method,payload,{request=https.request,
     timer=setTimeout(()=>{finish(Object.assign(Error('Discord confirmation timed out'),{code:'REPLY_TIMEOUT'}));req?.destroy();},timeoutMs);
     try {
       req=request(url,{method,headers:{'Content-Type':'application/json','User-Agent':'NumberOneDiscordBot (https://github.com/benzhangstudio/number-one, 0.1)'}},response=>{
-        if(response.statusCode<200||response.statusCode>=300){response.resume();finish(Object.assign(Error('Discord rejected the confirmation'),{code:`HTTP_${response.statusCode}`}));return;}
         let size=0;const chunks=[];
         response.on('data',chunk=>{size+=chunk.length;if(size>500000){finish(Error('Discord confirmation was too large'));response.destroy();}else chunks.push(chunk);});
         response.on('error',()=>finish(Error('Discord confirmation connection failed')));
-        response.on('end',()=>{let result={};try{result=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}catch{}i.replied=true;finish(null,result);});
+        response.on('end',()=>{
+          let result={};
+          try {result=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');} catch {}
+          if (response.statusCode>=200 && response.statusCode<300) {
+            i.replied=true;finish(null,result);
+          } else {
+            const error=Object.assign(Error('Discord rejected the confirmation'),{code:'HTTP_'+response.statusCode});
+            if (response.statusCode===429) {
+              const values=[result.retry_after,response.headers?.['retry-after'],response.headers?.['x-ratelimit-reset-after']].filter(value=>value!==undefined&&value!==null&&value!=='').map(Number).filter(value=>Number.isFinite(value)&&value>=0);
+              if (values.length) error.retryAfterMs=Math.ceil(Math.max(...values)*1000);
+            }
+            finish(error);
+          }
+        });
       });
       req.on('error',()=>finish(Error('Discord confirmation connection failed')));
       req.end(JSON.stringify(body));

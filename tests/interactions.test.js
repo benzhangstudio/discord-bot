@@ -4,7 +4,6 @@ import {EventEmitter} from 'node:events';
 import {PermissionsBitField,PermissionFlagsBits as P,ActionRowBuilder} from 'discord.js';
 import {createApp} from '../src/app.js';
 import {Store} from '../src/store.js';
-import {WORKING_MESSAGE} from '../src/responses.js';
 import {commands} from '../src/commands.js';
 
 function harness({manager=true,visible=true,privateChannel=false,guildId='server-a',replyEditTimeoutMs=8000,operationTimeoutMs=15000}={}) {
@@ -17,7 +16,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
   const interaction=(name,sub,values={})=>({
     guildId,guild,user:{id:member.id},member,memberPermissions:perms,commandName:name,inGuild:()=>true,isButton:()=>false,isModalSubmit:()=>false,isChatInputCommand:()=>true,
     options:{getSubcommand:()=>sub,getString:k=>values[k]??null,getInteger:k=>values[k]??null,getRole:k=>values[k]?{id:values[k]}:null,getUser:k=>values[k]?{id:values[k]}:null,getChannel:()=>channel},
-    reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;if(p.content!==WORKING_MESSAGE)outputs.push(p);},
+    reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);},
     editReply:async function(p){assert.ok(this.deferred||this.replied);outputs.push(p);},
     deferReply:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
     deferUpdate:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
@@ -97,7 +96,7 @@ test('help sends no DM until the manual button is clicked, then sends all pages 
 test('members cannot use the manual button and blocked DMs get a clear interaction reply',async()=>{
   const member=harness({manager:false});let sends=0;
   const denied=Object.assign(member.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});denied.user.send=async()=>{sends++;};await member.app.dispatch(denied);assert.equal(sends,0);assert.match(member.outputs[0].content,/You do not have permission/);member.store.close();
-  const h=harness();const blocked=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});blocked.user.send=async()=>{throw Object.assign(Error('Cannot send messages'),{code:50007});};await h.app.dispatch(blocked);assert.match(h.outputs.at(-1).content,/Enable direct messages/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
+  const h=harness();const blocked=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});blocked.user.send=async()=>{throw Object.assign(Error('Cannot send messages'),{code:50007});};await h.app.dispatch(blocked);assert.match(h.outputs.at(-1).content,/Enable direct messages/);assert.equal(h.outputs.at(-1).flags,64);h.store.close();
 });
 
 for(const mode of ['stalled','partial'])test(`manual DM delivery handles ${mode} requests without claiming success or retrying`,{timeout:1000},async()=>{
@@ -187,10 +186,10 @@ test('an announcement removed while permissions are being checked is not posted'
   await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.equal(h.sent.length,0);assert.match(h.outputs[0].content,/no longer available/);h.store.close();
 });
 
-test('a failed confirmation edit sends the result separately without publishing twice',async()=>{
+test('a fast send replies with success without editing or using a follow-up',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=async()=>{throw Error('PATCH failed');};i.followUp=async p=>followups.push(p);
-  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,1);assert.match(followups[0].content,/Message shared:/);assert.equal(followups[0].flags,64);h.store.close();
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(h.outputs.at(-1).content,/Message sent/);h.store.close();
 });
 
 test('invalid reminder settings do not partially overwrite an existing event',async()=>{
@@ -215,13 +214,13 @@ test('combined embed form saves a renamed draft, closes, reopens and publishes f
     const i=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',isUserSelectMenu:()=>action==='user',customId:`embed:${d.id}:${action}`,values:[value]});await h.app.dispatch(i);assert.equal(i.replied,true);
   }
   const publish=button('publish');publish.id='987654321098765432';await h.app.handle(publish);
-  assert.equal(h.sent.length,1);assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[h.member.id]});assert.equal(h.sent[0].nonce,publish.id);assert.equal(h.sent[0].enforceNonce,true);assert.ok(h.store.get('server-a','embed',d.id));assert.match(h.outputs.at(-1).content,/Message shared/);h.store.close();
+  assert.equal(h.sent.length,1);assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[h.member.id]});assert.equal(h.sent[0].nonce,publish.id);assert.equal(h.sent[0].enforceNonce,true);assert.ok(h.store.get('server-a','embed',d.id));assert.match(h.outputs.at(-1).content,/Message sent/);h.store.close();
 });
 
-test('a stalled confirmation request cannot hold a successful embed send indefinitely or trigger a repost', {timeout:2000},async()=>{
+test('a fast send bypasses stalled webhook confirmations without reposting', {timeout:2000},async()=>{
   const h=harness({replyEditTimeoutMs:10});h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=()=>new Promise(()=>{});i.followUp=async p=>followups.push(p);i.deleteReply=async()=>{throw Error('Must not delete the completed result');};
-  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,1);assert.match(followups[0].content,/Message shared/);assert.equal(followups[0].flags,64);h.store.close();
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(h.outputs.at(-1).content,/Message sent/);assert.equal(i.deferred,undefined);h.store.close();
 });
 
 for(const stage of ['channel','role','member','send'])test(`Publish stops and reports a never-returning ${stage} request`,{timeout:1000},async()=>{
@@ -291,7 +290,7 @@ test('legacy /events returns a useful reply without fetching a member',async()=>
 test('slow channel work is acknowledged before the REST request',async()=>{
   const h=harness();const e={id:'event',title:'Test',channel:h.channel.id,start:Date.now()+600000,duration:60,zone:'America/New_York',kind:'event',repeat:'none'};
   h.store.put('server-a','event',e);const i=h.interaction('schedule','show',{id:e.id});i.guild.channels.cache.clear();
-  i.guild.channels.fetch=async()=>{assert.equal(i.replied,true);return h.channel;};
+  i.guild.channels.fetch=async()=>{assert.equal(i.acknowledgementScheduled,true);return h.channel;};
   await h.app.handle(i);assert.equal(h.outputs[0].embeds[0].toJSON().title,'Test');h.store.close();
 });
 test('forms remain the initial response and do not defer before showModal',async()=>{

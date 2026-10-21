@@ -8,12 +8,12 @@ import {startWorker} from './worker.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
-import {acknowledge,respond,updateResponse,reportFailure,safeError,step,withDeadline} from './responses.js';
+import {acknowledge,respond,updateResponse,reportFailure,safeError,step,withDeadline,cancelAcknowledgement} from './responses.js';
 import {helpMenu,manualMessages} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
-export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000}={}) {
+export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000,acknowledgementDelayMs}={}) {
 const privateReply=content=>({content,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
@@ -105,12 +105,13 @@ async function publishEmbed(i,id,channelId,roleId,user) {
   needStaff(i);const ready=item(i,'embed',id);validateEmbed(ready);
   const message=await step(i,()=>channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]},...(i.id?{nonce:i.id,enforceNonce:true}:{})}),{uncertain:true});
   console.log('Embed published; sending its confirmation.');
-  return respond(i,privateReply(`Message shared: ${message.url}\nYour saved draft is still available with /embed edit.`),{editTimeoutMs:replyEditTimeoutMs});
+  return respond(i,privateReply(`Message sent. ${message.url}`),{editTimeoutMs:replyEditTimeoutMs});
 }
 
 async function handle(i) {
   i.confirmationTransport=confirmationTransport||i.confirmationTransport;
   i.operationTimeoutMs=operationTimeoutMs;
+  i.acknowledgementDelayMs=acknowledgementDelayMs;
   i.operationDeadline=Date.now()+operationTimeoutMs;
   if (i.isAutocomplete?.()) {
     if (!i.inGuild() || !staff(i)) {
@@ -189,6 +190,7 @@ async function handle(i) {
         throw new UserError('The manual could not be delivered in full. Check your DMs and privacy settings before requesting it again.');
       }
     }
+    console.log('Full manual delivered ('+delivered+' pages); sending confirmation.');
     return respond(i,privateReply('Full manual sent to your DMs.'));
   }
   if(i.isStringSelectMenu?.()) {
@@ -352,5 +354,5 @@ let stopWorker;
 client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);});
 client.on('error',error=>console.error(`Discord client error (${error.code || error.name}): ${safeError(error)}`));
 client.on('guildDelete',guild=>console.log(`Removed from server ${guild.id}; saved data retained for operator-managed deletion.`));
-return {handle,dispatch,stop:()=>stopWorker?.()};
+return {handle:async i=>{try{return await handle(i);}catch(error){cancelAcknowledgement(i);throw error;}},dispatch,stop:()=>stopWorker?.()};
 }

@@ -2,7 +2,26 @@ import {MessageFlags} from 'discord.js';
 import {sendInteractionResponse} from './interaction-transport.js';
 import {UserError} from './user-error.js';
 import {randomUUID} from 'node:crypto';
-export const WORKING_MESSAGE='Request received. If no result arrives within 30 seconds, delivery could not be confirmed. Check the destination before retrying; your saved work is safe.';
+const acknowledgements=new WeakMap();
+export function cancelAcknowledgement(i) {
+  const pending=acknowledgements.get(i);
+  if (pending?.timer) clearTimeout(pending.timer);
+  acknowledgements.delete(i);
+  i.acknowledgementScheduled=false;
+}
+async function finishAcknowledgement(i) {
+  const pending=acknowledgements.get(i);
+  try {
+    if (pending?.timer) {
+      clearTimeout(pending.timer);
+    } else if (pending?.promise) {
+      await pending.promise;
+      if (pending.error) throw pending.error;
+    }
+  } finally {
+    cancelAcknowledgement(i);
+  }
+}
 export async function withDeadline(promise,ms=15000,message='This request took too long. Please try again later.') {
   let timer;
   try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new UserError(message)),ms);})]);}
@@ -15,17 +34,25 @@ export function step(i,promise,{uncertain=false}={}) {
   return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'Discord or the feed service took too long to respond. Your saved work is safe; try again later.');
 }
 export async function acknowledge(i,update=false) {
-  if(i.deferred || i.replied)return;
-  if(update)return i.deferUpdate();
-  return withDeadline(i.reply({content:WORKING_MESSAGE,flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}}),8000,'Discord did not acknowledge the request.');
+  if (i.deferred || i.replied || acknowledgements.has(i)) return;
+  if (update) return i.deferUpdate();
+  const pending={};
+  i.acknowledgementScheduled=true;
+  pending.timer=setTimeout(()=>{
+    pending.timer=null;
+    pending.promise=withDeadline(i.deferReply({flags:MessageFlags.Ephemeral}),8000,'Discord did not acknowledge the request.').catch(error=>{pending.error=error;});
+  },i.acknowledgementDelayMs??1500);
+  acknowledgements.set(i,pending);
 }
 export async function respond(i,payload,{editTimeoutMs=8000,fallbackTimeoutMs=8000}={}) {
+  await finishAcknowledgement(i);
   if(i.deferred || i.replied) {
     const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);
     const {flags,...body}=payload;
     try {
       return await withDeadline(transport?transport(i,'PATCH',body,{timeoutMs:editTimeoutMs}):i.editReply(body),editTimeoutMs,'Discord did not confirm the response update.');
     } catch(error) {
+      if(error.code==='HTTP_429'){error.replyDeliveryFailed=true;error.result=payload;throw error;}
       if([10015,10062].includes(Number(error.code)))throw error;
       console.warn(`Confirmation update failed (${error.code||error.name}); trying a separate, time-limited follow-up.`);
       const fallbackFlags=flags??(i.ephemeral===false?undefined:MessageFlags.Ephemeral);
@@ -45,10 +72,10 @@ export function safeError(error) {
 }
 export async function reportFailure(i,error,log=console.error) {
   const reference=randomUUID().slice(0,8),code=String(error.code || error.name || 'Error');
-  log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   if(error.replyDeliveryFailed){
-    log(`[${reference}] Result delivery failed on both independent attempts; request was not repeated. The initial reply contains the check-before-retrying instruction.`);return;
+    log(`[${reference}] Action result is ready; its confirmation is unavailable (${code}). The action was not repeated.`);return;
   }
+  log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   let message;
   if(Number(error.code)===50013 || Number(error.code)===50001)message='Number One cannot access that channel or perform that action. Ask a server administrator to check its permissions.';
   else if(Number(error.code)===10062)message='Discord expired this action. Run the command again.';
