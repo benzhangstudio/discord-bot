@@ -86,24 +86,14 @@ test('owner access checks reject nonmembers, full grant lists, and ownership cha
   }
 });
 
-test('help sends no DM until the manual button is clicked, then sends all pages to that clicker only',async()=>{
-  const h=harness(),dm=[];const slash=h.interaction('help');slash.user.send=async p=>dm.push(p);await h.app.handle(slash);assert.equal(dm.length,0);
-  const button=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});button.user.send=async p=>dm.push(p);
-  await h.app.handle(button);assert.equal(dm.length,3);assert.match(h.outputs.at(-1).content,/Full manual sent to your DMs/);assert.equal(h.sent.length,0);
-  const again=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});again.user.send=async p=>dm.push(p);await h.app.dispatch(again);assert.equal(dm.length,3);assert.match(h.outputs.at(-1).content,/wait 30 seconds/);h.store.close();
-});
-
-test('members cannot use the manual button and blocked DMs get a clear interaction reply',async()=>{
-  const member=harness({manager:false});let sends=0;
-  const denied=Object.assign(member.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});denied.user.send=async()=>{sends++;};await member.app.dispatch(denied);assert.equal(sends,0);assert.match(member.outputs[0].content,/You do not have permission/);member.store.close();
-  const h=harness();const blocked=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});blocked.user.send=async()=>{throw Object.assign(Error('Cannot send messages'),{code:50007});};await h.app.dispatch(blocked);assert.match(h.outputs.at(-1).content,/Enable direct messages/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
-});
-
-for(const mode of ['stalled','partial'])test(`manual DM delivery handles ${mode} requests without claiming success or retrying`,{timeout:1000},async()=>{
-  const h=harness({operationTimeoutMs:20});let attempts=0;
-  const i=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});
-  i.user.send=async()=>{attempts++;if(mode==='stalled')return new Promise(()=>{});if(attempts===2)throw Error('Network lost');};
-  await h.app.dispatch(i);assert.match(h.outputs.at(-1).content,mode==='stalled'?/could not be delivered/:/stopped after 1 of 3/);assert.equal(attempts,mode==='stalled'?1:2);h.store.close();
+test('help and retired manual buttons never send a DM and finish immediately',async()=>{
+  const h=harness();let dms=0;
+  const slash=h.interaction('help');slash.user.send=async()=>{dms++;};await h.app.handle(slash);
+  assert.equal(h.outputs[0].components.length,1);assert.equal(slash.deferred,undefined);
+  const old=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});
+  old.user.send=async()=>{dms++;};await h.app.dispatch(old);
+  assert.equal(dms,0);assert.equal(old.replied,true);assert.ok(!old.deferred);
+  assert.match(h.outputs.at(-1).content,/no longer available.*\/help/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
 });
 for(const access of ['manager','administrator'])for(const [name,values] of Object.entries(scenarios))test(`command audit (${access}): /${name} finishes with a visible response`,{timeout:2000},async()=>{
   const h=harness();

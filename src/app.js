@@ -8,8 +8,8 @@ import {startWorker} from './worker.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
-import {acknowledge,respond,updateResponse,reportFailure,safeError,step,withDeadline,cancelAcknowledgement} from './responses.js';
-import {helpMenu,manualMessages} from './help.js';
+import {acknowledge,respond,updateResponse,reportFailure,safeError,step,cancelAcknowledgement} from './responses.js';
+import {helpMenu} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 
@@ -95,7 +95,6 @@ function eventView(e) {
 }
 
 const accessCommands=createAccessCommands(store);
-const manualRequests=new Map();
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
@@ -186,38 +185,8 @@ async function handle(i) {
     console.log('Discord accepted /schedule list.');
     return;
   }
-  if (i.isButton() && i.customId==='help:manual') {
-    needStaff(i);
-    const key=i.guildId+':'+i.user.id;
-    if ((manualRequests.get(key)||0)>Date.now()) {
-      throw new UserError('The manual was just requested. Check your DMs, or wait 30 seconds before trying again.');
-    }
-    // Remove expired entries; the map stores only recent manual requests.
-    for (const [saved,expires] of manualRequests) {
-      if (expires<=Date.now()) manualRequests.delete(saved);
-    }
-    manualRequests.set(key,Date.now()+30000);
-    await acknowledge(i);
-    const pages=manualMessages({timezone:settings(i.guildId).zone});
-    let delivered=0;
-    try {
-      for (const page of pages) {
-        needStaff(i);
-        await step(i,()=>i.user.send(page));
-        delivered++;
-      }
-    } catch(error) {
-      if (delivered>0) {
-        throw new UserError('Manual delivery stopped after '+delivered+' of '+pages.length+' pages. Check your DMs before requesting it again.');
-      } else if (Number(error.code)===50007) {
-        manualRequests.delete(key);
-        throw new UserError('I could not DM you. Enable direct messages from this server, then click DM full manual again.');
-      } else {
-        throw new UserError('The manual could not be delivered in full. Check your DMs and privacy settings before requesting it again.');
-      }
-    }
-    console.log('Full manual delivered ('+delivered+' pages); sending confirmation.');
-    return respond(i,reply('Full manual sent to your DMs.'));
+  if(i.isButton()&&i.customId==='help:manual') {
+    return respond(i,reply('The DM manual is no longer available. Use /help to browse commands.'));
   }
   if(i.isStringSelectMenu?.()) {
     if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
