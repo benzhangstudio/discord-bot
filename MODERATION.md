@@ -12,26 +12,27 @@ This module runs inside the existing bot and uses its server-scoped SQLite store
 6. Set `blocked-words` (comma-separated literal phrases), `mention-limit`, `spam-limit`, `block-invites` and `retention-days` through `/mod-settings set`. Defaults: filters off, mention limit 8, six messages per ten seconds, invites blocked when filters are enabled, retention 365 days. Set automod false to stop enforcement immediately.
 7. Post `/appeals panel channel:#appeals`. Publish an external staff contact for members who are banned or have left. Staff must give affected members their case ID through the server's established notification process; this bot does not send unsolicited DMs.
 
-Startup registers eleven root commands, including `/mod`, `/mod-settings`, `/appeals` and `/emergency`. `/help` includes their required inputs and one-line descriptions. No token, new database migration command or replacement upload is required for this update.
+Startup registers familiar standalone moderation commands including `/ban`, `/kick`, `/warn`, `/mute`, `/timeout`, `/purge`, `/warnings` and `/modlogs`. The old `/mod` group is retired automatically. `/help` groups moderation actions together and lists required inputs. Case fields offer suggestions by member, action, reason or ID. No token, database migration command or replacement upload is required for this update.
 
 ## Everyday workflow
 
 | Command | Behavior |
 | --- | --- |
-| `/mod warn user reason` | Record a warning without changing roles or Discord permissions. |
-| `/mod timeout user minutes reason` | Native Discord mute for 1–40320 minutes (28 days); Discord expires it even if the bot is offline. |
-| `/mod untimeout user reason` | Remove the native timeout. |
-| `/mod kick user reason` | Remove a current member. Does not prevent rejoining. |
-| `/mod ban user reason` | Ban a current member without deleting their previous messages. |
-| `/mod unban user reason` | Remove an existing ban; does not automatically rejoin the member. |
-| `/mod purge count reason confirm:yes` | Scan up to 100 recent messages in the current text/announcement channel; skip pinned and nearly fourteen-day-old messages. Record selected IDs and confirmed deletion count. |
-| `/mod history user page` | Page through cases for a member, including voided warnings. |
-| `/mod case case` | Show the case, outcome and recent staff notes. |
-| `/mod note case reason` | Append a staff note. |
-| `/mod void case reason` | Void an active warning while retaining its original reason/history. It does not reverse a sanction. |
+| `/warn user reason` | Record a warning without changing roles or Discord permissions. |
+| `/timeout user duration` or `/mute user duration` | Native Discord timeout; use `10m`, `1h`, `1d` or `1w`, up to 28 days. Reason is optional. Discord expires it even if the bot is offline. |
+| `/untimeout user reason` | Remove the native timeout. |
+| `/kick user reason` | Remove a current member. Does not prevent rejoining. |
+| `/ban user reason` | Ban a current member without deleting their previous messages. |
+| `/unban user reason` | Remove an existing ban; does not automatically rejoin the member. |
+| `/purge count` | Scan up to 100 recent messages in this text/announcement channel; skip pinned and nearly fourteen-day-old messages. Optional `user` filters to one member; optional `reason` records context. No extra confirmation text is required. |
+| `/warnings user page` | Show a member’s active warnings. |
+| `/modlogs user page` | Page through cases for a member, including voided warnings. |
+| `/case id` | Show the case, outcome and recent staff notes. |
+| `/reason case reason` | Append a staff note. |
+| `/delwarn case reason` | Void an active warning while retaining its original reason/history. It does not reverse a sanction. |
 | `/mod-settings view` | Show policy, log delivery issues and unresolved case IDs. |
 
-Member actions protect the owner, bot accounts, administrators, configured moderators, the invoking moderator, and members at or above Number One's role. Non-owner moderators also cannot act on peers or higher roles. Permissions, owner and role hierarchy are refreshed during command preflight. Reasons are required; stored/rendered text cannot trigger mentions. Moderation records and appeals are private to staff; the appeal panel is intentionally posted publicly to its selected channel.
+Member actions protect the owner, bot accounts, administrators, configured moderators, the invoking moderator, and members at or above Number One's role. Non-owner moderators also cannot act on peers or higher roles. Permissions, owner and role hierarchy are refreshed during command preflight. Warnings and case notes require a reason; common sanctions accept an optional reason and record “No reason provided” if omitted. `/unmute` aliases `/untimeout`. Stored/rendered text cannot trigger mentions. Moderation records and appeals are private to staff; the appeal panel is intentionally posted publicly to its selected channel.
 
 Cases use interaction/message IDs, scoped to each server. A reservation is stored before a Discord mutation. Repeated interaction IDs cannot repeat that mutation. Confirmed outcomes and their log-outbox events are committed together. The underlying SQLite database remains editable by its operator; this is an operational audit history, not tamper-proof forensic storage.
 
@@ -67,9 +68,9 @@ Do not use a mass role replacement or channel overwrite replacement as an emerge
 
 A network timeout is not proof of failure. A mutation can finish at Discord after the bot stops waiting. Such a case is `uncertain`; a process interrupted during work leaves `pending`. Additional actions for that same target are blocked, including after restart.
 
-The current owner must inspect Discord and its audit log, allow any in-flight request to settle, then use `/mod reconcile case:... outcome:succeeded|failed reason:...`. This records the observed result; it does not execute the mutation again. Never reconcile speculatively just to remove the block. For a partially applied/restored emergency operation, record the verified case outcome, resolve writing conflicts manually, then run `/emergency off` to finish restoring the saved journal.
+The current owner must inspect Discord and its audit log, allow any in-flight request to settle, then use `/mod-reconcile case:... outcome:succeeded|failed reason:...`. This records the observed result; it does not execute the mutation again. Never reconcile speculatively just to remove the block. For a partially applied/restored emergency operation, record the verified case outcome, resolve writing conflicts manually, then run `/emergency off` to finish restoring the saved journal.
 
-Case log sends run every 30 seconds. Queued logs are attempted only when the configured channel is private to @everyone. A claimed log whose send times out becomes `uncertain`; a crash may leave it `sending`. Those sends are never blindly retried. `/mod-settings view` shows delivery issues; inspect the destination and use `/mod case` as the source of truth. Fix inaccessible channel permissions to allow queued logs to proceed. Confirmation delivery failure never repeats the moderation action.
+Case log sends run every 30 seconds. Queued logs are attempted only when the configured channel is private to @everyone. A claimed log whose send times out becomes `uncertain`; a crash may leave it `sending`. Those sends are never blindly retried. `/mod-settings view` shows delivery issues; inspect the destination and use `/case` as the source of truth. Fix inaccessible channel permissions to allow queued logs to proceed. Confirmation delivery failure never repeats the moderation action.
 
 This is a single-process service. Run one Number One instance per SQLite file; do not share the file among replicas. Retention removes completed cases, their appeals and delivery metadata after the configured age, checked every 30 seconds. Unresolved cases and cases with open appeals are retained for review. Channel log messages and backups need separate deletion/retention policies. Case content consists of staff-supplied reasons, member/staff IDs, timestamps, message IDs and action metadata; avoid adding sensitive evidence to reasons. Operator-assisted data access/deletion must preserve active sanctions and required incident records under the server's published policy.
 

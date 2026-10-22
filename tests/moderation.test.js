@@ -9,11 +9,13 @@ import {Store} from '../src/store.js';
 import {Moderation} from '../src/moderation-core.js';
 import {createApp} from '../src/app.js';
 import {moderationCommands} from '../src/moderation-commands.js';
+import {durationMinutes} from '../src/moderation.js';
+import {suggestions} from '../src/suggestions.js';
 const never=()=>new Promise(()=>{});
 const perm=bits=>new PermissionsBitField(bits);
 const scenarios={
- 'mod warn':{},'mod kick':{},'mod ban':{},'mod unban':{},'mod untimeout':{},'mod timeout':{minutes:10},'mod purge':{count:10,confirm:'yes'},
- 'mod case':{},'mod history':{},'mod note':{},'mod void':{},'mod reconcile':{case:'uncertain',outcome:'failed'},
+ warn:{},kick:{},ban:{},unban:{},untimeout:{},unmute:{},timeout:{duration:'10m'},mute:{duration:'1h'},purge:{count:10},
+ case:{id:'saved'},warnings:{},modlogs:{},reason:{},delwarn:{},'mod-reconcile':{case:'uncertain',outcome:'failed'},
  'mod-settings view':{},'mod-settings set':{'retention-days':90},'mod-settings clear-role':{kind:'privacyRole'},
  'appeals panel':{},'appeals list':{},'appeals show':{appeal:'appeal'},'appeals review':{appeal:'appeal',decision:'accepted'},
  'appeals record':{statement:'Externally received appeal'},
@@ -34,16 +36,41 @@ function harness({authorized=true}={}){
  store.put('guild','mod-case',{id:'uncertain',guild:'guild',actor:'original-mod',target:'other',action:'warn',reason:'Original reason',created:Date.now(),state:'uncertain',events:[]});
  core.appeal('guild','appeal','target','saved','Please review');
  let seq=0;
- function interaction(name,sub,values={}){const v={user:'target',case:'saved',reason:'Test reason',...values};return {
+ function interaction(name,sub,values={}){
+  if(sub&&typeof sub==='object'){values=sub;sub=undefined;}
+  if(name==='mod')name=({history:'modlogs',note:'reason',void:'delwarn',reconcile:'mod-reconcile'})[sub]||sub;
+  const v={user:name==='purge'?null:'target',id:'saved',case:'saved',duration:'10m',reason:'Test reason',...values};return {
   id:String(++seq),guildId:'guild',guild,channelId:'channel',user:actor.user,member:actor,memberPermissions:actor.permissions,commandName:name,
   inGuild:()=>true,isChatInputCommand:()=>true,isButton:()=>false,isModalSubmit:()=>false,
-  options:{getSubcommand:()=>sub,getUser:()=>({id:v.user}),getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
+  options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
   reply:async function(p){this.replied=true;outputs.push(p);},deferReply:async function(){this.deferred=true;},editReply:async p=>outputs.push(p),followUp:async p=>outputs.push(p),showModal:async p=>outputs.push(p.toJSON()),
  };}
  return {app,store,core,client,actor,bot,target,channel,outputs,effects,interaction,close(){app.stop();store.close();}};
 }
 test('moderation scenarios exactly cover every registered subcommand',()=>{
- assert.deepEqual(Object.keys(scenarios).sort(),moderationCommands.flatMap(c=>c.options.map(s=>c.name+' '+s.name)).sort());
+ assert.deepEqual(Object.keys(scenarios).sort(),moderationCommands.flatMap(c=>c.options.some(o=>o.type===1)?c.options.map(s=>c.name+' '+s.name):[c.name]).sort());
+});
+test('common commands are standalone with simple inputs and no mandatory purge confirmation',()=>{
+ assert.ok(!moderationCommands.some(c=>c.name==='mod'));
+ for(const name of ['ban','kick','warn','mute','timeout','purge','warnings','modlogs','case'])assert.ok(moderationCommands.find(c=>c.name===name).options.every(o=>o.type!==1));
+ assert.deepEqual(moderationCommands.find(c=>c.name==='purge').options.filter(o=>o.required).map(o=>o.name),['count']);
+ for(const c of moderationCommands){let optional=false;for(const o of c.options){if(o.type===1)continue;if(!o.required)optional=true;else assert.equal(optional,false,c.name);}}
+});
+test('human-readable durations accept common units and reject invalid or excessive values',()=>{
+ for(const [value,minutes]of [['10m',10],['1h',60],['2d',2880],['4w',40320],[' 1 H ',60]])assert.equal(durationMinutes(value),minutes);
+ for(const value of ['',0,'forever','-1h','1.5h','29d','0m','99999999999999999999w'])assert.throws(()=>durationMinutes(value),/duration/);
+});
+test('simple ban records an omitted reason and replies with a clear result',async()=>{
+ const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);assert.ok(h.outputs.at(-1).content.includes(c.id));}finally{h.close();}
+});
+test('warning list hides voided warnings while modlogs retains them',async()=>{
+ const h=harness();try{await h.app.handle(h.interaction('delwarn'));await h.app.handle(h.interaction('warnings'));assert.match(h.outputs.at(-1).content,/No active warnings/);await h.app.handle(h.interaction('modlogs'));assert.match(h.outputs.at(-1).content,/voided/);}finally{h.close();}
+});
+test('case suggestions search by member name, scope servers, and deny unprivileged members',()=>{
+ const h=harness();try{const c=h.core.get('guild','saved');c.details={memberName:'Alex'};h.store.put('guild','mod-case',c);const i=h.interaction('case');i.options.getFocused=()=>({name:'id',value:'Alex'});assert.deepEqual(suggestions(h.store,i,{canManage:true}).map(v=>v.value),['saved']);i.guildId='other';assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);i.guildId='guild';i.memberPermissions=perm([P.ManageGuild]);i.user={id:'manager'};assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);}finally{h.close();}
+});
+test('purge member filter excludes other members without deleting pinned messages',async()=>{
+ const h=harness();try{h.channel.messages.fetch=async()=>new Map([['a',{id:'a',author:{id:'target'},createdTimestamp:Date.now()}],['b',{id:'b',author:{id:'other'},createdTimestamp:Date.now()}],['c',{id:'c',pinned:true,author:{id:'target'},createdTimestamp:Date.now()}]]);await h.app.handle(h.interaction('purge',{count:20,user:'target'}));assert.deepEqual(h.effects,[['a']]);}finally{h.close();}
 });
 for(const [name,values]of Object.entries(scenarios)){
  test(`authorized scenario /${name} finishes`,async()=>{

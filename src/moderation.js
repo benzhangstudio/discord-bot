@@ -1,6 +1,6 @@
 import {PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
 import {Moderation,clean} from './moderation-core.js';
-import {moderationCommands} from './moderation-commands.js';
+import {moderationCommands,moderationActions} from './moderation-commands.js';
 import {UserError} from './user-error.js';
 import {acknowledge,respond,withDeadline} from './responses.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
@@ -8,8 +8,13 @@ const has=(m,p)=>!!m?.permissions?.has(p);
 const owner=i=>i.user.id===i.guild.ownerId;
 const must=(condition,message)=>{if(!condition)throw new UserError(message);};
 const payload=content=>({content:clean(content).slice(0,1900),allowedMentions:{parse:[]}});
-const caseText=c=>`Case ${c.id} · ${c.action} · ${c.state}\nMember: ${c.target}\nReason: ${c.reason}${c.state==='uncertain'||c.state==='pending'?'\nInspect Discord before another action. The owner can record the verified outcome with /mod reconcile.':c.state==='failed'?'\nDiscord rejected this action. Check bot permissions, role order and the target’s status before retrying.':''}`;
+const caseText=c=>`Case ${c.id} · ${c.action} · ${c.state}\nMember: ${c.target}\nReason: ${c.reason}${c.state==='uncertain'||c.state==='pending'?'\nInspect Discord before another action. The owner can record the verified outcome with /mod-reconcile.':c.state==='failed'?'\nDiscord rejected this action. Check bot permissions, role order and the target’s status before retrying.':''}`;
 const rank=m=>m.roles.highest.position;
+export function durationMinutes(value){
+ const match=/^(\d+)\s*(m|h|d|w)$/i.exec(String(value||'').trim());
+ const minutes=match?Number(match[1])*({m:1,h:60,d:1440,w:10080}[match[2].toLowerCase()]):NaN;
+ must(Number.isSafeInteger(minutes)&&minutes>=1&&minutes<=40320,'Use a duration such as 10m, 1h, 1d or 1w (up to 28 days).');return minutes;
+}
 export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  const core=new Moderation(store,{timeoutMs});
  const read=p=>withDeadline(p,timeoutMs,'Discord did not respond. Check permissions and try again.');
@@ -46,7 +51,14 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    store.put(guild.id,'mod-log',{...row,state:'sent'});
   }catch{const current=store.get(guild.id,'mod-log',row.id);store.put(guild.id,'mod-log',{...row,state:current?.state==='sending'?'uncertain':'queued'});}
  }
- async function finish(i,c){await respond(i,payload(caseText(c)));}
+ async function finish(i,c){
+  if(c.state!=='succeeded')return respond(i,payload(caseText(c)));
+  const member=i.guild.members.cache?.get(c.target);
+  const name=clean(member?.displayName||member?.user?.username||c.details?.memberName||c.target);
+  const lastAction=c.events.at(-1)?.action;
+  const result=lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+new Date(c.details.until).toISOString():''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
+  await respond(i,{content:`${result}\nReason: ${clean(c.events.at(-1)?.reason||c.reason)}\nCase: ${c.id}`,allowedMentions:{parse:[]}});
+ }
  async function config(i,sub){
   const cfg=core.config(i.guildId);
   if(sub==='view')return respond(i,{content:(JSON.stringify(cfg)+'\nLog delivery issues (ID, state):\n'+store.list(i.guildId,'mod-log').filter(l=>l.state!=='sent').slice(-10).map(l=>`${l.id}: ${l.state}`).join('\n')+'\nInterrupted/uncertain case IDs: '+core.cases(i.guildId).filter(c=>['pending','uncertain'].includes(c.state)).slice(0,10).map(c=>c.id).join(', ')).slice(0,1900),allowedMentions:{parse:[]}});
@@ -147,7 +159,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   // Explicit grants are bound to the current owner, as in /access.
   const grant=store.get(i.guildId,'access',i.user.id);
   must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your Number One command access has expired. Ask the current owner.');
-  const sub=i.options.getSubcommand();
+  const sub=moderationActions[i.commandName]||i.options.getSubcommand();
   if(i.commandName==='mod-settings'){await config(i,sub);return true;}
   if(i.commandName==='emergency'){await emergency(i,sub,actor,bot);return true;}
   allowed(i,actor,({ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub])||P.ModerateMembers);
@@ -167,25 +179,28 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    }else{const a=core.review(i.guildId,i.options.getString('appeal'),i.user.id,i.options.getString('decision'),i.options.getString('reason'));await respond(i,payload(`Appeal ${a.id}: ${a.state}. Communicate the decision privately to the member. Accepted appeals require a separate explicit reversal command.`));}
    return true;
   }
-  if(sub==='case'){const c=core.get(i.guildId,i.options.getString('case'));await respond(i,payload(caseText(c)+'\n'+c.events.slice(-5).map(e=>`${e.action}: ${e.reason}`).join('\n')));return true;}
-  if(sub==='history'){
+  if(sub==='case'){const c=core.get(i.guildId,i.options.getString('id'));await respond(i,payload(caseText(c)+'\n'+c.events.slice(-5).map(e=>`${e.action}: ${e.reason}`).join('\n')));return true;}
+  if(['history','warnings'].includes(sub)){
    const page=i.options.getInteger('page')||1;const rows=core.cases(i.guildId).filter(c=>c.target===i.options.getUser('user').id);
-   await respond(i,payload(rows.slice((page-1)*8,page*8).map(c=>`${c.id} · ${c.action} · ${c.state}${c.voided?' · voided':''}`).join('\n')||'No cases on this page.'));return true;
+   const filtered=sub==='warnings'?rows.filter(c=>c.action==='warn'&&c.state==='succeeded'&&!c.voided):rows;
+   await respond(i,payload(filtered.slice((page-1)*8,page*8).map(c=>`${c.id} · ${c.action} · ${c.state}${c.voided?' · voided':''}`).join('\n')||`No ${sub==='warnings'?'active warnings':'cases'} on this page.`));return true;
   }
   if(['note','void','reconcile'].includes(sub)){
-   let c=core.get(i.guildId,i.options.getString('case'));const reason=i.options.getString('reason');
+   let c=core.get(i.guildId,i.options.getString('case'));const reason=i.options.getString('reason')||'Removed by moderator';
    if(sub==='reconcile'){must(owner(i),'Only the current owner can reconcile uncertain actions after checking Discord.');c=core.reconcile(i.guildId,c.id,i.user.id,i.options.getString('outcome'),reason);}
    else{if(sub==='void'){must(c.action==='warn'&&c.state==='succeeded'&&!c.voided,'Only active successful warnings can be voided.');c.voided=true;}core.append(i.guildId,c,sub,i.user.id,reason);}
    await finish(i,c);return true;
   }
-  let target,action=sub,effect,details={},selectedMember;const reason=i.options.getString('reason');
+  let target,action=sub,effect,details={},selectedMember;const reason=i.options.getString('reason')||'No reason provided';
+  if(sub==='warn')must(i.options.getString('reason')?.trim(),'Enter a reason for the warning.');
   const audit=`Number One ${i.id}: ${reason}`.slice(0,500);
   if(sub==='purge'){
-   must(i.options.getString('confirm')==='yes','Confirm deletion with yes.');allowed(i,actor,P.ManageMessages);
+   allowed(i,actor,P.ManageMessages);
    const ch=await read(i.guild.channels.fetch(i.channelId));must(ch&&[0,5].includes(ch.type),'Purge is available in text and announcement channels.');
    must(ch.permissionsFor(actor).has([P.ViewChannel,P.ReadMessageHistory])&&ch.permissionsFor(bot).has([P.ViewChannel,P.ReadMessageHistory,P.ManageMessages]),'You need channel access; Number One needs View Channel, Read Message History and Manage Messages.');
    const messages=await read(ch.messages.fetch({limit:i.options.getInteger('count')}));
-   const ids=[...messages.values()].filter(m=>!m.pinned&&m.createdTimestamp>Date.now()-14*86400000+60000).map(m=>m.id);
+   const filterUser=i.options.getUser('user');
+   const ids=[...messages.values()].filter(m=>!m.pinned&&m.createdTimestamp>Date.now()-14*86400000+60000&&(!filterUser||m.author?.id===filterUser.id)).map(m=>m.id);
    must(ids.length>0,'No recent unpinned messages matched.');target='purge:'+ch.id;details={channel:ch.id,messageIds:ids};
    effect=async()=>{const deleted=await ch.bulkDelete(ids,true);details.deleted=deleted.size;};
   }else{
@@ -197,10 +212,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     await read(i.guild.bans.fetch(target));effect=()=>i.guild.members.unban(target,audit);
    }else{
     const member=await read(i.guild.members.fetch({user:target,force:true}));selectedMember=member;targetSafe(i,actor,bot,member);
+    details.memberName=clean(member.displayName||member.user.username||member.id);
     if(sub==='kick')effect=()=>member.kick(audit);
     if(sub==='ban')effect=()=>member.ban({reason:audit,deleteMessageSeconds:0});
     if(sub==='timeout'){
-     const minutes=i.options.getInteger('minutes');must(Number.isInteger(minutes)&&minutes>=1&&minutes<=40320,'Timeout must be 1 to 40320 minutes.');details.until=Date.now()+minutes*60000;effect=()=>member.timeout(minutes*60000,audit);
+     const minutes=durationMinutes(i.options.getString('duration'));details.until=Date.now()+minutes*60000;effect=()=>member.timeout(minutes*60000,audit);
     }
     if(sub==='untimeout')effect=()=>member.timeout(null,audit);
    }

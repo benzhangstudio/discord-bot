@@ -39,7 +39,7 @@ const scenarios={
 };
 test('every registered subcommand has a complete reply or modal scenario',()=>{
   // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
-  const registered=commands.filter(c=>!['mod','mod-settings','appeals','emergency'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
+  const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','mute','untimeout','unmute','purge','warnings','modlogs','case','reason','delwarn','mod-reconcile','mod-settings','appeals','emergency'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
   assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
 });
 

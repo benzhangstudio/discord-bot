@@ -1,6 +1,7 @@
 import {EmbedBuilder} from 'discord.js';
 import {commands} from './commands.js';
 import {UserError} from './user-error.js';
+import {moderationActions} from './moderation-commands.js';
 
 const summaries={
   help:'Show this command list.',
@@ -15,10 +16,10 @@ const labels={mod:'Moderation','mod-settings':'Moderation settings',appeals:'App
 export function referenceFields() {
   const order=['help','portal','embed','schedule','instagram','settings','access'];
   return [...commands].sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name)).map(command=>{
-    const entries=command.options||[null];
+    const entries=command.options?.some(o=>o.type===1)?command.options:[null];
     const lines=entries.map(sub=>{
       const key=command.name+(sub?' '+sub.name:'');
-      const inputs=(sub?.options||[]).filter(option=>option.required).map(option=>option.name).join(' ');
+      const inputs=(sub?.options||(!sub?command.options:[])||[]).filter(option=>option.required).map(option=>option.name).join(' ');
       return '\u0060/'+key+(inputs?' '+inputs:'')+'\u0060 — '+(summaries[key]||sub?.description||command.description);
     });
     return {name:labels[command.name]||command.name,value:lines.join('\n')};
@@ -44,8 +45,11 @@ export function helpMenu({page='home'}={}) {
   if(page==='home') {
     embed.setDescription('Choose a category below to see its commands.').addFields(topics.filter(t=>t.root).map(t=>({name:t.label,value:t.description,inline:true})));
   } else {
-    const field=referenceFields().find(field=>field.name===labels[topic.root]);
-    embed.setDescription('Required inputs follow each command. Optional inputs appear in Discord.').addFields(field);
+    const fields=referenceFields();
+    const selected=page==='mod'?fields.filter(f=>Object.keys(moderationActions).includes(f.name)):fields.filter(field=>field.name===labels[topic.root]);
+    const lines=selected.flatMap(f=>f.value.split('\n')),chunks=[''];
+    for(const line of lines){if(chunks.at(-1).length+line.length>1000)chunks.push('');chunks[chunks.length-1]+=(chunks.at(-1)?'\n':'')+line;}
+    embed.setDescription('Required inputs follow each command. Optional inputs appear in Discord.').addFields(chunks.map((value,n)=>({name:(labels[topic.root]||topic.label)+(n?' · continued':''),value})));
   }
   embed.setFooter({text:'Access: Administrator, Manage Server, or approval from this server’s owner. Use /help to reopen.'});
   return {content:'',embeds:[embed],components:[

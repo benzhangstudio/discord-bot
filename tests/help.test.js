@@ -15,9 +15,9 @@ test('help is a compact category menu without DM controls and every command avai
     assert.equal(page.components[0].components[0].options.filter(o=>o.default).length,1);
     return JSON.stringify(embed);
   }).join(' ');
-  for(const c of commands)for(const sub of c.options||[null]) {
+  for(const c of commands)for(const sub of c.options?.some(o=>o.type===1)?c.options:[null]) {
     const usage='/'+c.name+(sub?' '+sub.name:'');assert.ok(text.includes(usage),usage);
-    for(const option of sub?.options||[])if(option.required)assert.ok(text.includes(option.name));
+    for(const option of sub?.options||c.options||[])if(option.required)assert.ok(text.includes(option.name));
   }
   assert.ok(text.includes('/embed send message channel'));assert.ok(text.includes('/schedule add title start channel'));
 });
