@@ -8,7 +8,7 @@ import {startHostedDashboard} from './dashboard.js';
 loadConfig();
 requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
 const store=new Store();
-const client=new Client({intents:[GatewayIntentBits.Guilds]});
+const client=new Client({intents:[GatewayIntentBits.Guilds,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])]});
 const app=createApp(client,store);
 let dashboard;
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{app.stop();client.destroy();await dashboard?.stop();store.close();process.exit(0);});

@@ -11,7 +11,7 @@ const summaries={
   'settings view':'View server settings.', 'settings timezone':'Set the default timezone.', 'settings status':'Check delivery problems.',
   'access add':'Allow a member to use commands.', 'access remove':'Remove an owner-granted permission.', 'access list':'List owner-approved members.'
 };
-const labels={help:'Help',portal:'Portal',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
+const labels={mod:'Moderation','mod-settings':'Moderation settings',appeals:'Appeals',emergency:'Critical Emergency Mode',help:'Help',portal:'Portal',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
 export function referenceFields() {
   const order=['help','portal','embed','schedule','instagram','settings','access'];
   return [...commands].sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name)).map(command=>{
@@ -26,6 +26,10 @@ export function referenceFields() {
 }
 const topics=[
   {value:'home',label:'All categories',description:'Choose which commands to view.'},
+  {value:'mod',label:'Moderation',description:'Actions, warnings, and private case history.',root:'mod'},
+  {value:'mod-settings',label:'Moderation settings',description:'Owner: roles, automod, logs, and retention.',root:'mod-settings'},
+  {value:'appeals',label:'Appeals',description:'Member appeal panel and independent staff review.',root:'appeals'},
+  {value:'emergency',label:'Critical Emergency Mode',description:'Lock channels and restore writing permissions.',root:'emergency'},
   {value:'portal',label:'Portal',description:'Open this server’s portal or website setup.',root:'portal'},
   {value:'embeds',label:'Embeds',description:'Create, edit, and publish saved messages.',root:'embed'},
   {value:'events',label:'Schedules',description:'Events, meetings, and rotations.',root:'schedule'},

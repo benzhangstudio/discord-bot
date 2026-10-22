@@ -3,6 +3,14 @@ import {mkdirSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 
 export class Store {
+  transaction(work) {
+    // Savepoints compose with other synchronous store operations and nested transactions.
+    this.transactionSequence=(this.transactionSequence||0)+1;
+    const name='number_one_'+this.transactionSequence;
+    this.db.exec(`SAVEPOINT ${name}`);
+    try {const result=work();this.db.exec(`RELEASE ${name}`);return result;}
+    catch(error){this.db.exec(`ROLLBACK TO ${name}; RELEASE ${name}`);throw error;}
+  }
   constructor(path = new URL('../data/rose.sqlite', import.meta.url)) {
     if (path instanceof URL) mkdirSync(new URL('.', path), {recursive: true});
     this.db = new DatabaseSync(path);

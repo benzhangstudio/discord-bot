@@ -1,4 +1,5 @@
-// Discord application command JSON. All entry points are slash commands.
+import {moderationCommands} from './moderation-commands.js';
+// Discord application command JSON.
 const str = (name, description, required = false, extra = {}) => ({type:3,name,description,required,...extra});
 const integer = (name, description, min, max) => ({type:4,name,description,min_value:min,max_value:max});
 const channel = (required = false) => ({type:7,name:'channel',description:'Choose where Number One should post',required,channel_types:[0,5]});
@@ -8,6 +9,7 @@ const labels={event:'Community event','staff-meeting':'Staff meeting',rotation:'
 const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
 export const commands = [
+  ...moderationCommands,
   {name:'access',description:'Server owner: manage additional command access',options:[
     sub('add','Server owner: allow a member to use commands',[{type:6,name:'user',description:'Choose a member of this server',required:true}]),
     sub('remove','Server owner: remove a member’s added access',[{type:6,name:'user',description:'Choose the person to remove',required:true}]),

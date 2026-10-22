@@ -38,7 +38,8 @@ const scenarios={
   'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
 };
 test('every registered subcommand has a complete reply or modal scenario',()=>{
-  const registered=commands.flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
+  // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
+  const registered=commands.filter(c=>!['mod','mod-settings','appeals','emergency'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
   assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
 });
 

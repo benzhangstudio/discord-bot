@@ -1,4 +1,5 @@
 import {UserError} from './user-error.js';
+import {createModeration} from './moderation.js';
 import {canManageServer,MANAGEMENT_ONLY_MESSAGE} from './permissions.js';
 import {PermissionFlagsBits as P,MessageFlags,RESTEvents,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
@@ -96,6 +97,7 @@ function eventView(e) {
 }
 
 const accessCommands=createAccessCommands(store);
+const moderation=createModeration(client,store,{needStaff,timeoutMs:operationTimeoutMs});
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
@@ -150,6 +152,7 @@ async function handle(i) {
     needStaff(i);
   }
   i.privateResponse=responsePrivacy(i);
+  if(await moderation.handle(i))return;
   if(await accessCommands(i))return;
   if(await instagram(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
@@ -353,5 +356,5 @@ let stopWorker;
 client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);});
 client.on('error',error=>console.error(`Discord client error (${error.code || error.name}): ${safeError(error)}`));
 client.on('guildDelete',guild=>console.log(`Removed from server ${guild.id}; saved data retained for operator-managed deletion.`));
-return {handle:async i=>{try{return await handle(i);}catch(error){cancelAcknowledgement(i);throw error;}},dispatch,stop:()=>stopWorker?.()};
+return {handle:async i=>{try{return await handle(i);}catch(error){cancelAcknowledgement(i);throw error;}},dispatch,moderation,stop:()=>{stopWorker?.();moderation.stop();}};
 }
