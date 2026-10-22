@@ -160,7 +160,14 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    const a=core.appeal(i.guildId,i.id,i.user.id,i.fields.getTextInputValue('case').trim(),i.fields.getTextInputValue('body'));
    await respond(i,payload('Appeal '+a.id+' saved for staff review. Staff will communicate the decision; it does not automatically remove a sanction.'));return true;
   }
-  needStaff(i);await acknowledge(i);
+  needStaff(i);
+  // These targets can be rejected from signed interaction data, before network
+  // preflight can trigger a deferred reply. Full fresh checks still follow.
+  if(['warn','ban','kick','mute','timeout','unmute','untimeout'].includes(i.commandName)){
+   const target=i.options.getUser('user');
+   must(target&&![i.user.id,i.guild.ownerId,client.user?.id].includes(target.id),'You cannot moderate yourself, Number One, or the server owner.');
+  }
+  await acknowledge(i);
   const {actor,bot}=await members(i);needStaff(i);
   // Explicit grants are bound to the current owner, as in /access.
   const grant=store.get(i.guildId,'access',i.user.id);

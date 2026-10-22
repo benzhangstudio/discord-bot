@@ -27,7 +27,7 @@ test('expired interaction replies are not retried as follow-ups',async()=>{
 test('expired replies log the delivery failure without throwing out of the gateway listener',async()=>{
   const logs=[];
   await assert.doesNotReject(reportFailure({commandName:'events',reply:async()=>{throw Object.assign(Error('expired'),{code:10062});}},Error('Unavailable'),s=>logs.push(s)));
-  assert.ok(logs.some(s=>s.includes('Could not send the error reply')));
+  assert.ok(logs.some(s=>s.includes('Error reply could not be delivered')));
 });
 test('private source URLs are omitted from public error replies and logs',async()=>{
   const logs=[],sent=[];

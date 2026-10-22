@@ -20,3 +20,9 @@ Add a reviewed catalogue entry when introducing a validation error. Keep public 
 Saved moderation failures use short public outcome copy, not an exception or full case dump. Explicit case-history screens may show legitimate case IDs and staff notes, but no raw stored backend errors. Settings/status screens use readable labels and summaries rather than JSON or internal delivery states. Keep uncertain outcomes honest; never promise failure merely because confirmation timed out, and never repeat the mutation to send its result.
 
 This requirement is permanent in `AGENTS.md`. Regression tests cover validation, unknown exceptions, forged UserErrors, credentials/URLs/paths, deferred and fallback replies, privacy and stalled delivery. Offline tests do not establish live Discord delivery.
+
+## Completing every reply
+
+Use the shared response helpers for commands, buttons, menus and forms. Known protected moderation targets are rejected before network preflight, avoiding a deferred loading state. Delayed replies that hit a long Discord cooldown retain their exact final content and retry on the independent reply transport after the cooldown. Recovery edits the original deferred reply; it never reruns a command, resends an announcement or reissues a moderation action. Setup-form errors preserve the existing form and private follow-up.
+
+Cooldowns apply to the affected interaction token, except when Discord explicitly reports a global limit. Each request is bounded. Recovery stops on permanent rejection, its attempt limit or before the interaction token expires; final failures are recorded in Wispbyte without secrets. No bot can clear a Discord loading state while Discord refuses all reply requests, but a transient cooldown must not silently discard the result. Do not instruct the user to repeat a completed action because its reply is waiting.

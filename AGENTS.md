@@ -13,6 +13,7 @@
 - Before every push, inspect response paths and test requests that never settle at each network step, including the fallback itself. A rejected-request test alone is insufficient.
 - Confirmations must not wait on the same stalled SDK queue as their fallback. Bound both attempts and log delivery failures without tokens or URLs.
 - Never retry an announcement or mutation just because its confirmation failed. For uncertain sends, tell staff to inspect the destination before retrying.
+- Apply reply completion/recovery to every feature through the shared response helpers. Never discard an already prepared reply because a Discord cooldown exceeds one network attempt. Queue only that reply on the independent transport, respect Retry-After and actual global limits, and bound recovery before the interaction expires. Reject known invalid targets before network work so common errors never open a loading state. Do not promise delivery while Discord is unreachable; log final delivery failures without rerunning actions.
 - Run the command inventory, transport, permission, persistence, and timeout checks before publishing. Check GitHub CI afterward. Do not claim live Discord verification from offline tests.
 - Wispbyte automatically pulls on restart when AUTO_UPDATE=1. After a pushed update, ask the user to restart, not manually replace files or separately pull.
 

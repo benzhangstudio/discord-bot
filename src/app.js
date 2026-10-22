@@ -9,7 +9,7 @@ import {startWorker} from './worker.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
 import {commands} from './commands.js';
-import {acknowledge,respond,updateResponse,reportFailure,safeError,step,cancelAcknowledgement} from './responses.js';
+import {acknowledge,respond,updateResponse,showForm,reportFailure,safeError,step,cancelAcknowledgement} from './responses.js';
 import {helpMenu} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
@@ -160,7 +160,7 @@ async function handle(i) {
     const key={channel:'sendChannel',role:'sendRole',user:'sendUser'}[action];
     if(!key)throw new UserError('Open /embed edit to use the latest builder.');
     if(action==='channel')checkDestination(i,i.guild.channels.cache?.get(i.values[0]));
-    d[key]=i.values[0]||null;saveDraft(i,d);return i.update(editor(d,i));
+    d[key]=i.values[0]||null;saveDraft(i,d);return updateResponse(i,editor(d,i));
   }
   const helpOptions=()=>({canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
   if(i.isChatInputCommand()&&i.commandName==='portal') {
@@ -197,7 +197,7 @@ async function handle(i) {
   }
   if(i.isStringSelectMenu?.()) {
     if(i.customId!=='help:topic')throw new UserError('This menu is no longer available. Open /help again.');
-    return i.update(helpMenu({...helpOptions(),page:i.values[0]}));
+    return updateResponse(i,helpMenu({...helpOptions(),page:i.values[0]}));
   }
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
@@ -219,7 +219,7 @@ async function handle(i) {
         saveDraft(i,copy);return updateResponse(i,editor(copy,i));
       }
       if(action==='clearfields') {delete d.embed.fields;validateEmbed(d);saveDraft(i,d);return updateResponse(i,editor(d,i));}
-      return i.showModal(editModal(d,action));
+      return showForm(i,editModal(d,action));
     }
     if(kind==='rsvp') {
       let e=item(i,'event',id);await destination(i,e.channel,{writing:false});
@@ -284,7 +284,7 @@ async function handle(i) {
     if(sub==='create') {
       if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved messages. Delete one you no longer need before making another.');
       const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0xe5a1b3},content:''});
-      return i.showModal(editModal(d,'form'));
+      return showForm(i,editModal(d,'form'));
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,reply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
     const d=item(i,'embed',selected(i));
@@ -326,7 +326,7 @@ async function handle(i) {
       store.put(i.guildId,'event',e);return respond(i,eventView(e));
     }
     if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return respond(i,reply('Event cancelled. Future repeats and reminders have stopped.'));}
-    if(sub==='edit') {const local=DateTime.fromMillis(e.start,{zone:e.zone});const startText=local.toFormat('yyyy-MM-dd HH:mm')+(local.getPossibleOffsets().length>1?local.toFormat('ZZ'):'');return i.showModal(modal(`eventform:${e.id}:edit`,'Number One · Edit event',[
+    if(sub==='edit') {const local=DateTime.fromMillis(e.start,{zone:e.zone});const startText=local.toFormat('yyyy-MM-dd HH:mm')+(local.getPossibleOffsets().length>1?local.toFormat('ZZ'):'');return showForm(i,modal(`eventform:${e.id}:edit`,'Number One · Edit event',[
       ['title','Title',e.title,150,true],['start',`Start · ${timezoneLabel(e.zone)}`.slice(0,45),startText,40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
     ]));}
   }

@@ -1,7 +1,7 @@
 import {ModalBuilder,ActionRowBuilder,TextInputBuilder,TextInputStyle,MessageFlags} from 'discord.js';
 import {DateTime} from 'luxon';
 import {UserError} from './user-error.js';
-import {respond,acknowledge,step,updateResponse,withDeadline} from './responses.js';
+import {respond,acknowledge,step,updateResponse,showForm,withDeadline} from './responses.js';
 import {allowedUrl,loadFeed} from './feeds.js';
 import {nextDigest,deliveryLabel,digestParts,DIGEST_ZONE} from './weekly-feeds.js';
 
@@ -73,12 +73,12 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       // One live menu per member prevents unbounded abandoned drafts.
       for(const old of store.list(i.guildId,'instagram-draft'))if(old.owner===i.user.id)store.remove(i.guildId,'instagram-draft',old.id);
       const d=draft(i);
-      await i.reply({...panel(i,d),flags:MessageFlags.Ephemeral});return true;
+      await respond(i,{...panel(i,d),flags:MessageFlags.Ephemeral});return true;
     }
     const [,id,action]=i.customId.split(':');
     let d=store.get(i.guildId,'instagram-draft',id);
     if(!d||d.owner!==i.user.id||d.expiresAt<Date.now())throw new UserError('This setup menu has expired or belongs to someone else. Open your own with /instagram setup.');
-    if(action==='source'||action==='schedule'){await i.showModal(form(d,action));return true;}
+    if(action==='source'||action==='schedule'){await showForm(i,form(d,action));return true;}
     if(action==='preview') {
       await acknowledge(i);
       if(!d.url)throw new UserError('Choose Source and add your Instagram feed link first.');
@@ -130,6 +130,6 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       store.put(i.guildId,'instagram-draft',d);
       await respond(i,panel(i,d,`Saved! ${f.paused?'This source remains paused. Resume it with /instagram resume.':`Next roundup: <t:${Math.floor(f.nextDigest/1000)}:F>.`} ${changed?'Only new posts will be collected; older posts will not be resent.':'Waiting posts are preserved.'}`));return true;
     } else throw new UserError('This control is no longer available. Open /instagram setup again.');
-    store.put(i.guildId,'instagram-draft',d);await i.update(panel(i,d,'Changes are ready to review. Choose Save to apply them.'));return true;
+    store.put(i.guildId,'instagram-draft',d);await updateResponse(i,panel(i,d,'Changes are ready to review. Choose Save to apply them.'));return true;
   };
 }

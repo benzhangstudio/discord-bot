@@ -7,8 +7,11 @@ export async function sendInteractionResponse(i,method,payload,{request=https.re
   let limits=cooldowns.get(request);
   if (!limits) {limits=new Map();cooldowns.set(request,limits);}
   const deadline=Date.now()+timeoutMs;
+  // A webhook token is a major rate-limit parameter. One server's reply must not
+  // impose its route cooldown on every other interaction for the application.
+  const key=i.applicationId+':'+i.token;
   for (let attempt=0;attempt<3;attempt++) {
-    const wait=Math.max(0,(limits.get(i.applicationId)||0)-Date.now());
+    const wait=Math.max(0,(limits.get(key)||0)-Date.now(),(limits.get('global')||0)-Date.now());
     if (wait>0) {
       if (wait>=deadline-Date.now()) throw Object.assign(Error('Discord confirmation is rate limited'),{code:'HTTP_429',retryAfterMs:wait});
       await new Promise(resolve=>setTimeout(resolve,wait));
@@ -16,10 +19,11 @@ export async function sendInteractionResponse(i,method,payload,{request=https.re
     try {
       return await requestOnce(i,method,payload,{request,timeoutMs:Math.max(1,deadline-Date.now())});
     } catch(error) {
-      if (error.code!=='HTTP_429' || !Number.isFinite(error.retryAfterMs)) throw error;
-      const delay=error.retryAfterMs+25;
-      limits.set(i.applicationId,Date.now()+delay);
-      if (attempt===2 || delay>=deadline-Date.now()) throw error;
+      if (error.code!=='HTTP_429') throw error;
+      const delay=Number.isFinite(error.retryAfterMs)?error.retryAfterMs+25:60000;
+      limits.set(error.globalRateLimit?'global':key,Date.now()+delay);
+      for(const [entry,until]of limits)if(until<=Date.now())limits.delete(entry);
+      if (!Number.isFinite(error.retryAfterMs)||attempt===2 || delay>=deadline-Date.now()) throw error;
     }
   }
 }
@@ -47,8 +51,11 @@ function requestOnce(i,method,payload,{request,timeoutMs}) {
           } else {
             const error=Object.assign(Error('Discord rejected the confirmation'),{code:'HTTP_'+response.statusCode});
             if (response.statusCode===429) {
+              error.globalRateLimit=result.global===true||response.headers?.['x-ratelimit-global']==='true';
+              error.rateLimitScope=String(response.headers?.['x-ratelimit-scope']||'unknown');
               const values=[result.retry_after,response.headers?.['retry-after'],response.headers?.['x-ratelimit-reset-after']].filter(value=>value!==undefined&&value!==null&&value!=='').map(Number).filter(value=>Number.isFinite(value)&&value>=0);
               if (values.length) error.retryAfterMs=Math.ceil(Math.max(...values)*1000);
+              console.warn(`Reply rate limited: scope=${error.globalRateLimit?'global':error.rateLimitScope}, retryAfterMs=${error.retryAfterMs??'unavailable'}. Reply content and credentials omitted.`);
             }
             finish(error);
           }

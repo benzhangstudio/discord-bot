@@ -207,3 +207,12 @@ test('member appeal status stays private and cannot reveal another member’s ap
 test('access removed during preflight prevents an already-prepared action',async()=>{
  const h=harness();try{const i=h.interaction('mod','ban');let fetches=0;i.guild.fetch=async()=>{if(++fetches===2){i.guild.ownerId='new-owner';h.actor.permissions=perm([]);}return i.guild;};await assert.rejects(h.app.handle(i),/access was removed/);assert.equal(h.effects.length,0);}finally{h.close();}
 });
+test('protected targets get an immediate error without network calls, a deferral or a warning case',async()=>{
+ for(const target of ['owner','bot']){
+  const h=harness();try{
+   const i=h.interaction('warn',{user:target});let networkCalls=0,deferred=0;
+   i.guild.fetch=async()=>{networkCalls++;throw Error('Must not wait on this request');};i.deferReply=async()=>{deferred++;};
+   await h.app.dispatch(i);assert.equal(networkCalls,0);assert.equal(deferred,0);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/cannot moderate yourself/);assert.equal(h.core.cases('guild').length,2);
+  }finally{h.close();}
+ }
+});

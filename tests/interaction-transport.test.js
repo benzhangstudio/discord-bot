@@ -5,11 +5,11 @@ import {EmbedBuilder} from 'discord.js';
 import {sendInteractionResponse} from '../src/interaction-transport.js';
 import {respond,reportFailure,acknowledge,step} from '../src/responses.js';
 
-function requestStub(status=200,{stall=false,retryAfter}={}) {
+function requestStub(status=200,{stall=false,retryAfter,globalRateLimit=false}={}) {
   const calls=[];
   const request=(url,options,callback)=>{
     const req=new EventEmitter();req.destroy=()=>{calls.at(-1).destroyed=true;};
-    req.end=body=>{calls.push({url,options,body:JSON.parse(body)});if(stall)return;queueMicrotask(()=>{const res=new EventEmitter();res.statusCode=Array.isArray(status)?status[Math.min(calls.length-1,status.length-1)]:status;res.headers={};if(retryAfter!==undefined)res.headers['retry-after']=String(retryAfter);res.resume=()=>{};callback(res);res.emit('data',Buffer.from(JSON.stringify(res.statusCode===429&&retryAfter!==undefined?{retry_after:retryAfter}:{id:'confirmed'})));res.emit('end');});};return req;
+    req.end=body=>{calls.push({url,options,body:JSON.parse(body)});if(stall)return;queueMicrotask(()=>{const res=new EventEmitter();res.statusCode=Array.isArray(status)?status[Math.min(calls.length-1,status.length-1)]:status;res.headers={};if(retryAfter!==undefined)res.headers['retry-after']=String(retryAfter);res.resume=()=>{};callback(res);res.emit('data',Buffer.from(JSON.stringify(res.statusCode===429&&retryAfter!==undefined?{retry_after:retryAfter,global:globalRateLimit}:{id:'confirmed'})));res.emit('end');});};return req;
   };
   return {request,calls};
 }
@@ -68,4 +68,14 @@ test('a long 429 cooldown stops confirmation attempts and does not immediately t
 });
 test('expired operation budget never starts a late mutation',async()=>{
   let writes=0;assert.throws(()=>step({operationDeadline:Date.now()-1},()=>{writes++;}),/took too long/);assert.equal(writes,0);
+});
+test('route cooldowns do not block unrelated interaction tokens',async()=>{
+ const h=requestStub([429,200],{retryAfter:60}),first=credentials(),second={...credentials(),token:'another-private-token'};
+ await assert.rejects(sendInteractionResponse(first,'PATCH',{content:'Done'},{request:h.request,timeoutMs:5}),{code:'HTTP_429'});
+ const result=await sendInteractionResponse(second,'PATCH',{content:'Done'},{request:h.request,timeoutMs:50});assert.equal(result.id,'confirmed');assert.equal(h.calls.length,2);
+});
+test('Discord global cooldowns still block other interaction tokens',async()=>{
+ const h=requestStub(429,{retryAfter:60,globalRateLimit:true}),first=credentials(),second={...credentials(),token:'another-private-token'};
+ await assert.rejects(sendInteractionResponse(first,'PATCH',{content:'Done'},{request:h.request,timeoutMs:5}),{code:'HTTP_429'});
+ await assert.rejects(sendInteractionResponse(second,'PATCH',{content:'Done'},{request:h.request,timeoutMs:5}),{code:'HTTP_429'});assert.equal(h.calls.length,1);
 });
