@@ -41,6 +41,17 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   must(rank(bot)>rank(target),'Move Number One above the target’s highest role.');
   must(owner(i)||rank(actor)>rank(target),'Your highest role must be above the target’s highest role.');
  }
+ function completeMember(i,member){
+  if(i.guild.available===false||!member?.permissions?.has||!member.roles?.highest||!member.roles?.cache)return false;
+  // GuildMember keeps all role IDs from the signed interaction even when a
+  // referenced role is absent from the cache. Never infer a lower rank then.
+  return !Array.isArray(member._roles)||member._roles.every(id=>i.guild.roles.cache.has(id));
+ }
+ function interactionMembers(i){
+  const actor=i.member,bot=i.guild.members.me;
+  must(completeMember(i,actor),'Member role details are unavailable.');
+  return {actor,bot};
+ }
  async function log(guild,c,row){
   const cfg=core.config(guild.id);
   if(!cfg.logChannel||row?.state!=='queued')return;
@@ -161,21 +172,34 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    await respond(i,payload('Appeal '+a.id+' saved for staff review. Staff will communicate the decision; it does not automatically remove a sanction.'));return true;
   }
   needStaff(i);
+  const routeAction=moderationActions[i.commandName]||i.options.getSubcommand();
+  const local=['warn','case','history','warnings','note','void','reconcile'].includes(routeAction)||
+   i.commandName==='mod-settings'&&routeAction==='view'||i.commandName==='emergency'&&routeAction==='status'||i.commandName==='appeals'&&['list','show'].includes(routeAction);
   // These targets can be rejected from signed interaction data, before network
   // preflight can trigger a deferred reply. Full fresh checks still follow.
   if(['warn','ban','kick','mute','timeout','unmute','untimeout'].includes(i.commandName)){
    const target=i.options.getUser('user');
    must(target&&![i.user.id,i.guild.ownerId,client.user?.id].includes(target.id),'You cannot moderate yourself, Number One, or the server owner.');
+   const resolved=i.options.getMember?.('user');
+   if(completeMember(i,i.member)&&completeMember(i,i.guild.members.me)&&completeMember(i,resolved))targetSafe(i,i.member,i.guild.members.me,resolved);
   }
-  await acknowledge(i);
-  const {actor,bot}=await members(i);needStaff(i);
+  if(!local)await acknowledge(i);
+  const {actor,bot}=local?interactionMembers(i):await members(i);needStaff(i);
   // Explicit grants are bound to the current owner, as in /access.
   const grant=store.get(i.guildId,'access',i.user.id);
   must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your Number One command access has expired. Ask the current owner.');
-  const sub=moderationActions[i.commandName]||i.options.getSubcommand();
+  const sub=routeAction;
   if(i.commandName==='mod-settings'){await config(i,sub);return true;}
   if(i.commandName==='emergency'){await emergency(i,sub,actor,bot);return true;}
   allowed(i,actor,({ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub])||P.ModerateMembers);
+  if(sub==='warn'){
+   const target=i.options.getMember?.('user');
+   must(completeMember(i,bot)&&completeMember(i,target),'Member role details are unavailable.');
+   targetSafe(i,actor,bot,target);
+   const reason=i.options.getString('reason');must(reason?.trim(),'Enter a reason for the warning.');
+   const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:target.id,action:'warn',reason,details:{memberName:clean(target.displayName||target.user.username||target.id)}});
+   await finish(i,c);return true;
+  }
   if(i.commandName==='appeals'){
    if(sub==='record'){
     const a=core.appeal(i.guildId,i.id,i.options.getUser('user').id,i.options.getString('case'),i.options.getString('statement'),i.user.id);

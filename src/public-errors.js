@@ -4,6 +4,7 @@ import {UserError} from './user-error.js';
 export const GENERIC_ERROR='Something went wrong. Please try again later.';
 export const UNCERTAIN_ACTION='I couldn’t confirm that action. Check the result before trying again.';
 export const PUBLIC_ERROR_MESSAGES=Object.freeze({
+  "Member role details are unavailable.": "I couldn’t check this member’s roles. Please try again.",
   "A different moderator must review this appeal.": "Another moderator needs to review this appeal.",
   "A message can have at most 25 sections. Remove one before adding another.": "A message can have at most 25 sections. Remove one before adding another.",
   "A reason is required.": "A reason is required.",

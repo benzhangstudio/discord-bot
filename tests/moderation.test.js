@@ -28,7 +28,7 @@ function harness({authorized=true}={}){
  const actor=member('owner',20,authorized?[P.Administrator]:[]),bot=member('bot',30,[P.Administrator]),target=member('target',1);
  const overwrite={id:'guild',type:0,allow:perm([P.ViewChannel,P.SendMessages]),deny:perm([])};
  const channel={id:'channel',type:0,permissionsFor:m=>perm(m==='everyone'?[]:[P.Administrator]),send:async()=>effects.push('send'),messages:{fetch:async()=>new Map([['recent',{id:'recent',pinned:false,createdTimestamp:Date.now()}],['old',{id:'old',createdTimestamp:0}],['pinned',{id:'pinned',pinned:true,createdTimestamp:Date.now()}]])},bulkDelete:async ids=>{effects.push(ids);return new Map(ids.map(id=>[id,{}]));},permissionOverwrites:{cache:new Map([['guild',overwrite]]),edit:async(id,changes)=>{effects.push('overwrite');let o=channel.permissionOverwrites.cache.get(id);if(!o){o={id,type:0,allow:perm([]),deny:perm([])};channel.permissionOverwrites.cache.set(id,o);}for(const [name,value]of Object.entries(changes)){o.allow.remove(P[name]);o.deny.remove(P[name]);if(value===true)o.allow.add(P[name]);if(value===false)o.deny.add(P[name]);}}}};
- const guild={id:'guild',ownerId:authorized?'owner':'other-owner',fetch:async()=>guild,members:{fetch:async opt=>((opt.user||opt)==='target'?target:actor),fetchMe:async()=>bot},roles:{everyone:'everyone',fetch:async()=>new Map()},channels:{fetch:async()=>channel,cache:new Map([['channel',channel]])},bans:{fetch:async()=>({})}};
+ const guild={id:'guild',ownerId:authorized?'owner':'other-owner',fetch:async()=>guild,members:{me:bot,fetch:async opt=>((opt.user||opt)==='target'?target:actor),fetchMe:async()=>bot},roles:{everyone:'everyone',cache:new Map(),fetch:async()=>new Map()},channels:{fetch:async()=>channel,cache:new Map([['channel',channel]])},bans:{fetch:async()=>({})}};
  guild.members.unban=async()=>effects.push('unban');channel.guild=guild;client.guilds.cache.set(guild.id,guild);
  const app=createApp(client,store,{operationTimeoutMs:40,acknowledgementDelayMs:100});
  const core=app.moderation.core;
@@ -42,7 +42,7 @@ function harness({authorized=true}={}){
   const v={user:name==='purge'?null:'target',id:'saved',case:'saved',duration:'10m',reason:'Test reason',...values};return {
   id:String(++seq),guildId:'guild',guild,channelId:'channel',user:actor.user,member:actor,memberPermissions:actor.permissions,commandName:name,
   inGuild:()=>true,isChatInputCommand:()=>true,isButton:()=>false,isModalSubmit:()=>false,
-  options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
+  options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getMember:()=>v.user==='target'?target:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
   reply:async function(p){this.replied=true;outputs.push(p);},deferReply:async function(){this.deferred=true;},editReply:async p=>outputs.push(p),followUp:async p=>outputs.push(p),showModal:async p=>outputs.push(p.toJSON()),
  };}
  return {app,store,core,client,actor,bot,target,channel,outputs,effects,interaction,close(){app.stop();store.close();}};
