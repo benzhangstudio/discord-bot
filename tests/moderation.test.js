@@ -69,6 +69,22 @@ test('warning list hides voided warnings while modlogs retains them',async()=>{
 test('case suggestions search by member name, scope servers, and deny unprivileged members',()=>{
  const h=harness();try{const c=h.core.get('guild','saved');c.details={memberName:'Alex'};h.store.put('guild','mod-case',c);const i=h.interaction('case');i.options.getFocused=()=>({name:'id',value:'Alex'});assert.deepEqual(suggestions(h.store,i,{canManage:true}).map(v=>v.value),['saved']);i.guildId='other';assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);i.guildId='guild';i.memberPermissions=perm([P.ManageGuild]);i.user={id:'manager'};assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);}finally{h.close();}
 });
+test('moderation rejections and uncertain outcomes show concise public errors, not case or server dumps',async()=>{
+ for(const uncertain of [false,true]){
+  const h=harness();try{
+   h.target.ban=uncertain?never:async()=>{throw Object.assign(Error('SQLITE diagnostic Wispbyte restart at C:/private/.env'),{status:403,code:50013});};
+   await h.app.handle(h.interaction('ban'));
+   const message=h.outputs.at(-1).content;assert.ok(message.length<200);assert.doesNotMatch(message,/SQLITE|Wispbyte|\.env|50013|\bfailed\b|\buncertain\b|Reason:|Member:/);
+   assert.match(message,uncertain?/Check the result/:/permissions/);
+  }finally{h.close();}
+ }
+});
+test('settings and emergency status show readable summaries without internal delivery state dumps',async()=>{
+ const h=harness();try{
+  await h.app.handle(h.interaction('mod-settings','view'));assert.match(h.outputs.at(-1).content,/Moderation settings/);assert.doesNotMatch(h.outputs.at(-1).content,/"id":|logChannel|retentionDays|queued|sending|uncertain/);
+  h.store.put('guild','mod-lock',{id:'channel',state:'needs-review'});await h.app.handle(h.interaction('emergency','status'));assert.match(h.outputs.at(-1).content,/Needs review/);assert.doesNotMatch(h.outputs.at(-1).content,/needs-review/);
+ }finally{h.close();}
+});
 test('purge member filter excludes other members without deleting pinned messages',async()=>{
  const h=harness();try{h.channel.messages.fetch=async()=>new Map([['a',{id:'a',author:{id:'target'},createdTimestamp:Date.now()}],['b',{id:'b',author:{id:'other'},createdTimestamp:Date.now()}],['c',{id:'c',pinned:true,author:{id:'target'},createdTimestamp:Date.now()}]]);await h.app.handle(h.interaction('purge',{count:20,user:'target'}));assert.deepEqual(h.effects,[['a']]);}finally{h.close();}
 });

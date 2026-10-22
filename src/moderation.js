@@ -3,12 +3,14 @@ import {Moderation,clean} from './moderation-core.js';
 import {moderationCommands,moderationActions} from './moderation-commands.js';
 import {UserError} from './user-error.js';
 import {acknowledge,respond,withDeadline} from './responses.js';
+import {publicErrorMessage,UNCERTAIN_ACTION} from './public-errors.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
 const has=(m,p)=>!!m?.permissions?.has(p);
 const owner=i=>i.user.id===i.guild.ownerId;
 const must=(condition,message)=>{if(!condition)throw new UserError(message);};
 const payload=content=>({content:clean(content).slice(0,1900),allowedMentions:{parse:[]}});
-const caseText=c=>`Case ${c.id} · ${c.action} · ${c.state}\nMember: ${c.target}\nReason: ${c.reason}${c.state==='uncertain'||c.state==='pending'?'\nInspect Discord before another action. The owner can record the verified outcome with /mod-reconcile.':c.state==='failed'?'\nDiscord rejected this action. Check bot permissions, role order and the target’s status before retrying.':''}`;
+const caseStatus=c=>({succeeded:'Completed',failed:'Not completed',uncertain:'Needs review',pending:'Needs review'}[c.state]||'Needs review');
+const caseText=c=>`Case ${c.id} · ${c.action} · ${caseStatus(c)}\nMember: ${c.target}\nReason: ${c.reason}${['uncertain','pending'].includes(c.state)?'\nCheck the result before trying this action again.':''}`;
 const rank=m=>m.roles.highest.position;
 export function durationMinutes(value){
  const match=/^(\d+)\s*(m|h|d|w)$/i.exec(String(value||'').trim());
@@ -52,7 +54,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   }catch{const current=store.get(guild.id,'mod-log',row.id);store.put(guild.id,'mod-log',{...row,state:current?.state==='sending'?'uncertain':'queued'});}
  }
  async function finish(i,c){
-  if(c.state!=='succeeded')return respond(i,payload(caseText(c)));
+  if(c.state!=='succeeded')return respond(i,payload((['uncertain','pending'].includes(c.state)?UNCERTAIN_ACTION:publicErrorMessage({code:c.error}))+`\nCase: ${c.id}`));
   const member=i.guild.members.cache?.get(c.target);
   const name=clean(member?.displayName||member?.user?.username||c.details?.memberName||c.target);
   const lastAction=c.events.at(-1)?.action;
@@ -61,7 +63,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  async function config(i,sub){
   const cfg=core.config(i.guildId);
-  if(sub==='view')return respond(i,{content:(JSON.stringify(cfg)+'\nLog delivery issues (ID, state):\n'+store.list(i.guildId,'mod-log').filter(l=>l.state!=='sent').slice(-10).map(l=>`${l.id}: ${l.state}`).join('\n')+'\nInterrupted/uncertain case IDs: '+core.cases(i.guildId).filter(c=>['pending','uncertain'].includes(c.state)).slice(0,10).map(c=>c.id).join(', ')).slice(0,1900),allowedMentions:{parse:[]}});
+  if(sub==='view'){
+   const logIssues=store.list(i.guildId,'mod-log').filter(l=>l.state!=='sent').length;
+   const review=core.cases(i.guildId).filter(c=>['pending','uncertain'].includes(c.state)).length;
+   return respond(i,{content:[`**Moderation settings**`,`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Privacy role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'}`,`Invite filter: ${cfg.blockInvites?'On':'Off'}`,`Mention limit: ${cfg.mentionLimit}`,`Spam limit: ${cfg.spamLimit} messages per 10 seconds`,`Blocked phrases: ${cfg.blockedWords.length}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n'),allowedMentions:{parse:[]}});
+  }
   must(owner(i),'Only the current server owner can configure moderation.');
   if(sub==='clear-role'){
    const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'configuration',action:'configure',reason:'Cleared '+i.options.getString('kind'),effect:()=>core.saveConfig(i.guildId,{[i.options.getString('kind')]:null})});
@@ -86,7 +92,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  async function emergency(i,sub,actor,bot){
   allowed(i,actor,P.ManageChannels);
-  if(sub==='status')return respond(i,payload(store.list(i.guildId,'mod-lock').map(l=>`${l.id}: ${l.state}`).join('\n')||'Critical Emergency Mode is inactive.'));
+  if(sub==='status')return respond(i,payload(store.list(i.guildId,'mod-lock').map(l=>`${l.id}: ${l.state==='active'?'Locked':'Needs review'}`).join('\n')||'Critical Emergency Mode is inactive.'));
   must(owner(i)||has(actor,P.Administrator),'Only the owner or an administrator can change Critical Emergency Mode.');
   const channel=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));
   must(channel&&[0,5].includes(channel.type),'Choose a text or announcement channel.');
@@ -183,7 +189,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   if(['history','warnings'].includes(sub)){
    const page=i.options.getInteger('page')||1;const rows=core.cases(i.guildId).filter(c=>c.target===i.options.getUser('user').id);
    const filtered=sub==='warnings'?rows.filter(c=>c.action==='warn'&&c.state==='succeeded'&&!c.voided):rows;
-   await respond(i,payload(filtered.slice((page-1)*8,page*8).map(c=>`${c.id} · ${c.action} · ${c.state}${c.voided?' · voided':''}`).join('\n')||`No ${sub==='warnings'?'active warnings':'cases'} on this page.`));return true;
+   await respond(i,payload(filtered.slice((page-1)*8,page*8).map(c=>`${c.id} · ${c.action} · ${caseStatus(c)}${c.voided?' · voided':''}`).join('\n')||`No ${sub==='warnings'?'active warnings':'cases'} on this page.`));return true;
   }
   if(['note','void','reconcile'].includes(sub)){
    let c=core.get(i.guildId,i.options.getString('case'));const reason=i.options.getString('reason')||'Removed by moderator';

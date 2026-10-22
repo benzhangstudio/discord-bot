@@ -52,7 +52,7 @@ for(const [name,values] of Object.entries(scenarios)) {
     h.store.put('server-a','event',{id:'saved',title:'Meeting',channel:h.channel.id,start:Date.now()+3600000,duration:60,repeat:'none',zone:'UTC',kind:'event',rsvps:{}});
     h.store.put('server-a','feed',{id:'saved',name:'Posts',url:'https://example.com/rss',channel:h.channel.id});
     const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
-    await h.app.handle(i);assert.ok(h.outputs.length);assert.doesNotMatch(JSON.stringify(h.outputs),/You do not have permission/);h.store.close();
+    await h.app.handle(i);assert.ok(h.outputs.length);assert.doesNotMatch(JSON.stringify(h.outputs),/permission to use this command/);h.store.close();
   });
 }
 
@@ -68,12 +68,12 @@ test('only the server owner can grant, revoke or list added access',async()=>{
   const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(h.outputs.at(-1).content,/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
   await h.app.handle(owner('list',{}));assert.match(h.outputs.at(-1).content,new RegExp(target));
   await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);
-  const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(h.outputs.at(-1).content,/You do not have permission/);h.store.close();
+  const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(h.outputs.at(-1).content,/You don’t have permission/);h.store.close();
 });
 
 test('added access is scoped to one server and cannot bypass channel permissions',async()=>{
   const h=harness({manager:false,visible:false});h.store.put('other-server','access',{id:h.member.id});
-  await h.app.dispatch(h.interaction('help'));assert.match(h.outputs.at(-1).content,/You do not have permission/);
+  await h.app.dispatch(h.interaction('help'));assert.match(h.outputs.at(-1).content,/You don’t have permission/);
   h.store.put('server-a','access',{id:h.member.id});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
   await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(h.outputs.at(-1).content,/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
 });
@@ -131,7 +131,7 @@ test('unknown saved names across commands get immediate useful replies without n
 test('regular members get immediate permission replies for every registered slash command',async()=>{
   for(const [name,values] of Object.entries(scenarios)) {
     const h=harness({manager:false}),[command,sub]=name.split(' '),i=h.interaction(command,sub,values);
-    await h.app.dispatch(i);assert.match(h.outputs[0].content,/Manage Server|staff action/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
+    await h.app.dispatch(i);assert.match(h.outputs[0].content,/You don’t have permission/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
   }
 });
 
@@ -146,7 +146,7 @@ for(const access of ['moderator','legacy staff role','missing permissions'])test
     i.options=new Proxy({}, {get:()=>{throw Error('Unauthorized options must not be processed');}});
     const before=h.store.db.prepare('SELECT * FROM records').all();
     await h.app.dispatch(i);
-    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,64);assert.match(h.outputs[0].content,/You do not have permission.*Administrator or Manage Server/);assert.deepEqual(h.outputs[0].components,[]);
+    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,64);assert.equal(h.outputs[0].content,'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
     assert.deepEqual(h.store.db.prepare('SELECT * FROM records').all(),before);assert.equal(h.sent.length,0);h.store.close();
   }
 });
@@ -186,11 +186,11 @@ test('a fast send replies with success without editing or using a follow-up',asy
 
 test('invalid reminder settings do not partially overwrite an existing event',async()=>{
   const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
-  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(h.outputs[0].content,/finish before/);h.store.close();
+  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(h.outputs[0].content,/overlaps its next repeat/);h.store.close();
 });
 
 test('retired staff-role commands cannot grant access',async()=>{
-  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/command has changed/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
+  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/command’s current options/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
 });
 
 test('combined embed form saves a renamed draft, closes, reopens and publishes from its builder',async()=>{
@@ -223,7 +223,7 @@ for(const stage of ['channel','role','member','send'])test(`Publish stops and re
   if(stage==='member')h.channel.guild.members.fetch=never;
   if(stage==='send')h.channel.send=()=>{attempts++;return never();};
   const i=h.interaction('embed','send',{message:'saved',...(stage==='role'?{role:'345678901234567890'}:{}),...(stage==='member'?{user:h.member.id}:{})});
-  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|timed out|did not confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/before retrying/);h.store.close();
+  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|couldn’t confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/Check the channel before sending it again/);h.store.close();
 });
 
 test('embed copies are independent saved drafts and require a fresh publishing destination',async()=>{
@@ -291,7 +291,7 @@ test('forms remain the initial response and do not defer before showModal',async
 });
 test('the production dispatcher replies to permission failures instead of swallowing them',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('embed','create',{name:'Test'}));
-  assert.match(h.outputs[0].content,/Manage Server/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
+  assert.match(h.outputs[0].content,/You don’t have permission/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
 });
 
 test('clearing the only embed content is rejected without corrupting its saved template',async()=>{
@@ -372,7 +372,7 @@ test('production dispatcher routes Instagram setup and channel/role pickers to t
 test('a legacy staff role does not bypass Administrator or Manage Server requirements',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);
   h.store.put('server-a','settings',{id:'main',zone:'Europe/Paris',staff:'helpers'});h.member.roles.cache.set('helpers',{});
-  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(h.outputs.at(-1).content,/Administrator or Manage Server/);h.store.close();
+  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(h.outputs.at(-1).content,/You don’t have permission/);h.store.close();
 });
 
 test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{

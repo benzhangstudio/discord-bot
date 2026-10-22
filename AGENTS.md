@@ -1,5 +1,13 @@
 # Number One release requirements
 
+## Every Discord error: permanent public-bot writing rule
+
+- EVERY Discord error must be brief, friendly, and actionable for the invoking user, usually one or two sentences. Number One serves other communities; users are not the Wispbyte operator.
+- Never copy raw exceptions or server/Wispbyte output to Discord, even in staff-only replies. Stack traces, SDK/HTTP codes, file paths, environment variables, hosting/restart instructions, internal references, queues and diagnostics belong only in redacted server logs.
+- Use the reviewed public-error catalogue through `publicErrorMessage`. Unknown errors, including unknown `UserError` messages, must use a safe generic reply. An exception's diagnostic message is not its public message.
+- Apply this to EVERY command, component, modal, acknowledgement, deferred reply, fallback, moderation failure, staff log and status screen. Do not fix only the particular error the user reports. Never recommend blindly retrying an uncertain action.
+- Run the public-error catalogue and leakage regression tests before every push. See `DISCORD_MESSAGES.md` for the examples and implementation contract.
+
 - Work in this checkout. Do not create replacement project folders or edit synced sources.
 - Every command and component must finish with success, an actionable error, or an explicitly uncertain delivery result. Do not leave staff indefinitely waiting on a thinking/loading state.
 - Before every push, inspect response paths and test requests that never settle at each network step, including the fallback itself. A rejected-request test alone is insufficient.

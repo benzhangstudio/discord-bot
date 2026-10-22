@@ -2,6 +2,7 @@ import {MessageFlags} from 'discord.js';
 import {sendInteractionResponse} from './interaction-transport.js';
 import {UserError} from './user-error.js';
 import {randomUUID} from 'node:crypto';
+import {publicErrorMessage} from './public-errors.js';
 const acknowledgements=new WeakMap();
 export function cancelAcknowledgement(i) {
   const pending=acknowledgements.get(i);
@@ -77,12 +78,7 @@ export async function reportFailure(i,error,log=console.error) {
     log(`[${reference}] Action result is ready; its confirmation is unavailable (${code}). The action was not repeated.`);return;
   }
   log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
-  let message;
-  if(Number(error.code)===50013 || Number(error.code)===50001)message='Number One cannot access that channel or perform that action. Ask a server administrator to check its permissions.';
-  else if(code==='HTTP_429'||Number(error.code)===429)message='Number One is busy right now. Please wait a moment and try again.';
-  else if(Number(error.code)===10062)message='This action has expired. Run the command again.';
-  else if(error.name==='UserError')message=safeError(error);
-  else message='Something went wrong while processing this action. Please try again.';
+  const message=publicErrorMessage(error);
   try {
     const payload={content:message,...(i.privateResponse||i.ephemeral||i.instagramSetupUpdate?{flags:MessageFlags.Ephemeral}:{}),allowedMentions:{parse:[]},embeds:[],components:[]};
     // Keep the setup controls available so a failed validation can be corrected.

@@ -1,5 +1,5 @@
 import {UserError} from './user-error.js';
-import {withDeadline} from './responses.js';
+import {withDeadline,safeError} from './responses.js';
 export const defaults={id:'main',modRole:null,privacyRole:null,logChannel:null,retentionDays:365,automod:false,blockedWords:[],mentionLimit:8,spamLimit:6,blockInvites:true};
 export const clean=value=>String(value??'').replace(/@/g,'＠').replace(/[`*_~|>\\]/g,'').slice(0,1000);
 export class Moderation {
@@ -33,6 +33,7 @@ export class Moderation {
    // An HTTP rejection confirms failure; timeouts, connection errors and 5xx may follow a committed mutation.
    c.state=Number(error.status)>=400&&Number(error.status)<500?'failed':'uncertain';
    c.error=String(error.code||error.name||'Error');
+   console.warn(`Moderation ${action} case ${id}: ${c.state} (${c.error}): ${safeError(error)}`);
   }finally{active=false;this.append(guild,c,c.state,actor,reason);this.busy.delete(key);}
   return c;
  }

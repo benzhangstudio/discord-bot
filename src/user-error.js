@@ -1,2 +1,2 @@
-// Only messages deliberately written for users are shown directly in Discord.
+// Diagnostic context only. Discord copy must come from publicErrorMessage's reviewed catalogue.
 export class UserError extends Error {constructor(message){super(message);this.name='UserError';}}
