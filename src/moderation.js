@@ -213,8 +213,8 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   if(['mod-appeal-open','mod-appeal-status'].includes(i.customId)){
    const status=i.customId==='mod-appeal-status';
    const modal=new ModalBuilder().setCustomId(status?'mod-appeal-status-submit':'mod-appeal-submit').setTitle(status?'Appeal status':'Appeal a moderation case').addComponents(
-    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('case').setLabel('Your case ID').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(30)));
-   if(!status)modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('body').setLabel('Why should staff reconsider?').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)));
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('case').setLabel('Case ID').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(30)));
+   if(!status)modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('body').setLabel('Why should this case be reconsidered?').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)));
    await read(i.showModal(modal));return true;
   }
   if(['mod-appeal-submit','mod-appeal-status-submit'].includes(i.customId)){

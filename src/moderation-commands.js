@@ -1,8 +1,8 @@
 const text=(name,description,required=true)=>({type:3,name,description,required,max_length:500,...(name==='appeal'?{autocomplete:true}:{})});
-const user={type:6,name:'user',description:'Member to moderate',required:true};
+const user={type:6,name:'user',description:'Member',required:true};
 const reason=text('reason','Reason for this action');
 const optionalReason={...reason,required:false};
-const id={...text('case','Case ID, or search by member or action'),autocomplete:true};
+const id={...text('case','Case ID (search by member or action)'),autocomplete:true};
 const sub=(name,description,options=[])=>({type:1,name,description,options});
 const channel={type:7,name:'channel',description:'Text channel in this server',required:true,channel_types:[0,5]};
 const number=(name,description,min,max,required=true)=>({type:4,name,description,min_value:min,max_value:max,required});
@@ -12,7 +12,7 @@ export const moderationCommands=[
  {name:'unban',description:'Remove a member’s ban',options:[user,optionalReason]},
  {name:'kick',description:'Kick a member from the server',options:[user,optionalReason]},
  {name:'warn',description:'Warn a member',options:[user,reason]},
- ...['timeout','mute'].map(name=>({name,description:'Timeout a member for a set duration',options:[user,text('duration','Duration, e.g. 10m, 1h, 1d (max 28d)'),optionalReason]})),
+ ...['timeout','mute'].map(name=>({name,description:'Time out a member',options:[user,text('duration','Duration, e.g. 10m, 1h, 1d (max 28d)'),optionalReason]})),
  ...['untimeout','unmute'].map(name=>({name,description:'Remove a member’s timeout',options:[user,optionalReason]})),
  {name:'purge',description:'Delete recent messages from this channel',options:[number('count','Number of messages (1–100); pinned messages are skipped',1,100),{...user,required:false,description:'Only delete messages from this member'},optionalReason]},
  {name:'warnings',description:'View a member’s warnings',options:[user,number('page','Page number',1,10000,false)]},
@@ -39,11 +39,11 @@ export const moderationCommands=[
  ]},
  {name:'appeals',description:'Manage moderation appeals',options:[
   sub('panel','Post an appeal button for members still in the server',[channel]),
-  sub('record','Staff: record an appeal received through the external contact',[user,id,text('statement','Appeal text')]),
+  sub('record','Record an appeal received outside Discord (staff)',[user,id,text('statement','Appeal text')]),
   sub('list','List open appeals',[number('page','Page number',1,10000,false)]),sub('show','Show an appeal',[text('appeal','Appeal ID')]),
   sub('review','Accept or deny an appeal (does not change the sanction)',[text('appeal','Appeal ID'),choice('decision','Decision',[['Accept','accepted'],['Deny','denied']]),reason]),
  ]},
- {name:'emergency',description:'Emergency lockdown: lock and restore channels',options:[
+ {name:'emergency',description:'Lock and unlock channels',options:[
   sub('on','Lock a channel',[channel,reason]),
   sub('off','Unlock a channel',[channel,reason]),
   sub('status','Show locked channels'),

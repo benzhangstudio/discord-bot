@@ -35,9 +35,9 @@ export function instagramPanel(d,sources,notice='') {
     {name:'Link previews',value:d.showPreviews?'On':'Off',inline:true},
     {name:'Following public Instagram accounts',value:'In **Source**, paste an RSS/Atom link from an Instagram feed service. A profile link alone will not work. Posts and stories depend on what that service provides. Empty roundups are skipped.'}
   ],footer:{text:'Private setup · Only you can use this menu · Expires after 30 minutes'}}],allowedMentions:{parse:[]},components:[
-    row({type:3,custom_id:prefix+'choose',placeholder:'Add a source or manage an existing one',options:[{label:'＋ Add a new source',value:'new',default:!d.sourceId},...sources.map(f=>({label:String(f.name).slice(0,100),value:f.id,description:f.paused?'Paused':'Active',default:f.id===d.sourceId}))]}),
+    row({type:3,custom_id:prefix+'choose',placeholder:'Add a source or manage an existing one',options:[{label:'Add a new source',value:'new',default:!d.sourceId},...sources.map(f=>({label:String(f.name).slice(0,100),value:f.id,description:f.paused?'Paused':'Active',default:f.id===d.sourceId}))]}),
     row({type:8,custom_id:prefix+'channel',placeholder:'Choose where Instagram posts go',channel_types:[0,5],min_values:1,max_values:1,...(d.channel?{default_values:[{id:d.channel,type:'channel'}]}:{})}),
-    row({type:6,custom_id:prefix+'role',placeholder:'Optional: choose a role to notify (clear to disable)',min_values:0,max_values:1,...(d.role?{default_values:[{id:d.role,type:'role'}]}:{})}),
+    row({type:6,custom_id:prefix+'role',placeholder:'Role to notify (optional)',min_values:0,max_values:1,...(d.role?{default_values:[{id:d.role,type:'role'}]}:{})}),
     row({type:3,custom_id:prefix+'delivery',placeholder:'Delivery frequency',options:[{label:'Weekly roundup',value:'weekly',description:'All new posts on your chosen day',default:d.delivery!=='daily'},{label:'Daily roundup',value:'daily',description:'New posts once a day at your chosen time',default:d.delivery==='daily'}]}),
     row(...[['source','Source',2],['schedule','Schedule',2],['preview','Preview',2],['save','Save',3],['close','Close',2]].map(([action,label,style])=>({type:2,custom_id:prefix+action,label,style})))
   ]};

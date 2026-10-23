@@ -4,6 +4,8 @@ Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mod
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
 
+Run `node scripts/dump-command-text.mjs` to review every command, option and choice description.
+
 ### Dashboard
 
 The site is a Discord-style dashboard: sign in at `/dashboard`, pick a server (servers without the bot show an invite link), then use the plugin sidebar at `/dashboard/SERVER_ID/PLUGIN`. Plugins: Overview, Moderation, Automod (owner-editable), Embeds, Scheduler, Instagram, Access, Settings (timezone editable by managers) and Verification. Moderation, Embeds, Scheduler and Instagram can be switched off per server; disabled plugins block their slash commands with a short private notice. Managers (owner, Administrator, Manage Server) see all plugins; members only see Verification. `/verify?guild=SERVER_ID` keeps working. No new environment variables are required. The root `/` is a general MEE6-style dashboard with a sidebar of plugins (Overview, Moderation, Embeds, Scheduler, Instagram, Verification, Settings). Verification lives at `/verify` as a linked feature and remains the public, multi-server synthetic Beta. Members sign in with Discord and choose their community; server owners/managers configure reviewer and test verified roles on the website. Only application credentials are configured privately once by the bot operator. See [WISPBYTE.md](WISPBYTE.md) for rollout and [age-verification/README.md](age-verification/README.md) for demo/test steps. No real ID uploads are accepted; slash-command permissions are unchanged.

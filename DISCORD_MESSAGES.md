@@ -40,3 +40,7 @@ Action confirmations are a one-line result plus an embed titled like `Member ban
 Affected members get a plain DM before ban, kick or timeout (after a warning): `You were banned from **Server**.` / `Reason: …` / `Case: …`, plus an **Appeal** button unless `dm-appeals` is off. If the DM fails, the moderator's reply adds: "Could not DM the member. If they contact staff another way, use /appeals record."
 
 The `/appeals panel` message is for members still in the server and says that removed members receive an Appeal button by DM. Review replies never imply a sanction changed: "Appeal X accepted. The sanction was not changed; use /unban or /untimeout if needed."
+
+## Help and command text
+
+`/help` shows a **Help** overview (one line per category) and a category page listing each `/command subcommand – description`, generated from the registered command definitions. Every command must belong to exactly one help category (`tests/help.test.js`). Command, option and choice descriptions use sentence case, no trailing period, no first person, no branding. Review them with `node scripts/dump-command-text.mjs`.
