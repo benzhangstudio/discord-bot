@@ -9,6 +9,7 @@ export const categories=[
   {value:'mod-settings',label:'Moderation settings',description:'Moderator role, log channel, automod and retention',commands:['mod-settings']},
   {value:'appeals',label:'Appeals',description:'Appeal panel and staff review',commands:['appeals']},
   {value:'emergency',label:'Emergency lockdown',description:'Lock and unlock channels',commands:['emergency']},
+  {value:'roles',label:'Reaction roles',description:'Let members pick roles by reacting',commands:['reaction-roles']},
   {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
   {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
   {value:'feeds',label:'Instagram',description:'Instagram feed sources and roundups',commands:['instagram']},

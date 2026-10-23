@@ -15,6 +15,10 @@ The existing Rose folder is the repository root. GitHub stores code and tests; W
 
 Official reference: https://wispbyte.com/kb/github-integration and https://wispbyte.com/kb/startup-settings. Exact controls depend on the server’s panel and runtime image. Do not assume a power restart pulls code unless its update option is configured and verified.
 
+## Reaction roles: intents and permissions
+
+Reaction roles use the Guild Message Reactions and Guild Messages gateway intents. Neither is privileged, so nothing needs to change in the Developer Portal. Servers that invited the bot before this feature need to give it **Manage Roles**, **Add Reactions** and **Read Message History**, and move its role above the roles it gives. New invite links include these permissions.
+
 ## Routine updates
 
 1. Edit and test in the same local Rose folder. Publish the reviewed code to GitHub main through the connected GitHub account; no pull request is required for routine updates.

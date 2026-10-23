@@ -1,4 +1,4 @@
-import {Client,GatewayIntentBits} from 'discord.js';
+import {Client,GatewayIntentBits,Partials} from 'discord.js';
 import {Store} from './store.js';
 import {createApp} from './app.js';
 import {loadConfig,requireConfig} from './config.js';
@@ -10,7 +10,8 @@ loadConfig();
 try{const {execFileSync}=await import('node:child_process');console.log(`Running commit ${execFileSync('git',['rev-parse','--short','HEAD'],{stdio:['ignore','pipe','ignore']}).toString().trim()}.`);}catch{console.log('Running commit unknown (no git metadata).');}
 requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
 const store=new Store();
-const client=new Client({intents:[GatewayIntentBits.Guilds,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])]});
+// GuildMessageReactions and GuildMessages are not privileged. Partials let reaction roles work on uncached messages.
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessageReactions,GatewayIntentBits.GuildMessages,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.MessageContent]:[])],partials:[Partials.Message,Partials.Reaction,Partials.User,Partials.Channel]});
 const app=createApp(client,store);
 let dashboard;
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{app.stop();client.destroy();await dashboard?.stop();store.close();process.exit(0);});

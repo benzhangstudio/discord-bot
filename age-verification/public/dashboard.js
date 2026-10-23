@@ -1,6 +1,6 @@
 // Dashboard shell: sign-in, server picker, History API routing and plugin pages.
-const TITLES={overview:'Overview',moderation:'Moderation',automod:'Automod',embeds:'Embeds',scheduler:'Scheduler',instagram:'Instagram',verification:'Verification',access:'Access',settings:'Settings'};
-const LEADS={overview:'Server status and plugins.',moderation:'Cases, actions and appeals.',automod:'Automatic message filtering.',embeds:'Saved embed messages.',scheduler:'Upcoming events, meetings and rotations.',instagram:'Instagram roundup sources.',access:'Members granted command access by the server owner.',settings:'General server settings.'};
+const TITLES={overview:'Overview',moderation:'Moderation',automod:'Automod',embeds:'Embeds',scheduler:'Scheduler',instagram:'Instagram',reactionroles:'Reaction Roles',verification:'Verification',access:'Access',settings:'Settings'};
+const LEADS={overview:'Server status and plugins.',moderation:'Cases, actions and appeals.',automod:'Automatic message filtering.',embeds:'Saved embed messages.',scheduler:'Upcoming events, meetings and rotations.',instagram:'Instagram roundup sources.',reactionroles:'Members pick roles by reacting to a message.',access:'Members granted command access by the server owner.',settings:'General server settings.'};
 let config,guilds=[];
 const el=(tag,props={},...children)=>{const n=document.createElement(tag);for(const[k,v]of Object.entries(props)){if(k==='class')n.className=v;else if(k==='text')n.textContent=v;else n.setAttribute(k,v);}n.append(...children.filter(Boolean));return n;};
 const fmt=ms=>ms?new Date(ms).toLocaleString():'—';
@@ -85,6 +85,7 @@ async function renderPlugin(guild,name){
   if(name==='embeds')parts.push(el('div',{class:'card'},el('h2',{text:'Saved embeds'}),table(['Name','Title','Updated'],d.items.map(e=>[e.name,e.title||'—',fmt(e.updatedAt)]),'No saved embeds. Create one with /embed create.')));
   if(name==='scheduler')parts.push(el('div',{class:'card'},el('h2',{text:'Upcoming'}),el('p',{class:'muted',text:'Server timezone: '+d.timezone}),table(['Title','Starts','Type','Repeats','Channel','Status'],d.items.map(e=>[e.title,fmt(e.start),e.kind,e.repeat,ref(e.channel),e.needsAttention?'Needs attention':'OK']),'Nothing scheduled. Add an event with /schedule add.')));
   if(name==='instagram')parts.push(el('div',{class:'card'},el('h2',{text:'Sources'}),table(['Name','Channel','Delivery','Waiting','Status'],d.items.map(f=>[f.name,ref(f.channel),f.schedule,String(f.waiting),f.needsAttention?'Needs attention':f.paused?'Paused':'Active']),'No sources. Add one with /instagram setup.')));
+  if(name==='reactionroles')parts.push(...reactionRoles(d,base,guild));
   if(name==='access')parts.push(el('div',{class:'card'},el('h2',{text:'Granted members'}),el('p',{class:'muted',text:'Administrators and members with Manage Server always have access. Only the server owner can grant or revoke access, using /access.'}),table(['User ID','Granted by','Granted'],d.items.map(a=>[a.user,a.grantedBy,fmt(a.grantedAt)]),'No grants.')));
   if(name==='settings'){
     const f=el('form',{class:'card'},el('h2',{text:'Timezone'}),el('label',{for:'tz',text:'Timezone for new events (IANA name)'}),Object.assign(el('input',{id:'tz',required:'',maxlength:64,list:'tzList',autocomplete:'off'}),{value:d.timezone}),el('datalist',{id:'tzList'},...(Intl.supportedValuesOf?Intl.supportedValuesOf('timeZone'):[]).map(z=>el('option',{value:z}))),el('button',{class:'primary',text:'Save'}));
@@ -92,6 +93,39 @@ async function renderPlugin(guild,name){
     parts.push(f,el('div',{class:'card'},el('h2',{text:'Staff log channel'}),el('p',{text:ref(d.logChannel)})));
   }
   parts.push(commands(d.commands));body.replaceChildren(...parts.filter(Boolean));
+}
+function reactionRoles(d,base,guild){
+  const opt=(list,value,blank)=>{const s=el('select');if(blank)s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name+(x.assignable===false?' (above bot role)':''),x.id));s.value=value||'';return s;};
+  const list=el('div',{class:'card'},el('h2',{text:'Reaction-role messages'}),table(['Title','Channel','Roles','Mode','Status'],d.items.map(x=>[x.title,ref(x.channel),x.entries.map(e=>e.emoji+' '+(e.role.name||e.role.id)).join(', ')||'None',(x.mode==='unique'?'Unique':'Normal')+(x.maxRoles?` · max ${x.maxRoles}`:'')+(x.duration?` · ${x.duration} min`:'')+(x.removeOnUnreact?'':' · add-only'),x.broken?'Needs attention: '+x.broken:'OK']),'No reaction-role messages yet.'));
+  const actions=el('div',{class:'actions'});
+  for(const x of d.items){
+    const editBtn=el('button',{type:'button',text:'Edit '+x.title});editBtn.onclick=()=>fill(x);
+    const del=el('button',{type:'button',class:'danger',text:'Delete '+x.title});del.onclick=NO.action(async()=>{if(!confirm('Delete this reaction-role setup? Members keep their roles.'))return;await NO.api(`${base}/plugins/reactionroles`,{delete:x.id},'PUT');NO.message('Reaction roles deleted.');await renderPlugin(guild,'reactionroles');});
+    actions.append(editBtn,del);
+  }
+  if(d.items.length)list.append(actions);
+  const f=el('form',{class:'card'}),heading=el('h2',{text:'Create reaction roles'});let editing=null;
+  const channel=opt(d.channels,'','Choose a channel'),link=el('input',{maxlength:200,placeholder:'Optional: existing message link or ID'}),title=el('input',{maxlength:256,placeholder:'Reaction roles'}),desc=el('textarea',{maxlength:2000,rows:2});
+  const mode=el('select');mode.append(new Option('Normal: pick any roles','normal'),new Option('Unique: pick one role','unique'));
+  const max=Object.assign(el('input',{type:'number',min:0,max:20}),{value:0}),dur=el('input',{maxlength:10,placeholder:'off, 30m, 12h, 7d'}),unreact=el('input',{type:'checkbox'});unreact.checked=true;
+  const required=opt(d.roles,'','No required role'),rows=el('div',{class:'rows'}),preview=el('div',{class:'card preview'});
+  const row=(emoji='',role='')=>{const r=el('div',{class:'row'}),e=el('input',{maxlength:64,placeholder:'Emoji, e.g. 🎮 or <:name:id>','aria-label':'Emoji'}),s=opt(d.roles,role,'Choose a role'),x=el('button',{type:'button',text:'Remove'});e.value=emoji;x.onclick=()=>{r.remove();draw();};e.oninput=s.onchange=draw;r.append(e,s,x);rows.append(r);};
+  const entries=()=>[...rows.children].map(r=>({emoji:r.children[0].value.trim(),role:r.children[1].value})).filter(e=>e.emoji||e.role);
+  function draw(){const name=id=>d.roles.find(r=>r.id===id)?.name||'role';preview.replaceChildren(el('h3',{text:'Preview: '+(title.value||'Reaction roles')}),desc.value?el('p',{text:desc.value}):null,...entries().map(e=>el('p',{text:`${e.emoji} – @${name(e.role)}`})));}
+  for(const i of [title,desc])i.oninput=draw;
+  const add=el('button',{type:'button',text:'Add emoji and role'});add.onclick=()=>{if(rows.children.length<d.limits.entries)row();};
+  const label=(t,n)=>el('label',{},t,n);
+  function fill(x){editing=x.id;heading.textContent='Edit '+x.title;channel.value=x.channel?.id||'';channel.disabled=true;link.disabled=true;title.value=x.title;desc.value=x.description||'';mode.value=x.mode;max.value=x.maxRoles;dur.value=x.duration?x.duration+'m':'off';unreact.checked=x.removeOnUnreact;required.value=x.requiredRole?.id||'';rows.replaceChildren();for(const e of x.entries)row(e.emoji,e.role.id);draw();f.scrollIntoView();}
+  row();
+  f.append(heading,label('Channel',channel),label('Existing message (optional)',link),label('Title',title),label('Description',desc),label('Mode',mode),label('Max roles per member (0 = no limit)',max),label('Temporary role duration',dur),el('label',{class:'check'},unreact,'Remove the role when the reaction is removed'),label('Required role',required),el('h3',{text:'Emoji and roles'}),rows,add,preview,el('p',{class:'muted',text:'The bot needs Manage Roles, and its role must be above every role listed here.'}),el('button',{class:'primary',text:'Save'}));
+  f.onsubmit=NO.action(async()=>{
+    const o={title:title.value.trim()||null,description:desc.value.trim()||null,mode:mode.value,maxRoles:Number(max.value)||0,duration:dur.value.trim()||'off',removeOnUnreact:unreact.checked,requiredRole:required.value||null,entries:entries()};
+    if(editing)await NO.api(`${base}/plugins/reactionroles`,{update:{id:editing,...o}},'PUT');
+    else await NO.api(`${base}/plugins/reactionroles`,{create:{channel:channel.value,message:link.value.trim()||null,...o}},'PUT');
+    NO.message('Reaction roles saved.');await renderPlugin(guild,'reactionroles');
+  });
+  draw();
+  return [!d.botReady?el('div',{class:'notice',text:'The bot must be online in this server to change reaction roles.'}):null,list,f];
 }
 $('serverSelect').onchange=()=>navigate($('serverSelect').value?'/dashboard/'+$('serverSelect').value:'/dashboard');
 $('menuToggle').onclick=()=>{const open=document.body.classList.toggle('nav-open');$('menuToggle').setAttribute('aria-expanded',String(open));};

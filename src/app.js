@@ -15,6 +15,8 @@ import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 import {portalMessage} from './portal.js';
 import {commandPluginEnabled} from './plugins.js';
+import {createReactionRoles} from './reaction-roles.js';
+import {createReactionRoleCommands} from './reaction-role-commands.js';
 
 export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000,acknowledgementDelayMs}={}) {
 const reply=content=>({content,allowedMentions:{parse:[]}});
@@ -98,6 +100,8 @@ function eventView(e) {
 
 const accessCommands=createAccessCommands(store);
 const moderation=createModeration(client,store,{needStaff,timeoutMs:operationTimeoutMs});
+const reactionRoles=createReactionRoles({store,client});
+const reactionRoleCommands=createReactionRoleCommands(reactionRoles);
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
@@ -141,6 +145,7 @@ async function handle(i) {
   if(await moderation.handle(i))return;
   if(await accessCommands(i))return;
   if(await instagram(i))return;
+  if(await reactionRoleCommands(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
     needStaff(i);const [,id,action]=i.customId.split(':'),d=item(i,'embed',id);
     const key={channel:'sendChannel',role:'sendRole',user:'sendUser'}[action];
@@ -337,10 +342,17 @@ async function dispatch(i) {
   }
 }
 client.on('interactionCreate',dispatch);
+// Reaction roles: raw reaction events arrive for uncached messages through partials (see index.js).
+client.on('messageReactionAdd',(reaction,user)=>reactionRoles.onReaction(reaction,user,true));
+client.on('messageReactionRemove',(reaction,user)=>reactionRoles.onReaction(reaction,user,false));
+client.on('messageDelete',message=>message.guildId&&reactionRoles.markBroken(message.guildId,g=>g.message===message.id,'The message was deleted.'));
+client.on('messageDeleteBulk',messages=>{for(const m of messages.values())if(m.guildId)reactionRoles.markBroken(m.guildId,g=>g.message===m.id,'The message was deleted.');});
+client.on('roleDelete',role=>reactionRoles.markBroken(role.guild.id,g=>g.requiredRole===role.id||g.entries.some(e=>e.role===role.id),'A role on this message was deleted.'));
+client.on('channelDelete',channel=>channel.guildId&&reactionRoles.markBroken(channel.guildId,g=>g.channel===channel.id,'The channel was deleted.'));
 client.rest?.on(RESTEvents.RateLimited,details=>console.warn(`Discord is delaying a request because of a rate limit. Retry delay: ${Math.ceil((details.timeToReset || details.retryAfter || 0)/1000)} second(s).`));
-let stopWorker;
-client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);});
+let stopWorker,stopSweep;
+client.once('clientReady',()=>{console.log(`Number One is online as ${client.user.tag}. Slash commands only. ${client.guilds.cache.size} server(s).`);stopWorker=startWorker(client,store);stopSweep=reactionRoles.start();});
 client.on('error',error=>console.error(`Discord client error (${error.code || error.name}): ${safeError(error)}`));
 client.on('guildDelete',guild=>console.log(`Removed from server ${guild.id}; saved data retained for operator-managed deletion.`));
-return {handle:async i=>{try{return await handle(i);}catch(error){cancelAcknowledgement(i);throw error;}},dispatch,moderation,stop:()=>{stopWorker?.();moderation.stop();}};
+return {handle:async i=>{try{return await handle(i);}catch(error){cancelAcknowledgement(i);throw error;}},dispatch,moderation,reactionRoles,stop:()=>{stopWorker?.();stopSweep?.();moderation.stop();}};
 }

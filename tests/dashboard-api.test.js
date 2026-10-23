@@ -46,7 +46,7 @@ test('plugin APIs require Manage Server/owner and server membership',async t=>{
     assert.equal((await call('/api/guilds/'+A+'/overview')).status,403);assert.equal((await call('/api/guilds/'+A+'/plugins/moderation')).status,403);
     assert.equal((await call('/api/guilds/'+A+'/plugins/embeds',{method:'PUT',data:{enabled:false}})).status,403);}
   const {call}=await login('manager');assert.equal((await call('/api/guilds/'+OTHER+'/overview')).status,403);
-  const overview=await (await call('/api/guilds/'+A+'/overview')).json();assert.deepEqual(overview.plugins,{moderation:true,embeds:true,scheduler:true,instagram:true});assert.equal(overview.verification.enabled,false);
+  const overview=await (await call('/api/guilds/'+A+'/overview')).json();assert.deepEqual(overview.plugins,{moderation:true,embeds:true,scheduler:true,instagram:true,reactionroles:true});assert.equal(overview.verification.enabled,false);
   for(const name of ['moderation','automod','embeds','scheduler','instagram','access','settings'])assert.equal((await call('/api/guilds/'+A+'/plugins/'+name)).status,200,name);
   assert.equal((await call('/api/guilds/'+A+'/plugins/unknown')).status,404);assert.equal((await call('/api/guilds/'+A+'/plugins/verification')).status,404);
 });

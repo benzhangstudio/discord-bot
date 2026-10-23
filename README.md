@@ -19,7 +19,7 @@ Production hosting is **Wispbyte**, with GitHub supplying code updates. See [WIS
 1. Use Node.js 24.12 or newer (Node 25 is already installed on this computer).
 2. Open PowerShell in this folder and run `npm install`.
 3. For temporary local testing only, create a private `.env` in this folder with DISCORD_TOKEN and DISCORD_APPLICATION_ID. Optionally set DISCORD_TEST_GUILD_ID for a test server. Never commit or share `.env`. On Wispbyte, use its Environment page to save these values to the server-local `.env`.
-4. In the Discord Developer Portal, use the intended Number One application. Enable Public Bot when ready for public invitations. Clear an old Interactions Endpoint URL if one is set. No privileged gateway intents are required.
+4. In the Discord Developer Portal, use the intended Number One application. Enable Public Bot when ready for public invitations. Clear an old Interactions Endpoint URL if one is set. No privileged gateway intents are required (reaction roles use the non-privileged Guild Message Reactions and Guild Messages intents).
 5. Invite with `bot` and `applications.commands` scopes. Grant View Channels, Send Messages, and Embed Links in destinations. No Administrator permission is required. For non-mentionable role notifications, Number One also needs Mention Everyone; the invoking staff member must have it too.
 6. Keep the hosted instance stopped. Run `npm start`. Startup automatically checks and updates this application's commands, removes old server-specific command overrides, and verifies the resulting list before connecting the bot. It skips rewrites when the commands already match. Other bots are not affected. It does not edit your Discord application’s display name. `npm run register` is available for a manual command-only check, but is no longer required for ordinary startup.
 7. Leave PowerShell open. Stop with Ctrl+C; restart with `npm start` in this same folder.
@@ -75,6 +75,20 @@ New posts are collected once daily, plus a final check when the roundup is due. 
 `/instagram list`, `/instagram preview`, `/instagram pause`, `/instagram resume`, and `/instagram remove` provide quick management; choose a saved source by name. Pausing stops collection and delivery. If the bot is offline, the accumulated roundup posts when it returns; resuming can deliver an overdue roundup. Provider failures retry hourly. An uncertain Discord send pauses delivery for staff review to avoid duplicate notifications. Check the destination before posting manually. Queued posts and delivery progress persist across restarts. The former /feed command is removed automatically on startup; saved subscriptions are retained.
 
 Public HTTPS sources only, with public DNS addresses checked and pinned for every request. Local/private addresses, literal IPs, nonstandard ports, URL login credentials, redirects, and XML external entities are rejected. Requests have a 15-second transport limit and 2 MB response limit. Sources are limited to 10 per server. Feed URLs remain in private storage and the owner’s private setup form; keep the database out of GitHub.
+
+## Reaction roles
+
+Members pick roles by reacting to a message. Staff with command access set it up with `/reaction-roles` or on the dashboard (**Reaction Roles**).
+
+- `/reaction-roles create channel:#roles title:Games emoji:🎮 role:@Gamer` posts a blurple embed listing each emoji and role, and adds the reactions.
+- `/reaction-roles attach channel:#rules link:<message link>` uses an existing message instead.
+- `/reaction-roles add message:<setup> emoji:🎲 role:@Board games` · `/reaction-roles remove message:<setup> emoji:🎲`
+- `/reaction-roles edit message:<setup> mode:unique max-roles:2 duration:7d required-role:@Member remove-on-unreact:false`
+- `/reaction-roles delete message:<setup>` · `/reaction-roles list`
+
+Modes: **normal** (pick any), **unique** (picking one removes the others). Options: max roles per member, add-only (`remove-on-unreact:false`, verify-style), temporary roles (`30m` to `30d`; expiries are stored and resume after a restart), and a required role. Custom emojis must come from a server the bot is in. Up to 20 roles per message and 50 messages per server.
+
+The bot needs **Manage Roles**, and its highest role must be above every role it gives. Staff can only use roles below their own highest role (the server owner is exempt). Setup errors reply publicly in the channel. Member-side problems never post in channels: they are logged, and the member's reaction is removed. Deleted messages, roles and channels mark the setup as **Needs attention** on the dashboard. The plugin can be turned off from the dashboard like the others.
 
 ## Data and reliability
 

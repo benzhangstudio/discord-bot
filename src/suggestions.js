@@ -21,6 +21,7 @@ export function suggestions(store,i,{canManage=false,canConfigure=false}={}) {
     if((i.commandName==='settings'&&!canConfigure)||(i.commandName==='schedule'&&!canManage))return [];
     return timezones.filter(([value,name])=>normalized(value+' '+name).includes(query)).slice(0,25).map(([value,name])=>({name,value}));
   }
+  if(i.commandName==='reaction-roles'&&focused.name==='message')return store.list(i.guildId,'reaction-role').filter(g=>normalized((g.title||'Reaction roles')+' '+g.id+' '+g.message).includes(query)).slice(0,25).map(g=>({name:`${g.title||'Reaction roles'} · #${i.guild?.channels?.cache?.get(g.channel)?.name||g.channel} · ${g.entries.length} role(s)${g.broken?' · Needs attention':''}`.slice(0,100),value:g.id}));
   const kind={embed:'embed',schedule:'event',instagram:'feed'}[i.commandName];
   if(!kind || (kind!=='event'&&!canManage))return [];
   return store.list(i.guildId,kind).filter(record=>{

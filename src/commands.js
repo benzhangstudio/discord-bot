@@ -1,3 +1,4 @@
+import {reactionRoleCommand} from './reaction-role-commands.js';
 import {moderationCommands} from './moderation-commands.js';
 // Discord application command JSON.
 const str = (name, description, required = false, extra = {}) => ({type:3,name,description,required,...extra});
@@ -10,6 +11,7 @@ const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
 export const commands = [
   ...moderationCommands,
+  reactionRoleCommand,
   {name:'access',description:'Manage command access (server owner only)',options:[
     sub('add','Allow a member to use commands',[{type:6,name:'user',description:'Member',required:true}]),
     sub('remove','Remove a member’s command access',[{type:6,name:'user',description:'Member',required:true}]),

@@ -8,14 +8,16 @@ import {Moderation,defaults as modDefaults} from './moderation-core.js';
 import {DEFAULT_ZONE} from './domain.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {TOGGLEABLE_PLUGINS,pluginStates,setPluginEnabled} from './plugins.js';
+import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
 
-export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','verification','access','settings']);
+export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
 const commandsFor={
   moderation:['/ban','/kick','/warn','/timeout','/purge','/warnings','/modlogs','/case','/appeals','/emergency','/mod-settings'],
   automod:['/mod-settings automod','/mod-settings block-invites','/mod-settings blocked-words','/mod-settings mention-limit','/mod-settings spam-limit'],
   embeds:['/embed create','/embed edit','/embed send','/embed list','/embed delete'],
   scheduler:['/schedule add','/schedule list','/schedule show','/schedule edit','/schedule cancel','/settings timezone'],
   instagram:['/instagram setup','/instagram list','/instagram preview','/instagram pause','/instagram resume','/instagram remove'],
+  reactionroles:['/reaction-roles create','/reaction-roles attach','/reaction-roles add','/reaction-roles remove','/reaction-roles edit','/reaction-roles delete','/reaction-roles list'],
   access:['/access'],settings:['/settings timezone','/settings status','/help','/portal']
 };
 const text=(value,max=200)=>String(value??'').slice(0,max);
@@ -36,6 +38,18 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   }
   const settings=guild=>store.get(guild,'settings','main')||{id:'main',zone:DEFAULT_ZONE};
   const modConfig=guild=>({...modDefaults,...store.get(guild,'mod-config','main')});
+  const reactionRoles=createReactionRoles({store,client});
+  // Shared validation throws UserError with reviewed copy; surface it as a 400 on the website.
+  async function rr(work){try{return await work();}catch(error){if(error?.name==='UserError')throw new Fault(400,error.message);throw new Fault(502,'Discord did not accept the change. Check the bot’s permissions and try again.');}}
+  function rrGuild(guild){const g=cached(guild);assert(g,503,'The bot must be online and in this server to change reaction roles.');return g;}
+  function rrView(guild){
+    const g=cached(guild),me=g?.members?.me;
+    const channels=g?[...g.channels.cache.values()].filter(c=>[0,5].includes(c.type)).map(c=>({id:c.id,name:text(c.name,100)})):[];
+    const roles=g?[...g.roles.cache.values()].filter(r=>r.id!==g.id&&!r.managed).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:text(r.name,100),assignable:!!me&&r.position<me.roles.highest.position})):[];
+    return {limits:RR_LIMITS,channels,roles,botReady:!!g,
+      items:store.list(guild,'reaction-role').map(x=>({id:x.id,title:text(x.title||'Reaction roles',256),description:text(x.description,2000),channel:label(guild,'channel',x.channel),message:x.message,owned:!!x.owned,mode:x.mode,maxRoles:x.maxRoles||0,duration:x.duration||0,removeOnUnreact:x.removeOnUnreact!==false,requiredRole:label(guild,'role',x.requiredRole),
+        entries:x.entries.map(e=>({emoji:text(e.display,64),role:label(guild,'role',e.role)})),broken:x.broken?text(x.broken,120):null,link:`https://discord.com/channels/${guild}/${x.channel}/${x.message}`}))};
+  }
   const automodAvailable=()=>env.MODERATION_MESSAGE_CONTENT==='1';
 
   function overview(guild,{verification}={}){
@@ -73,11 +87,24 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         .map(e=>({id:e.id,title:text(e.title,150),start:e.start,zone:e.zone,kind:e.kind||'event',repeat:e.repeat||'none',duration:e.duration,channel:label(guild,'channel',e.channel),needsAttention:!!e.error}))};
     }
     if(name==='instagram')return {...base,editable:false,items:store.list(guild,'feed').map(f=>({id:f.id,name:text(f.name,100),channel:label(guild,'channel',f.channel),paused:!!f.paused,schedule:f.paused?'Paused':text(deliveryLabel(f),120),waiting:f.pending?.length||0,needsAttention:!!f.error}))};
+    if(name==='reactionroles')return {...base,editable:true,...rrView(guild)};
     if(name==='access')return {...base,editable:false,ownerManaged:true,items:store.list(guild,'access').map(a=>({user:a.id,grantedBy:a.grantedBy||null,grantedAt:a.grantedAt||null}))};
     if(name==='settings'){const s=settings(guild);return {...base,editable:true,timezone:s.zone||DEFAULT_ZONE,logChannel:label(guild,'channel',s.logChannel)};}
     throw new Fault(404,'Unknown dashboard plugin.');
   }
   async function update(guild,name,data,identity){
+    if(name==='reactionroles'&&data&&!('enabled' in data)){
+      only(data,['create','update','delete']);assert(Object.keys(data).length===1,400,'Make one change at a time.');
+      const g=rrGuild(guild),actor={id:identity.id,owner:!!identity.owner};
+      const opts=o=>{only(o,['id','channel','message','title','description','mode','maxRoles','duration','removeOnUnreact','requiredRole','entries']);
+        for(const k of ['channel','message','requiredRole','id'])assert(o[k]==null||(typeof o[k]==='string'&&o[k].length<=200),400,'Invalid field.');
+        assert(o.entries===undefined||Array.isArray(o.entries)&&o.entries.every(e=>e&&typeof e.emoji==='string'&&e.emoji.length<=64&&/^\d{17,20}$/.test(e.role)),400,'Each row needs an emoji and a role.');
+        const {id,entries,channel,message,...rest}=o;return {id,entries,channel,message,rest};};
+      if(data.create){const o=opts(data.create);await rr(()=>reactionRoles.create(g,{channel:o.channel,message:o.message||null,entries:o.entries||[],...o.rest},actor));}
+      if(data.update){const o=opts(data.update);assert(o.id,400,'Choose a reaction-role message.');await rr(async()=>{await reactionRoles.edit(g,o.id,o.rest);if(o.entries)await reactionRoles.setEntries(g,o.id,o.entries,actor);});}
+      if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
+      return plugin(guild,name);
+    }
     only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
       assert(TOGGLEABLE_PLUGINS.includes(name),400,'This section cannot be turned off.');assert(typeof data.enabled==='boolean',400,'Choose on or off.');
