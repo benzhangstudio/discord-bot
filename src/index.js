@@ -6,6 +6,8 @@ import {syncApplicationCommands} from './registration.js';
 import {safeError} from './responses.js';
 import {startHostedDashboard} from './dashboard.js';
 loadConfig();
+// Log the deployed commit so the running version can be confirmed in the Wispbyte console.
+try{const {execFileSync}=await import('node:child_process');console.log(`Running commit ${execFileSync('git',['rev-parse','--short','HEAD'],{stdio:['ignore','pipe','ignore']}).toString().trim()}.`);}catch{console.log('Running commit unknown (no git metadata).');}
 requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
 const store=new Store();
 const client=new Client({intents:[GatewayIntentBits.Guilds,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])]});

@@ -19,7 +19,7 @@ Official reference: https://wispbyte.com/kb/github-integration and https://wispb
 
 1. Edit and test in the same local Rose folder. Publish the reviewed code to GitHub main through the connected GitHub account; no pull request is required for routine updates.
 2. GitHub Actions runs syntax checks and offline tests. Wait for checks on main to pass before restarting Wispbyte. Checks do not test live Discord or Instagram.
-3. Back up the live data folder and restart Number One with `AUTO_UPDATE=1`. Wispbyte pulls the configured production branch during startup. Keep the startup file at `src/index.js`; do not replace files, clone again or separately pull for routine updates. It updates and verifies the command list automatically.
+3. Back up the live data folder and restart Number One with `AUTO_UPDATE=1`. Wispbyte pulls the configured production branch during startup. Keep the startup file at `src/index.js`; do not replace files, clone again or separately pull for routine updates. It updates and verifies the command list automatically. The console prints `Running commit <hash>.` at startup; compare it with the latest commit on GitHub to confirm the deploy.
 4. Confirm Number One is online and try `/help`. Templates, schedules, RSVPs, and feed subscriptions remain in the server-local database.
 
 GitHub Actions tests code; Wispbyte's configured auto-update performs deployment on restart. Do not put a GitHub token in a repository URL or commit a Wispbyte API key.
