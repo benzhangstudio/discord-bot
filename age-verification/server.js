@@ -5,6 +5,8 @@ import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Store,assert,DEMO_GUILDS} from './core.js';
 import {Discord} from './discord.js';
+import {createDashboardApi} from '../src/dashboard-api.js';
+import {Store as BotStore} from '../src/store.js';
 const here=dirname(fileURLToPath(import.meta.url));
 const token=()=>randomBytes(32).toString('hex');
 const snowflake=id=>typeof id==='string'&&/^\d{17,20}$/.test(id);
@@ -16,13 +18,13 @@ export function config(env=process.env){
   else{assert(origin.protocol==='https:',500,'Discord mode requires HTTPS.');if(c.mode==='discord')assert(c.clientSecret&&c.botToken&&snowflake(c.clientId),500,'Configure the application OAuth credentials. Server roles are configured on the website.');}
   return c;
 }
-export function application(c,root,discord=new Discord(c)){
+export function application(c,root,discord=new Discord(c),plugins=null){
   const sessions=new Map(),states=new Map(),rates=new Map(),inFlight=new Set();
   const cookieName=c.mode==='discord'?'__Host-age':'age',secure=c.mode==='discord'?'; Secure':'';
   function setSession(res,identity){const sid=token();sessions.set(sid,{...identity,csrf:token(),expires:Date.now()+3600000});res.setHeader('Set-Cookie',`${cookieName}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${secure}`);}
-  async function body(req){
+  async function body(req,limit=1024){
     assert(req.headers['content-type']==='application/json',415,'Only small JSON requests are accepted. File uploads are disabled.');let raw='';
-    for await(const chunk of req){raw+=chunk;assert(Buffer.byteLength(raw)<=1024,413,'Uploads are disabled.');}
+    for await(const chunk of req){raw+=chunk;assert(Buffer.byteLength(raw)<=limit,413,'Uploads are disabled.');}
     try{const data=JSON.parse(raw);assert(data&&!Array.isArray(data)&&typeof data==='object',400,'Invalid JSON.');return data;}catch{assert(false,400,'Invalid JSON.');}
   }
   function keys(data,allowed){assert(Object.keys(data).every(k=>allowed.includes(k)),400,'Unsupported fields. Raw ID data is never accepted.');}
@@ -44,7 +46,7 @@ export function application(c,root,discord=new Discord(c)){
   }
   const server=createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https://cdn.discordapp.com; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     if(c.mode!=='demo')res.setHeader('Strict-Transport-Security','max-age=31536000');
     try{
       const url=new URL(req.url,c.origin),path=url.pathname;assert(req.headers.host===new URL(c.origin).host,400,'Unexpected host.');
@@ -53,8 +55,10 @@ export function application(c,root,discord=new Discord(c)){
       const cookies=Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')));const session=sessions.get(cookies[cookieName]);
       // Per-session limits prevent the shared Wispbyte proxy IP from throttling all signed-in users together.
       const rateKey=session?cookies[cookieName]:req.socket.remoteAddress;const rate=rates.get(rateKey)||{n:0,until:now+60000};rates.set(rateKey,rate);assert(++rate.n<=180,429,'Too many requests. Wait one minute.');
-      if(req.method==='GET'&&['/','/verify','/verify/','/app.js','/dashboard.js','/style.css','/portrait.svg'].includes(path)){
-        const file=path==='/'?'dashboard.html':path.startsWith('/verify')?'index.html':path.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});return res.end(readFileSync(resolve(here,'public',file)));
+      // One single-page dashboard; /verify (member links) and /dashboard/... deep links share it.
+      const page=['/','/verify','/verify/','/dashboard','/dashboard/'].includes(path)||/^\/dashboard\/\d{17,20}(\/[a-z]{1,20})?\/?$/.test(path);
+      if(req.method==='GET'&&(page||['/app.js','/dashboard.js','/style.css','/portrait.svg','/logo.svg'].includes(path))){
+        const file=page?'dashboard.html':path.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});return res.end(readFileSync(resolve(here,'public',file)));
       }
       if(req.method==='GET'&&path==='/api/config')return send(res,{mode:c.mode,version:'0.2',syntheticOnly:true,inviteUrl:c.mode==='discord'?invite():null});
       assert(c.mode!=='setup',503,'Public sign-in is temporarily unavailable. The bot operator must finish the application OAuth connection.');
@@ -66,17 +70,18 @@ export function application(c,root,discord=new Discord(c)){
       if(req.method==='GET'&&path==='/auth/callback'){
         assert(c.mode==='discord',400,'OAuth unavailable in demo.');const state=states.get(url.searchParams.get('state'));states.delete(url.searchParams.get('state'));
         assert(state&&state.expires>now&&state.binding===cookies.oauth,403,'OAuth state expired or invalid. Sign in again.');assert(url.searchParams.get('code'),400,'Discord authorization was cancelled.');
-        const identity=await discord.exchange(url.searchParams.get('code'));sessions.delete(cookies[cookieName]);setSession(res,identity);return redirect(res,'/verify'+(state.guild?'?guild='+state.guild:''));
+        const identity=await discord.exchange(url.searchParams.get('code'));sessions.delete(cookies[cookieName]);setSession(res,identity);return redirect(res,state.guild?'/verify?guild='+state.guild:'/dashboard');
       }
       if(req.method==='POST'&&path==='/api/demo-login'){
         assert(c.mode==='demo',404,'Not available.');assert(req.headers.origin===c.origin,403,'Invalid origin.');const data=await body(req);keys(data,['identity']);assert(['member','reviewer','reviewer2','owner','manager','outsider'].includes(data.identity),400,'Unknown demo identity.');
-        sessions.delete(cookies[cookieName]);setSession(res,{id:data.identity,guilds:data.identity==='outsider'?[]:DEMO_GUILDS.map(g=>({...g,manageable:['owner','manager'].includes(data.identity)}))});return send(res,{ok:true});
+        sessions.delete(cookies[cookieName]);setSession(res,{id:data.identity,name:'Demo '+data.identity,guilds:data.identity==='outsider'?[]:DEMO_GUILDS.map(g=>({...g,manageable:['owner','manager'].includes(data.identity)}))});return send(res,{ok:true});
       }
       assert(session&&session.expires>now,401,'Sign in with Discord to continue.');
-      if(req.method==='GET'&&path==='/api/session')return send(res,{id:session.id,csrf:session.csrf,guilds:session.guilds});
+      if(req.method==='GET'&&path==='/api/session')return send(res,{id:session.id,name:session.name||null,avatar:session.avatar||null,csrf:session.csrf,guilds:session.guilds});
+      if(req.method==='GET'&&path==='/api/guilds')return send(res,{guilds:session.guilds.map(g=>({id:g.id,name:g.name,icon:g.icon||null,manageable:!!g.manageable,botPresent:plugins?plugins.hasBot(g.id):null,inviteUrl:g.manageable&&c.mode==='discord'?invite(g.id):null})),inviteUrl:c.mode==='discord'?invite():null});
       let data;
-      if(req.method==='POST'){
-        assert(req.headers.origin===c.origin,403,'Invalid origin.');const csrf=req.headers['x-csrf-token'];assert(typeof csrf==='string'&&/^[a-f0-9]{64}$/.test(csrf)&&timingSafeEqual(Buffer.from(csrf),Buffer.from(session.csrf)),403,'Refresh the page and try again.');data=await body(req);
+      if(req.method==='POST'||req.method==='PUT'){
+        assert(req.headers.origin===c.origin,403,'Invalid origin.');const csrf=req.headers['x-csrf-token'];assert(typeof csrf==='string'&&/^[a-f0-9]{64}$/.test(csrf)&&timingSafeEqual(Buffer.from(csrf),Buffer.from(session.csrf)),403,'Refresh the page and try again.');data=await body(req,req.method==='PUT'?4096:1024);
         if(path==='/api/logout'){keys(data,[]);sessions.delete(cookies[cookieName]);res.setHeader('Set-Cookie',`${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);return send(res,{ok:true});}
       }
       const route=path.match(/^\/api\/guilds\/(\d{17,20})\/(.+)$/);assert(route,404,'Route not found.');const[,guild,endpoint]=route;
@@ -97,6 +102,11 @@ export function application(c,root,discord=new Discord(c)){
         if(endpoint==='evidence'){reviewer();return send(res,store.evidence(url.searchParams.get('id'),identity.id));}
         if(endpoint==='privacy/export')return send(res,store.export(identity.id));
         if(endpoint==='admin'){owner();return send(res,{requests:store.requests(),audit:store.audits()});}
+      }
+      if(endpoint==='overview'||endpoint.startsWith('plugins/')){
+        assert(plugins,503,'Bot settings are unavailable on this dashboard instance. Use slash commands in Discord.');
+        const result=await plugins.handle({method:req.method,endpoint,data,guild,identity,verification:{configured:!!settings,enabled:!!settings?.enabled}});
+        return send(res,result);
       }
       assert(req.method==='POST',404,'Route not found.');
       if(endpoint==='settings'){
@@ -133,5 +143,8 @@ export function application(c,root,discord=new Discord(c)){
   server.requestTimeout=15000;server.headersTimeout=10000;return server;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  const c=config(),path=resolve(here,process.env.AGE_DB||'data/age.sqlite');mkdirSync(dirname(path),{recursive:true});const root=new Store(path);root.purge();const server=application(c,root);const purge=setInterval(()=>root.purge(),60000);purge.unref();server.listen(c.port,'127.0.0.1',()=>console.log(`Number One public Beta: ${c.origin} (${c.mode}; synthetic IDs only)`));
+  const c=config(),path=resolve(here,process.env.AGE_DB||'data/age.sqlite');mkdirSync(dirname(path),{recursive:true});const root=new Store(path);root.purge();
+  // Local demo uses a separate throwaway bot store, never the live data/rose.sqlite.
+  const bot=c.mode==='demo'?new BotStore(resolve(here,'data/demo-bot.sqlite')):null;
+  const server=application(c,root,undefined,bot?createDashboardApi({store:bot,demo:true}):null);const purge=setInterval(()=>root.purge(),60000);purge.unref();server.listen(c.port,'127.0.0.1',()=>console.log(`Number One public Beta: ${c.origin} (${c.mode}; synthetic IDs only)`));
 }

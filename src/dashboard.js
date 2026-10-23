@@ -2,6 +2,7 @@ import {mkdirSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {config,application} from '../age-verification/server.js';
 import {Store} from '../age-verification/core.js';
+import {createDashboardApi} from './dashboard-api.js';
 
 export function hostedConfig(env=process.env) {
   if(env.DASHBOARD_ENABLED === '0') return null;
@@ -18,13 +19,14 @@ export function hostedConfig(env=process.env) {
 }
 
 // The existing bot startup owns this listener; no second process or gateway login.
-export async function startHostedDashboard(env=process.env) {
+// Pass the bot's own Store/client so plugin pages reuse them (same process, no second bot DB handle).
+export async function startHostedDashboard(env=process.env,{store:botStore=null,client=null}={}) {
   const c=hostedConfig(env);if(!c)return null;
   const path=resolve(env.AGE_DB || 'data/age-verification.sqlite');
   mkdirSync(dirname(path),{recursive:true});
   const store=new Store(path);
   store.purge();
-  const server=application(c,store);
+  const server=application(c,store,undefined,botStore?createDashboardApi({store:botStore,client,env}):null);
   server.requestTimeout=15000;server.headersTimeout=10000;
   const purge=setInterval(()=>store.purge(),60000);purge.unref();
   try {

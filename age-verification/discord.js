@@ -24,8 +24,8 @@ export class Discord{
       const user=await call('https://discord.com/api/v10/users/@me',options);const guilds=[];let after='0';
       for(let page=0;page<20;page++){
         const batch=await call('https://discord.com/api/v10/users/@me/guilds?limit=200&after='+after,options);assert(Array.isArray(batch),502,'Discord server list is unavailable. Sign in again.');
-        guilds.push(...batch.map(g=>({id:g.id,name:g.name,manageable:g.owner||((BigInt(g.permissions)&(ADMIN|MANAGE_SERVER))!==0n)})));
-        if(batch.length<200)return {id:user.id,guilds};
+        guilds.push(...batch.map(g=>({id:g.id,name:g.name,icon:typeof g.icon==='string'&&/^(a_)?[a-f0-9]{32}$/.test(g.icon)?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`:null,manageable:g.owner||((BigInt(g.permissions)&(ADMIN|MANAGE_SERVER))!==0n)})));
+        if(batch.length<200)return {id:user.id,name:typeof (user.global_name||user.username)==='string'?(user.global_name||user.username).slice(0,64):null,avatar:typeof user.avatar==='string'&&/^(a_)?[a-f0-9]{32}$/.test(user.avatar)?`https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`:null,guilds};
         assert(batch.at(-1).id!==after,502,'Discord server pagination failed. Sign in again.');after=batch.at(-1).id;
       }
       throw new Fault(502,'Discord server list exceeded the supported size. Contact Number One support.');

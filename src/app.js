@@ -14,6 +14,7 @@ import {helpMenu} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 import {portalMessage} from './portal.js';
+import {commandPluginEnabled} from './plugins.js';
 
 export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000,acknowledgementDelayMs}={}) {
 const reply=content=>({content,allowedMentions:{parse:[]}});
@@ -150,6 +151,7 @@ async function handle(i) {
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   if (i.isChatInputCommand()) {
     needStaff(i);
+    if(!commandPluginEnabled(store,i.guildId,i.commandName)){i.privateResponse=true;throw new UserError('This feature is turned off for this server. A server manager can turn it on in the Number One dashboard.');}
   }
   i.privateResponse=responsePrivacy(i);
   if(await moderation.handle(i))return;
