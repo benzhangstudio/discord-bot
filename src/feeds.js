@@ -34,7 +34,7 @@ export async function loadFeed(text,{resolve=lookup,get=https.get}={}) {
     });
     request.setTimeout(15000,()=>request.destroy(new UserError('This feed service took too long to respond. Try again later.'))); request.on('error',()=>reject(new UserError('This feed service could not be reached. Check the link and try again later.')));
   });
-  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new UserError('Number One cannot read this feed format. Ask your source provider for another feed link.');
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new UserError('The bot cannot read this feed format. Ask your source provider for another feed link.');
   let feed;
   try {feed=await parser.parseString(xml);} catch {throw new UserError('This link is not a readable RSS or Atom feed. Use the feed link from your Instagram feed service, rather than an Instagram profile link.');}
   return (feed.items || []).slice(0,100).flatMap(item=>{

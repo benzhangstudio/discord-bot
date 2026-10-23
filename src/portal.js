@@ -11,7 +11,7 @@ export function portalMessage(guildId,action,origin=process.env.AGE_ORIGIN || 'h
   return {
     content:action==='setup'
       ?'**Dashboard setup**\nSign in with Discord to configure plugins, automod and verification. Requires server owner, Administrator or Manage Server.'
-      :'**Server dashboard**\nSign in with Discord to manage this server, or to check your verification status as a member.\n\nVerification is a test-only Beta; real ID uploads are disabled.',
+      :'**Server dashboard**\nSign in with Discord to manage this server, or to check your verification status as a member.\n\nVerification runs in test mode; real ID uploads are disabled.',
     components:[{type:1,components:[{type:2,style:5,label:action==='setup'?'Open setup':'Open dashboard',url:link.href}]}],
     allowedMentions:{parse:[]}
   };

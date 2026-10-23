@@ -7,7 +7,7 @@ export const COMMAND_PLUGINS=Object.freeze({
   ...Object.fromEntries(MODERATION_COMMANDS.map(name=>[name,'moderation'])),
   embed:'embeds',schedule:'scheduler',instagram:'instagram'
 });
-export const PLUGIN_DISABLED_MESSAGE='This feature is turned off for this server. A server manager can turn it on in the Number One dashboard.';
+export const PLUGIN_DISABLED_MESSAGE='This feature is turned off for this server. A server manager can turn it on in the dashboard.';
 export function pluginStates(store,guild){
   const saved=store.get(guild,'dashboard-plugins','main')||{};
   return Object.fromEntries(TOGGLEABLE_PLUGINS.map(name=>[name,saved[name]!==false]));

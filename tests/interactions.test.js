@@ -223,7 +223,7 @@ for(const stage of ['channel','role','member','send'])test(`Publish stops and re
   if(stage==='member')h.channel.guild.members.fetch=never;
   if(stage==='send')h.channel.send=()=>{attempts++;return never();};
   const i=h.interaction('embed','send',{message:'saved',...(stage==='role'?{role:'345678901234567890'}:{}),...(stage==='member'?{user:h.member.id}:{})});
-  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|couldn’t confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/Check the channel before sending it again/);h.store.close();
+  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|Could not confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/Check the channel before sending it again/);h.store.close();
 });
 
 test('embed copies are independent saved drafts and require a fresh publishing destination',async()=>{

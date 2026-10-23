@@ -20,7 +20,7 @@ for(const privateResponse of [true,false])test(`rate-limited ${privateResponse?'
 test('the reported protected-target error completes its deferred reply instead of abandoning thinking',async()=>{
  const c=clock(),calls=[];let attempts=0;
  const i={commandName:'warn',deferred:true,privateResponse:true,replyRecoveryOptions:c.options,confirmationTransport:async(_i,method,payload)=>{calls.push({method,payload});if(++attempts===1)throw limited(20000);}};
- await reportFailure(i,new UserError('You cannot moderate yourself, Number One, or the server owner.'),s=>c.logs.push(s));
+ await reportFailure(i,new UserError('You cannot moderate yourself, the bot, or the server owner.'),s=>c.logs.push(s));
  assert.equal(calls.length,1);assert.equal(i.responsePending,true);assert.match(c.logs.at(-1),/queued/);
  await c.next();assert.equal(calls.length,2);assert.match(calls[1].payload.content,/cannot moderate yourself/);assert.equal(calls[1].method,'PATCH');assert.equal(i.responsePending,false);
 });

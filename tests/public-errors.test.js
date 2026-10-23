@@ -51,7 +51,7 @@ for(const detail of diagnostics)for(const kind of ['Error','UserError','forged']
 test('hosting setup failures offer support guidance while preserving operator instructions only in logs',async()=>{
  const detail='Set MODERATION_MESSAGE_CONTENT=1, enable Message Content Intent in Discord, and restart before enabling automod.';
  const sent=[],logs=[];await reportFailure({reply:async p=>sent.push(p)},new UserError(detail),s=>logs.push(s));
- assert.equal(sent[0].content,'Automod isn’t available yet. Please contact bot support.');
+ assert.equal(sent[0].content,'Automod is not enabled for this bot. Contact the bot operator.');
  assert.match(logs[0],/MODERATION_MESSAGE_CONTENT=1/);assert.doesNotMatch(sent[0].content,technical);
 });
 

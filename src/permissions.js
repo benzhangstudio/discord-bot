@@ -1,6 +1,6 @@
 import {PermissionFlagsBits} from 'discord.js';
 
-export const MANAGEMENT_ONLY_MESSAGE='You do not have permission to use Number One slash commands. You need Administrator or Manage Server permission, or access granted by this server’s owner.';
+export const MANAGEMENT_ONLY_MESSAGE='You do not have permission to use these commands. You need Administrator or Manage Server permission, or access granted by this server’s owner.';
 
 export function canManageServer(permissions) {
   if (!permissions) {

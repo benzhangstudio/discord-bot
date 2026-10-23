@@ -24,7 +24,7 @@ async function finishAcknowledgement(i) {
     cancelAcknowledgement(i);
   }
 }
-export async function withDeadline(promise,ms=15000,message='This request took too long. Please try again later.') {
+export async function withDeadline(promise,ms=15000,message='This request took too long. Try again later.') {
   let timer;
   try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new UserError(message)),ms);})]);}
   finally{clearTimeout(timer);}
@@ -32,8 +32,8 @@ export async function withDeadline(promise,ms=15000,message='This request took t
 export function step(i,promise,{uncertain=false}={}) {
   i.operationDeadline??=Date.now()+(i.operationTimeoutMs??15000);
   const remaining=i.operationDeadline-Date.now();
-  if(remaining<=0)throw new UserError('This request took too long. Please try again.');
-  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'The service took too long to respond. Please try again later.');
+  if(remaining<=0)throw new UserError('This request took too long. Try again.');
+  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'The service took too long to respond. Try again later.');
 }
 export async function acknowledge(i,update=false) {
   if (i.deferred || i.replied || acknowledgements.has(i)) return;

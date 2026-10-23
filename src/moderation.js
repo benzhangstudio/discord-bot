@@ -61,11 +61,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  function targetSafe(i,actor,bot,target){
   const cfg=core.config(i.guildId);
-  must(target.id!==i.user.id&&target.id!==bot.id&&target.id!==i.guild.ownerId,'You cannot moderate yourself, Number One, or the server owner.');
+  must(target.id!==i.user.id&&target.id!==bot.id&&target.id!==i.guild.ownerId,'You cannot moderate yourself, the bot, or the server owner.');
   must(!target.user.bot,'Bot accounts must be handled manually by the server owner.');
   must(!has(target,P.Administrator),'Administrator members are protected.');
   must(!cfg.modRole||!target.roles.cache.has(cfg.modRole),'Configured moderators are protected.');
-  must(rank(bot)>rank(target),'Move Number One above the target’s highest role.');
+  must(rank(bot)>rank(target),'Move the bot’s role above the target’s highest role.');
   must(owner(i)||rank(actor)>rank(target),'Your highest role must be above the target’s highest role.');
  }
  function completeMember(i,member){
@@ -234,7 +234,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   // preflight can trigger a deferred reply. Full fresh checks still follow.
   if(['warn','ban','kick','mute','timeout','unmute','untimeout'].includes(i.commandName)){
    const target=i.options.getUser('user');
-   must(target&&![i.user.id,i.guild.ownerId,client.user?.id].includes(target.id),'You cannot moderate yourself, Number One, or the server owner.');
+   must(target&&![i.user.id,i.guild.ownerId,client.user?.id].includes(target.id),'You cannot moderate yourself, the bot, or the server owner.');
    const resolved=i.options.getMember?.('user');
    if(completeMember(i,i.member)&&completeMember(i,i.guild.members.me)&&completeMember(i,resolved))targetSafe(i,i.member,i.guild.members.me,resolved);
   }
@@ -242,7 +242,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const {actor,bot}=local?interactionMembers(i):await members(i);needStaff(i);
   // Explicit grants are bound to the current owner, as in /access.
   const grant=store.get(i.guildId,'access',i.user.id);
-  must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your Number One command access has expired. Ask the current owner.');
+  must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your command access has expired. Ask the current owner.');
   const sub=routeAction;
   if(i.commandName==='mod-settings'){await config(i,sub);return true;}
   if(i.commandName==='emergency'){await emergency(i,sub,actor,bot);return true;}
@@ -285,11 +285,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   }
   let target,action=sub,effect,details={},selectedMember;const reason=i.options.getString('reason')||'No reason provided';
   if(sub==='warn')must(i.options.getString('reason')?.trim(),'Enter a reason for the warning.');
-  const audit=`Number One ${i.id}: ${reason}`.slice(0,500);
+  const audit=`Case ${i.id}: ${reason}`.slice(0,500);
   if(sub==='purge'){
    allowed(i,actor,P.ManageMessages);
    const ch=await read(i.guild.channels.fetch(i.channelId));must(ch&&[0,5].includes(ch.type),'Purge is available in text and announcement channels.');
-   must(ch.permissionsFor(actor).has([P.ViewChannel,P.ReadMessageHistory])&&ch.permissionsFor(bot).has([P.ViewChannel,P.ReadMessageHistory,P.ManageMessages]),'You need channel access; Number One needs View Channel, Read Message History and Manage Messages.');
+   must(ch.permissionsFor(actor).has([P.ViewChannel,P.ReadMessageHistory])&&ch.permissionsFor(bot).has([P.ViewChannel,P.ReadMessageHistory,P.ManageMessages]),'You need channel access; The bot needs View Channel, Read Message History and Manage Messages.');
    const messages=await read(ch.messages.fetch({limit:i.options.getInteger('count')}));
    const filterUser=i.options.getUser('user');
    const ids=[...messages.values()].filter(m=>!m.pinned&&m.createdTimestamp>Date.now()-14*86400000+60000&&(!filterUser||m.author?.id===filterUser.id)).map(m=>m.id);
@@ -298,7 +298,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   }else{
    target=i.options.getUser('user').id;
    const permission={ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,timeout:P.ModerateMembers,untimeout:P.ModerateMembers,warn:P.ModerateMembers}[sub];
-   must(permission,'Unknown moderation action.');allowed(i,actor,permission);must(has(bot,permission),'Number One lacks the Discord permission for this action.');
+   must(permission,'Unknown moderation action.');allowed(i,actor,permission);must(has(bot,permission),'The bot lacks the Discord permission for this action.');
    if(sub==='unban'){
     must(target!==i.guild.ownerId&&target!==i.user.id&&target!==bot.id,'This target is protected.');
     await read(i.guild.bans.fetch(target));effect=()=>i.guild.members.unban(target,audit);
@@ -317,7 +317,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const fresh=await members(i),grantNow=store.get(i.guildId,'access',i.user.id);
   must(owner(i)||has(fresh.actor,P.Administrator)||has(fresh.actor,P.ManageGuild)||grantNow?.grantedBy===i.guild.ownerId,'Command access was removed during preflight.');
   const required={ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub]||P.ModerateMembers;
-  allowed(i,fresh.actor,required);must(has(fresh.bot,required),'Number One lost the required Discord permission.');
+  allowed(i,fresh.actor,required);must(has(fresh.bot,required),'The bot lost the required Discord permission.');
   if(selectedMember){const live=await read(i.guild.members.fetch({user:target,force:true}));targetSafe(i,fresh.actor,fresh.bot,live);}
   // Banned/kicked members can no longer receive a DM, so notify first (bounded, best effort).
   const mcfg=core.config(i.guildId);const dm=opts=>notifyMember(selectedMember,{action:sub,guild:i.guildId,guildName:i.guild.name,caseId:i.id,reason,until:details.until,contact:mcfg.appealContact,appealButton:mcfg.dmAppeals!==false,...opts});

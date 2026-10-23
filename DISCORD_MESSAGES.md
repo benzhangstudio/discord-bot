@@ -6,12 +6,12 @@ Use one or two short sentences: what the user needs to know and their next usefu
 
 | Situation | Discord | Server log |
 | --- | --- | --- |
-| Unexpected failure | Something went wrong. Please try again later. | Redacted exception, error code and internal reference. |
-| Missing permissions | I don’t have permission to do that here. Ask a server admin to check my permissions. | Discord rejection code and failed operation. |
-| Slow lookup | That took too long. Please try again. | Which request timed out. |
-| Uncertain action | I couldn’t confirm that action. Check the result before trying again. | Outcome, action and case identifier. |
-| Automod unavailable | Automod isn’t available yet. Please contact bot support. | Required intent, environment setting and restart instructions. |
-| Portal unavailable | The portal is unavailable right now. Please contact bot support. | Invalid hosting configuration. |
+| Unexpected failure | Something went wrong. Try again later. | Redacted exception, error code and internal reference. |
+| Missing permissions | The bot doesn’t have permission to do that here. Ask a server admin to check its permissions. | Discord rejection code and failed operation. |
+| Slow lookup | That took too long. Try again. | Which request timed out. |
+| Uncertain action | Could not confirm that action. Check the result before trying again. | Outcome, action and case identifier. |
+| Automod unavailable | Automod is not enabled for this bot. Contact the bot operator. | Required intent, environment setting and restart instructions. |
+| Portal unavailable | The dashboard is unavailable right now. Contact the bot operator. | Invalid hosting configuration. |
 
 `src/public-errors.js` owns the reviewed message catalogue and `publicErrorMessage(error)`. `reportFailure` logs the redacted diagnostic separately and uses only this formatter for Discord. A `UserError` retains diagnostic context in `.message`; its name alone never grants permission to display that message. Unknown messages fail closed to generic copy. Do not automatically forward exception text or an alleged `publicMessage` property from an external service.
 
