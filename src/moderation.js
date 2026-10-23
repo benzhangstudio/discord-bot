@@ -12,6 +12,26 @@ const payload=content=>({content:clean(content).slice(0,1900),allowedMentions:{p
 const caseStatus=c=>({succeeded:'Completed',failed:'Not completed',uncertain:'Needs review',pending:'Needs review'}[c.state]||'Needs review');
 const caseText=c=>`Case ${c.id} · ${c.action} · ${caseStatus(c)}\nMember: ${c.target}\nReason: ${c.reason}${['uncertain','pending'].includes(c.state)?'\nCheck the result before trying this action again.':''}`;
 const rank=m=>m.roles.highest.position;
+const COLOR=0x5865f2;
+export const ACTION_TITLES={ban:'Member banned',unban:'Member unbanned',kick:'Member kicked',warn:'Member warned',timeout:'Member timed out',untimeout:'Timeout removed',purge:'Messages deleted','emergency-on':'Channel locked','emergency-off':'Channel unlocked',configure:'Moderation settings updated','automod-delete':'Message deleted by automod','appeal-panel':'Appeal panel posted',note:'Case note added',void:'Warning removed'};
+const mention=id=>/^\d{15,25}$/.test(String(id))?`<@${id}>`:clean(String(id));
+const caseEmbed=(c,{title,actor,reason}={})=>{
+ const fields=[];
+ if(['ban','unban','kick','warn','timeout','untimeout','automod-delete'].includes(c.action))fields.push({name:'User',value:mention(c.target),inline:true});
+ fields.push({name:'Moderator',value:mention(actor||c.actor),inline:true});
+ if(c.details?.until)fields.push({name:'Until',value:`<t:${Math.floor(c.details.until/1000)}:f>`,inline:true});
+ if(c.action==='purge')fields.push({name:'Messages',value:String(c.details?.deleted??0),inline:true});
+ fields.push({name:'Reason',value:clean(reason||c.reason||'No reason provided').slice(0,1000)},{name:'Case',value:clean(String(c.id)),inline:true});
+ return {title:title||ACTION_TITLES[c.action]||'Case updated',color:COLOR,fields,timestamp:new Date(c.updatedAt||c.createdAt||Date.now()).toISOString()};
+};
+// Best-effort, bounded DM to the affected member. Never blocks or fails the action.
+const DM_TEXT={ban:'You were banned from',kick:'You were kicked from',timeout:'You were timed out in',warn:'You were warned in'};
+async function notifyMember(member,action,guildName,reason,until,contact){
+ if(!member?.send||!DM_TEXT[action])return false;
+ const lines=[`${DM_TEXT[action]} **${clean(guildName||'the server')}**.`,`Reason: ${clean(reason||'No reason provided').slice(0,500)}`];
+ if(until)lines.push(`Ends: <t:${Math.floor(until/1000)}:f>`);
+ try{await withDeadline(member.send({content:lines.join('\n'),allowedMentions:{parse:[]}}),3000);return true;}catch{return false;}
+}
 export function durationMinutes(value){
  const match=/^(\d+)\s*(m|h|d|w)$/i.exec(String(value||'').trim());
  const minutes=match?Number(match[1])*({m:1,h:60,d:1440,w:10080}[match[2].toLowerCase()]):NaN;
@@ -30,7 +50,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  function allowed(i,actor,permission=P.ModerateMembers){
   const cfg=core.config(i.guildId);
-  must(owner(i)||has(actor,P.Administrator)||has(actor,permission)||cfg.modRole&&actor.roles.cache.has(cfg.modRole),'You need the relevant moderation permission or the configured moderation role, plus Number One command access.');
+  must(owner(i)||has(actor,P.Administrator)||has(actor,permission)||cfg.modRole&&actor.roles.cache.has(cfg.modRole),'You need the relevant moderation permission or the moderator role, plus command access.');
  }
  function targetSafe(i,actor,bot,target){
   const cfg=core.config(i.guildId);
@@ -60,7 +80,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    must(ch&&![10,11,12].includes(ch.type)&&!ch.permissionsFor(guild.roles.everyone)?.has(P.ViewChannel),'Log channel must remain hidden from everyone.');
    // A claimed log is never blindly retried after an ambiguous send.
    store.put(guild.id,'mod-log',{...row,state:'sending'});
-   await read(ch.send({...payload(caseText(c)+(row.event?`\n${row.event.action} by ${row.event.actor}: ${row.event.reason}`:'')),nonce:row.id.slice(-25),enforceNonce:true}));
+   await read(ch.send({embeds:[caseEmbed(c,row.event?{title:ACTION_TITLES[row.event.action]||ACTION_TITLES[c.action],actor:row.event.actor,reason:row.event.reason}:{})],allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
    store.put(guild.id,'mod-log',{...row,state:'sent'});
   }catch{const current=store.get(guild.id,'mod-log',row.id);store.put(guild.id,'mod-log',{...row,state:current?.state==='sending'?'uncertain':'queued'});}
  }
@@ -70,7 +90,8 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const name=clean(member?.displayName||member?.user?.username||c.details?.memberName||c.target);
   const lastAction=c.events.at(-1)?.action;
   const result=lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+new Date(c.details.until).toISOString():''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
-  await respond(i,{content:`${result}\nReason: ${clean(c.events.at(-1)?.reason||c.reason)}\nCase: ${c.id}`,allowedMentions:{parse:[]}});
+  const last=c.events.at(-1);
+  await respond(i,{content:result,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
  }
  async function config(i,sub){
   const cfg=core.config(i.guildId);
@@ -107,7 +128,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   must(owner(i)||has(actor,P.Administrator),'Only the owner or an administrator can change emergency lockdown.');
   const channel=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));
   must(channel&&[0,5].includes(channel.type),'Choose a text or announcement channel.');
-  must(channel.permissionsFor(bot).has([P.ManageRoles,P.ViewChannel]),'Number One needs Manage Roles and View Channel here.');
+  must(channel.permissionsFor(bot).has([P.ManageRoles,P.ViewChannel]),'The bot needs Manage Roles and View Channel here.');
   const key=i.guildId+':'+channel.id;must(!pending.has(key),'This channel has an operation in progress.');pending.add(key);
   try{
    let lock=store.get(i.guildId,'mod-lock',channel.id);
@@ -169,7 +190,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     must(a,'No appeal found for your account and this case.');await respond(i,payload(`Appeal ${a.id}: ${a.state}${a.reason?'\nDecision reason: '+a.reason:''}`));return true;
    }
    const a=core.appeal(i.guildId,i.id,i.user.id,i.fields.getTextInputValue('case').trim(),i.fields.getTextInputValue('body'));
-   await respond(i,payload('Appeal '+a.id+' saved for staff review. Staff will communicate the decision; it does not automatically remove a sanction.'));return true;
+   await respond(i,payload('Appeal '+a.id+' submitted. Staff will review it.'));return true;
   }
   needStaff(i);
   const routeAction=moderationActions[i.commandName]||i.options.getSubcommand();
@@ -203,7 +224,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   if(i.commandName==='appeals'){
    if(sub==='record'){
     const a=core.appeal(i.guildId,i.id,i.options.getUser('user').id,i.options.getString('case'),i.options.getString('statement'),i.user.id);
-    await respond(i,payload(`External appeal ${a.id} saved for independent review. The subject and original moderator cannot decide it.`));
+    await respond(i,payload(`Appeal ${a.id} recorded. The member and the original moderator cannot review it.`));
    }else if(sub==='panel'){
     const ch=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));must(ch&&[0,5].includes(ch.type)&&ch.permissionsFor(actor).has([P.ViewChannel,P.SendMessages])&&ch.permissionsFor(bot).has([P.ViewChannel,P.SendMessages]),'Choose a text channel you and Number One can write in.');
     const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'panel:'+ch.id,action:'appeal-panel',reason:'Posted member appeal entry point',effect:()=>ch.send({...payload('Appeal a Number One moderation case. Your submission is private to staff. Banned or departed members: contact the server’s published appeal contact.'),components:[{type:1,components:[{type:2,style:1,label:'Submit an appeal',custom_id:'mod-appeal-open'},{type:2,style:2,label:'Check appeal status',custom_id:'mod-appeal-status'}]}]})});await finish(i,c);
@@ -264,7 +285,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const required={ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub]||P.ModerateMembers;
   allowed(i,fresh.actor,required);must(has(fresh.bot,required),'Number One lost the required Discord permission.');
   if(selectedMember){const live=await read(i.guild.members.fetch({user:target,force:true}));targetSafe(i,fresh.actor,fresh.bot,live);}
-  const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target,action,reason,effect,details});await finish(i,c);return true;
+  // Banned/kicked members can no longer receive a DM, so notify first (bounded, best effort).
+  if(['ban','kick'].includes(sub)&&selectedMember)await notifyMember(selectedMember,sub,i.guild.name,reason,null,core.config(i.guildId).appealContact);
+  const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target,action,reason,effect,details});await finish(i,c);
+  if(c.state==='succeeded'&&['warn','timeout'].includes(sub)&&selectedMember)void notifyMember(selectedMember,sub,i.guild.name,reason,details.until);
+  return true;
  }
  async function onMessage(message){
   if(!message.guild||!message.author||message.author.bot||message.webhookId||!core.config(message.guild.id).automod)return;

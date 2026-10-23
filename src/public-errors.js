@@ -79,7 +79,7 @@ export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "Number One cannot read this feed format. Ask your source provider for another feed link.": "Number One cannot read this feed format. Ask your source provider for another feed link.",
   "Number One lacks the Discord permission for this action.": "I don’t have permission to do that. Ask a server admin to check my permissions.",
   "Number One lost the required Discord permission.": "I no longer have permission to do that. Ask a server admin for help.",
-  "Number One needs Manage Roles and View Channel here.": "I need Manage Roles and View Channel here. Ask a server admin to check my permissions.",
+  "The bot needs Manage Roles and View Channel here.": "I need Manage Roles and View Channel here. Ask a server admin to check my permissions.",
   "Number One needs View Channel, Send Messages, and Embed Links there.": "I need View Channel, Send Messages and Embed Links there. Ask a server admin for help.",
   "One of the people in this rotation is not a member of this server. Check the mentions and try again.": "Someone in this rotation isn’t in the server. Check the member list.",
   "Only active successful warnings can be voided.": "Choose an active warning to remove.",
@@ -155,7 +155,7 @@ export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "You cannot view this event’s channel. Ask a staff member if you need access.": "You can’t view this event’s channel. Ask server staff for access.",
   "You do not have permission to use Number One slash commands. You need Administrator or Manage Server permission, or access granted by this server’s owner.": "You don’t have permission to use this command. Ask a server admin for access.",
   "You need channel access; Number One needs View Channel, Read Message History and Manage Messages.": "I can’t delete messages here. Ask a server admin to check my channel permissions.",
-  "You need the relevant moderation permission or the configured moderation role, plus Number One command access.": "You don’t have permission to use this moderation command. Ask a server admin for access.",
+  "You need the relevant moderation permission or the moderator role, plus command access.": "You don’t have permission to use this moderation command. Ask a server admin for access.",
   "Your Number One command access has expired. Ask the current owner.": "Your command access has expired. Ask the server owner to renew it.",
   "Your highest role must be above the target’s highest role.": "Your highest role must be above the target’s highest role."
 });

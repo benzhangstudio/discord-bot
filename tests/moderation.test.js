@@ -61,7 +61,7 @@ test('human-readable durations accept common units and reject invalid or excessi
  for(const value of ['',0,'forever','-1h','1.5h','29d','0m','99999999999999999999w'])assert.throws(()=>durationMinutes(value),/duration/);
 });
 test('simple ban records an omitted reason and replies with a clear result',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);assert.ok(h.outputs.at(-1).content.includes(c.id));}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case']);assert.ok(e.fields.at(-1).value.includes(c.id));}finally{h.close();}
 });
 test('warning list hides voided warnings while modlogs retains them',async()=>{
  const h=harness();try{await h.app.handle(h.interaction('delwarn'));await h.app.handle(h.interaction('warnings'));assert.match(h.outputs.at(-1).content,/No active warnings/);await h.app.handle(h.interaction('modlogs'));assert.match(h.outputs.at(-1).content,/voided/);}finally{h.close();}
@@ -215,4 +215,14 @@ test('protected targets get an immediate error without network calls, a deferral
    await h.app.dispatch(i);assert.equal(networkCalls,0);assert.equal(deferred,0);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/cannot moderate yourself/);assert.equal(h.core.cases('guild').length,2);
   }finally{h.close();}
  }
+});
+test('ban DMs the member first with server and reason; DM failures never block the action',async()=>{
+ const h=harness();try{
+  const sent=[];const orig=h.interaction('ban',{reason:'Spam'});
+  const realFetch=orig.guild.members.fetch.bind(orig.guild.members);
+  orig.guild.members.fetch=async(...a)=>{const m=await realFetch(...a);if(m&&typeof m==='object')m.send=async p=>{sent.push(p);throw new Error('DMs closed');};return m;};
+  await h.app.handle(orig);
+  const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.state,'succeeded');
+  assert.equal(sent.length,1);assert.match(sent[0].content,/^You were banned from \*\*.+\*\*\.\nReason: Spam/);assert.deepEqual(sent[0].allowedMentions,{parse:[]});
+ }finally{h.close();}
 });
