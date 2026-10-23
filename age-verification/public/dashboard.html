@@ -1,3 +1,73 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Number One · Dashboard</title><link rel="stylesheet" href="/style.css"></head>
-<body><header><a href="/" class="brand">N°1 <span>NUMBER ONE</span></a><span class="badge">PUBLIC SERVER DASHBOARD · BETA</span></header><main><section class="intro"><p class="eyebrow">YOUR COMMUNITY. ONE PLACE.</p><h1>Welcome to<br>Number One.</h1><p>A public Discord bot dashboard for your communities. Members, reviewers and server managers use their Discord accounts here.</p></section><section class="panel"><p class="eyebrow">AGE VERIFICATION BETA</p><h2>Choose your community.</h2><p>Members can submit a test case and follow its status. Server owners and managers can choose reviewer and test verified roles, open their server’s Beta, and share a member link. Reviewers receive a private queue for that server.</p><div class="notice"><strong>Synthetic tests only</strong><br>This Beta does not accept real IDs or establish real ages. No GitHub, developer or hosting access is needed to use the portal.</div><a class="button" href="/verify">Sign in & choose a server</a></section><footer>Number One · Public multi-server dashboard Beta</footer></main></body></html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Number One · Dashboard</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/dashboard.js" defer></script>
+</head>
+<body class="dash">
+<aside class="sidebar">
+  <a href="/" class="brand">N°1 <span>NUMBER ONE</span></a>
+  <nav id="nav">
+    <a href="#overview" data-plugin="overview" class="active">Overview</a>
+    <a href="#moderation" data-plugin="moderation">Moderation</a>
+    <a href="#embeds" data-plugin="embeds">Embeds</a>
+    <a href="#scheduler" data-plugin="scheduler">Scheduler</a>
+    <a href="#instagram" data-plugin="instagram">Instagram</a>
+    <a href="#verification" data-plugin="verification">Verification</a>
+    <a href="#settings" data-plugin="settings">Settings</a>
+  </nav>
+  <div class="sidebar-footer">Free public admin bot · Beta</div>
+</aside>
+<div class="main">
+  <header class="topbar">
+    <div class="server-select" id="serverSelect">Sign in to choose a server</div>
+    <div id="userInfo">Not signed in</div>
+  </header>
+  <main id="content">
+    <section id="overview" class="plugin active">
+      <p class="eyebrow">YOUR COMMUNITY. ONE PLACE.</p>
+      <h1>Number One Dashboard</h1>
+      <p>Manage moderation, embeds, scheduling, Instagram roundups, and verification from one place. Modeled after MEE6 and Dyno — free for public use.</p>
+      <div class="cards">
+        <div class="card"><h3>Moderation</h3><p>Cases, timeouts, automod, appeals.</p><a href="#moderation" class="button">Open</a></div>
+        <div class="card"><h3>Embeds</h3><p>Rich message builder and publisher.</p><a href="#embeds" class="button">Open</a></div>
+        <div class="card"><h3>Scheduler</h3><p>Events, meetings, and rotations.</p><a href="#scheduler" class="button">Open</a></div>
+        <div class="card"><h3>Instagram</h3><p>Daily/weekly roundups via RSS.</p><a href="#instagram" class="button">Open</a></div>
+        <div class="card"><h3>Verification</h3><p>Synthetic age-verification Beta.</p><a href="/verify" class="button">Open portal</a></div>
+      </div>
+      <div class="notice"><strong>Getting started</strong><br>Sign in with Discord to select a server and configure features. Most settings are also available via slash commands in Discord.</div>
+    </section>
+    <section id="moderation" class="plugin" hidden>
+      <h2>Moderation</h2>
+      <p>Cases, timeouts, automod, and appeals are managed primarily through Discord slash commands. Dashboard configuration for logging channels and rules will appear here.</p>
+      <p>Use <code>/moderation</code> commands in your server for full control.</p>
+    </section>
+    <section id="embeds" class="plugin" hidden>
+      <h2>Embeds</h2>
+      <p>Create and manage saved embeds with <code>/embed create</code>, <code>/embed edit</code>, and <code>/embed send</code>.</p>
+    </section>
+    <section id="scheduler" class="plugin" hidden>
+      <h2>Scheduler</h2>
+      <p>Schedule events, staff meetings, and rotations with <code>/schedule</code>.</p>
+    </section>
+    <section id="instagram" class="plugin" hidden>
+      <h2>Instagram</h2>
+      <p>Set up RSS/Atom roundups with <code>/instagram setup</code>.</p>
+    </section>
+    <section id="verification" class="plugin" hidden>
+      <h2>Verification</h2>
+      <p>Public multi-server synthetic Beta for age verification. No real IDs are accepted.</p>
+      <a class="button" href="/verify">Open Verification Portal</a>
+      <div class="notice"><strong>Synthetic tests only</strong><br>This does not establish real ages. Configure reviewer and test roles after signing in.</div>
+    </section>
+    <section id="settings" class="plugin" hidden>
+      <h2>Settings</h2>
+      <p>Server-wide settings, timezone, and access grants are available via <code>/settings</code> and <code>/access</code>.</p>
+    </section>
+  </main>
+</div>
+</body>
+</html>
