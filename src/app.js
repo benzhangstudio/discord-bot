@@ -33,7 +33,6 @@ function staff(i) {
 }
 function needStaff(i) {
   if (!staff(i)) {
-    i.privateResponse=true;
     throw new UserError(MANAGEMENT_ONLY_MESSAGE);
   }
 }
@@ -117,25 +116,7 @@ function restrictedEvent(i,e) {
   const channel=i.guild?.channels.cache?.get(e.channel);
   return e.kind==='staff-meeting'||e.kind==='rotation'||!channel?.permissionsFor(i.guild.roles.everyone)?.has(P.ViewChannel);
 }
-function responsePrivacy(i) {
-  const sub=i.isChatInputCommand()?i.options.getSubcommand(false):null;
-  if(i.commandName==='embed'&&['create','edit','list','remove-section'].includes(sub))return true;
-  if(i.commandName==='access'&&sub==='list')return true;
-  if(i.commandName==='instagram'&&['setup','preview'].includes(sub))return true;
-  if(i.customId?.startsWith('embedform:')||i.customId?.startsWith('instagram:')||i.customId?.startsWith('rsvp:'))return true;
-  if(i.customId?.startsWith('embed:')&&!i.customId.endsWith(':publish'))return true;
-  if(i.commandName==='schedule') {
-    if(sub==='add')return (i.options.getString('kind')||'event')!=='event';
-    if(sub==='list')return store.list(i.guildId,'event').some(e=>!e.cancelled&&!e.complete&&e.start+e.duration*60000>Date.now()&&restrictedEvent(i,e));
-    const e=store.get(i.guildId,'event',selected(i));
-    if(e)return restrictedEvent(i,e);
-  }
-  if(i.customId?.startsWith('eventform:')) {
-    const e=store.get(i.guildId,'event',i.customId.split(':')[1]);
-    return !e||restrictedEvent(i,e);
-  }
-  return false;
-}
+
 async function handle(i) {
   i.confirmationTransport=confirmationTransport||i.confirmationTransport;
   i.operationTimeoutMs=operationTimeoutMs;
@@ -153,9 +134,10 @@ async function handle(i) {
   if(!i.inGuild()) throw new UserError('Use this command in a server.');
   if (i.isChatInputCommand()) {
     needStaff(i);
-    if(!commandPluginEnabled(store,i.guildId,i.commandName)){i.privateResponse=true;throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');}
+    if(!commandPluginEnabled(store,i.guildId,i.commandName)){throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');}
   }
-  i.privateResponse=responsePrivacy(i);
+  // Every reply in a server channel is public. Only DMs (appeal flow) are private by nature.
+  i.privateResponse=false;
   if(await moderation.handle(i))return;
   if(await accessCommands(i))return;
   if(await instagram(i))return;
@@ -257,7 +239,7 @@ async function handle(i) {
       }
       validateEmbed(d);new EmbedBuilder(e).toJSON();saveDraft(i,d);
       if(i.isFromMessage())return updateResponse(i,editor(d,i));
-      return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});
+      return respond(i,editor(d,i));
     }
     if(kind==='eventform') {
       let e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
@@ -292,9 +274,9 @@ async function handle(i) {
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,reply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
     const d=item(i,'embed',selected(i));
-    if(sub==='edit')return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});
+    if(sub==='edit')return respond(i,editor(d,i));
     if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,reply('Saved message deleted. Any copies already posted in channels are unchanged.'));}
-    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);saveDraft(i,d);return respond(i,{...editor(d,i),flags:MessageFlags.Ephemeral});}
+    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);saveDraft(i,d);return respond(i,editor(d,i));}
     if(sub==='send')return publishEmbed(i,d.id,opt.getChannel('channel').id,opt.getRole('role')?.id,opt.getUser('user')?.id);
   }
   if(name==='schedule') {
@@ -339,7 +321,7 @@ async function handle(i) {
     if(sub==='list') {const sources=store.list(i.guildId,'feed');return respond(i,{...reply(''),content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
     let f=item(i,'feed',selected(i));
     if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return respond(i,reply('Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'));}
-    if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await step(i,feedLoader(f.url));if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}});}
+    if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await step(i,feedLoader(f.url));if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}
     f.paused=sub==='pause';f.settingsVersion=(f.settingsVersion||0)+1;if(!f.paused)f.nextCheck=0;store.put(i.guildId,'feed',f);return respond(i,reply(f.paused?'Source paused. No new posts will be collected or shared until you resume it.':'Source resumed. New posts will go into your scheduled roundup. If a roundup is overdue, it may be shared now.'));
   }
   throw new UserError('This command has changed or is unavailable. Use /help for current commands.');

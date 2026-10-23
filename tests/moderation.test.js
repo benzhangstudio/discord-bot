@@ -97,7 +97,7 @@ for(const [name,values]of Object.entries(scenarios)){
   }finally{h.close();}
  });
  test(`unauthorized /${name} denies before reading options`,async()=>{
-  const h=harness({authorized:false});try{const i=h.interaction(...name.split(' '),values);i.options=new Proxy({}, {get(){throw Error('Options accessed before authorization');}});await assert.rejects(h.app.handle(i),/permission/);assert.equal(h.effects.length,0);assert.equal(i.privateResponse,true);}finally{h.close();}
+  const h=harness({authorized:false});try{const i=h.interaction(...name.split(' '),values);i.options=new Proxy({}, {get(){throw Error('Options accessed before authorization');}});await assert.rejects(h.app.handle(i),/permission/);assert.equal(h.effects.length,0);assert.ok(!i.privateResponse);}finally{h.close();}
  });
 }
 test('persistent cases deduplicate interactions, scope tenants, and keep append-only warning history',async()=>{
@@ -198,9 +198,9 @@ test('restart preserves cases, configuration and unresolved operation barriers',
  const dir=mkdtempSync(join(tmpdir(),'number-one-moderation-')),path=join(dir,'test.sqlite');let store;
  try{store=new Store(path);let core=new Moderation(store,{timeoutMs:5});core.saveConfig('guild',{modRole:'moderator'});await core.run({guild:'guild',id:'first',actor:'mod',target:'target',action:'ban',reason:'test',effect:never});store.close();store=new Store(path);core=new Moderation(store);assert.equal(core.config('guild').modRole,'moderator');assert.equal(core.get('guild','first').state,'uncertain');await assert.rejects(core.run({guild:'guild',id:'second',actor:'mod',target:'target',action:'ban',reason:'test'}),/earlier action/);}finally{store?.close();rmSync(dir,{recursive:true,force:true});}
 });
-test('member appeal status stays private and cannot reveal another member’s appeal',async()=>{
+test('in-server appeal status replies publicly and cannot reveal another member’s appeal',async()=>{
  const h=harness();try{
-  const i=h.interaction('component','');i.commandName=undefined;i.customId='mod-appeal-status-submit';i.isChatInputCommand=()=>false;i.user={id:'target'};i.fields={getTextInputValue:()=> 'saved'};await h.app.handle(i);assert.match(h.outputs.at(-1).content,/open/);assert.equal(h.outputs.at(-1).flags,64);
+  const i=h.interaction('component','');i.commandName=undefined;i.customId='mod-appeal-status-submit';i.isChatInputCommand=()=>false;i.user={id:'target'};i.fields={getTextInputValue:()=> 'saved'};await h.app.handle(i);assert.match(h.outputs.at(-1).content,/open/);assert.equal(h.outputs.at(-1).flags,undefined);
   i.user={id:'stranger'};await assert.rejects(h.app.handle(i),/No appeal found/);
  }finally{h.close();}
 });
@@ -271,14 +271,13 @@ test('appeal review never reverses the sanction and says so plainly',async()=>{
   assert.match(h.outputs.at(-1).content,/accepted\. The sanction was not changed; use \/unban or \/untimeout if needed/);assert.ok(!h.effects.includes('unban'));
  }finally{h.close();}
 });
-test('staff moderation results are public; the DM-failure note and member appeal forms are private',async()=>{
+test('staff moderation results, including the DM-failure note, are public',async()=>{
  const h=harness();try{
   for(const [name,sub,values] of [['appeals','list',{}],['appeals','show',{appeal:'appeal'}],['warnings',undefined,{}],['modlogs',undefined,{}],['case',undefined,{id:'saved'}],['mod-settings','view',{}],['emergency','status',{}]]){
    const i=h.interaction(name,sub,values);await h.app.handle(i);assert.equal(h.outputs.at(-1).flags,undefined,`${name} ${sub||''}`);
   }
   h.target.send=async()=>{throw Object.assign(new Error('closed'),{code:50007,status:403});};
   const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
-  const result=h.outputs.find(o=>o.embeds?.[0]?.title==='Member banned');assert.equal(result.flags,undefined);assert.doesNotMatch(result.content,/DM/);
-  assert.equal(h.outputs.at(-1).flags,64);assert.match(h.outputs.at(-1).content,/Could not DM the member/);
+  const result=h.outputs.at(-1);assert.equal(result.embeds[0].title,'Member banned');assert.equal(result.flags,undefined);assert.match(result.content,/Could not DM the member/);
  }finally{h.close();}
 });

@@ -146,7 +146,7 @@ for(const access of ['moderator','legacy staff role','missing permissions'])test
     i.options=new Proxy({}, {get:()=>{throw Error('Unauthorized options must not be processed');}});
     const before=h.store.db.prepare('SELECT * FROM records').all();
     await h.app.dispatch(i);
-    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,64);assert.equal(h.outputs[0].content,'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
+    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].content,'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
     assert.deepEqual(h.store.db.prepare('SELECT * FROM records').all(),before);assert.equal(h.sent.length,0);h.store.close();
   }
 });
@@ -361,7 +361,7 @@ test('schedule empty state also covers servers containing only inaccessible or i
 
 test('production dispatcher routes Instagram setup and channel/role pickers to their saved draft',async()=>{
   const h=harness();await h.app.dispatch(h.interaction('instagram','setup'));
-  const d=h.store.list('server-a','instagram-draft')[0];assert.ok(d);assert.equal(h.outputs.at(-1).flags,64);
+  const d=h.store.list('server-a','instagram-draft')[0];assert.ok(d);assert.equal(h.outputs.at(-1).flags,undefined);
   for(const [action,value] of [['channel',h.channel.id],['role','345678901234567890']]) {
     const i=h.interaction();Object.assign(i,{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',customId:`instagram:${d.id}:${action}`,values:[value]});
     await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.store.get('server-a','instagram-draft',d.id)[action],value);
@@ -393,16 +393,16 @@ for(const [name,values] of Object.entries(scenarios))test(`reply visibility and 
   assert.ok(payload, 'Every command must finish with a reply or form');
   assert.doesNotMatch(JSON.stringify(payload),/Reference:|Request received|HTTP_429|REPLY_TIMEOUT|stack trace/);
   if(payload.custom_id)return h.store.close(); // Modal replies have no visibility flag.
-  const privateExpected=(command==='embed'&&['edit','list','remove-section'].includes(sub))||(command==='instagram'&&['setup','preview'].includes(sub))||(command==='access'&&sub==='list');
+  const privateExpected=false; // all staff command replies are public
   assert.equal(Boolean(payload.flags&64),privateExpected);
   h.store.close();
 });
 
-for(const sub of ['list','show','configure','cancel','post'])test(`restricted schedules remain private: /schedule ${sub}`,async()=>{
+for(const sub of ['list','show','configure','cancel','post'])test(`staff schedules reply publicly in the channel used: /schedule ${sub}`,async()=>{
   const h=harness({privateChannel:true});
   h.store.put('server-a','event',{id:'saved',title:'Confidential meeting',channel:h.channel.id,start:Date.now()+3600000,duration:60,repeat:'none',zone:'UTC',kind:'staff-meeting',rsvps:{}});
   await h.app.dispatch(h.interaction('schedule',sub,{event:'saved'}));
-  assert.equal(h.outputs.at(-1).flags,64);h.store.close();
+  assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
 });
 
 test('owner-only access denial is a public explanation without a diagnostic code',async()=>{

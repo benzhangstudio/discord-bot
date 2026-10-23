@@ -45,8 +45,8 @@ test('an unspecified cooldown is handled conservatively; no immediate alternate 
  const c=clock(),i={replyRecoveryOptions:c.options};let calls=0;
  queueReplyRecovery(i,'PATCH',{content:'Done.'},async()=>{calls++;},Object.assign(Error('limited'),{code:'HTTP_429'}));assert.equal(calls,0);assert.ok(c.jobs[0].delay>=60000);cancelReplyRecovery(i);
 });
-test('setup-form error recovery preserves its private follow-up and leaves the original form alone',async()=>{
+test('setup-form error recovery preserves its public follow-up and leaves the original form alone',async()=>{
  const c=clock(),calls=[];let count=0;
  const i={deferred:true,instagramSetupUpdate:true,replyRecoveryOptions:c.options,confirmationTransport:async(_i,method,p)=>{calls.push({method,p});if(++count===1)throw limited(1000);}};
- await reportFailure(i,new UserError('Choose a channel before saving.'),s=>c.logs.push(s));assert.equal(i.responsePending,true);await c.next();assert.ok(calls.every(call=>call.method==='POST'));assert.equal(calls.at(-1).p.flags,64);assert.equal(i.responsePending,false);
+ await reportFailure(i,new UserError('Choose a channel before saving.'),s=>c.logs.push(s));assert.equal(i.responsePending,true);await c.next();assert.ok(calls.every(call=>call.method==='POST'));assert.equal(calls.at(-1).p.flags,undefined);assert.equal(i.responsePending,false);
 });

@@ -73,7 +73,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       // One live menu per member prevents unbounded abandoned drafts.
       for(const old of store.list(i.guildId,'instagram-draft'))if(old.owner===i.user.id)store.remove(i.guildId,'instagram-draft',old.id);
       const d=draft(i);
-      await respond(i,{...panel(i,d),flags:MessageFlags.Ephemeral});return true;
+      await respond(i,panel(i,d));return true;
     }
     const [,id,action]=i.customId.split(':');
     let d=store.get(i.guildId,'instagram-draft',id);
@@ -85,7 +85,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       const items=await step(i,load(d.url));
       if(!items.length)throw new UserError('There are no posts to preview yet. You can still save this source.');
       const sample=digestParts({...d,role:null,name:d.name||'Instagram'},items.slice(0,3))[0];
-      await respond(i,{...sample,flags:MessageFlags.Ephemeral,content:`**Preview** · Nothing was posted or removed from the queue.\n${sample.content}`,allowedMentions:{parse:[]}});return true;
+      await respond(i,{...sample,content:`**Preview** · Nothing was posted or removed from the queue.\n${sample.content}`,allowedMentions:{parse:[]}});return true;
     }
     if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await updateResponse(i,{content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
     if(action==='choose') {

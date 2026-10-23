@@ -48,6 +48,8 @@ export async function acknowledge(i,update=false) {
 }
 export async function respond(i,payload,{editTimeoutMs=8000,fallbackTimeoutMs=8000}={}) {
   if(i.privateResponse && payload.flags===undefined)payload={...payload,flags:MessageFlags.Ephemeral};
+  // Policy: nothing is ephemeral inside a server channel.
+  if(i.guildId&&payload.flags&MessageFlags.Ephemeral)payload={...payload,flags:payload.flags&~MessageFlags.Ephemeral||undefined};
   await finishAcknowledgement(i);
   if(i.deferred || i.replied) {
     const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);
@@ -88,7 +90,7 @@ export async function reportFailure(i,error,log=console.error) {
   log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   const message=publicErrorMessage(error);
   try {
-    const payload={content:message,...(i.privateResponse||i.ephemeral||i.instagramSetupUpdate||(i.privateErrors&&!i.deferred&&!i.replied)?{flags:MessageFlags.Ephemeral}:{}),allowedMentions:{parse:[]},embeds:[],components:[]};
+    const payload={content:message,...(i.privateResponse||i.ephemeral?{flags:MessageFlags.Ephemeral}:{}),allowedMentions:{parse:[]},embeds:[],components:[]};
     // Keep the setup controls available so a failed validation can be corrected.
     if(i.instagramSetupUpdate&&i.deferred){const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);try{await withDeadline(transport?transport(i,'POST',payload):i.followUp(payload),8000,'Discord could not deliver the error.');}catch(failure){if(failure.code==='HTTP_429'&&queueReplyRecovery(i,'POST',payload,transport,failure)){failure.replyRecoveryScheduled=true;}throw failure;}}
     else await respond(i,payload);

@@ -7,7 +7,7 @@ import {createApp} from '../src/app.js';
 import {commands} from '../src/commands.js';
 const sdkConfirmation=(i,method,payload)=>method==='PATCH'?i.editReply(payload):i.followUp(payload);
 
-for(const command of commands)for(const sub of command.options||[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one private permission message`,{timeout:2000},async()=>{
+for(const command of commands)for(const sub of command.options||[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one public permission message`,{timeout:2000},async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
   try {
     const app=createApp(client,store);
@@ -17,7 +17,7 @@ for(const command of commands)for(const sub of command.options||[null])test(`rea
       id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-token',version:1,guild_id:'345678901234567890',channel:{id:'456789012345678901',type:0},
       data:{id:'567890123456789012',name:command.name,type:1,options:sub?[{name:sub.name,type:1,options:[]}]:[]},member:{user:{id:'678901234567890123',username:'Member',discriminator:'0',avatar:null},roles:[],permissions:'0'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
-    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].type,4);assert.equal(requests[0].data.flags&64,64);assert.equal(requests[0].data.content,'You don’t have permission to use this command. Ask a server admin for access.');assert.equal(i.deferred,false);assert.deepEqual(store.db.prepare('SELECT * FROM records').all(),[]);
+    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,0);assert.equal(requests[0].data.content,'You don’t have permission to use this command. Ask a server admin for access.');assert.equal(i.deferred,false);assert.deepEqual(store.db.prepare('SELECT * FROM records').all(),[]);
   } finally {client.destroy();store.close();}
 });
 test('real Discord SDK serializes /help as one immediate public callback containing the menu',async()=>{
@@ -69,7 +69,7 @@ for(const [name,sub,options] of fastCases)test(`real Discord SDK: /${name} ${sub
     });
     await app.handle(i);assert.equal(requests.length,1);
     if(name==='embed'&&sub==='create'){assert.equal(requests[0].type,9);assert.equal(requests[0].data.components.length,5);}
-    else {assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,(['edit','list','remove-section'].includes(sub)&&name==='embed')||sub==='setup'?64:0);assert.ok(requests[0].data.content||requests[0].data.embeds?.length);}
+    else {assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,0);assert.ok(requests[0].data.content||requests[0].data.embeds?.length);}
     assert.equal(i.deferred,false);
     if(sub==='timezone')assert.equal(store.get(guild,'settings','main').zone,'Asia/Seoul');
   } finally {client.destroy();store.close();}
@@ -90,7 +90,7 @@ for(const failed of [false,true])test(`real Discord SDK: slow feed ${failed?'fai
       data:{id:'567890123456789012',name:'instagram',type:1,options:[{type:1,name:'preview',options:[{name:'source',type:3,value:'saved'}]}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     Object.defineProperty(i,'guild',{value:{channels:{cache:new Map([[channel,{type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks])}]])},members:{me:{}}}});
-    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.match(requests[0].body.data.content,failed?/feed service could not be reached/:/Latest post/);assert.equal(requests[0].body.data.flags,64);assert.equal(i.replied,true);assert.equal(i.deferred,false);
+    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.match(requests[0].body.data.content,failed?/feed service could not be reached/:/Latest post/);assert.equal(requests[0].body.data.flags,undefined);assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 

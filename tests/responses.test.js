@@ -8,10 +8,10 @@ test('permission errors explain the problem, keep references in logs, and edit d
   assert.match(sent[0].content,/permissions/);assert.doesNotMatch(sent[0].content,/Reference:/);assert.equal(sent[0].flags,undefined);assert.match(logs[0],/50013/);
 });
 
-test('Instagram validation errors preserve the setup menu and send private correction guidance',async()=>{
+test('Instagram validation errors preserve the setup menu and send public correction guidance',async()=>{
   const sent=[];
   await reportFailure({deferred:true,instagramSetupUpdate:true,followUp:async p=>sent.push(p),editReply:async()=>{throw Error('Must preserve the menu');}},new UserError('Choose a channel before saving.'),()=>{});
-  assert.equal(sent[0].flags,64);assert.match(sent[0].content,/Choose a channel/);
+  assert.equal(sent[0].flags,undefined);assert.match(sent[0].content,/Choose a channel/);
 });
 
 test('confirmation fallback preserves its completed reply and honors explicit privacy',async()=>{
@@ -45,4 +45,10 @@ for(const privateResponse of [false,true])test(`delayed acknowledgements and fal
 for(const error of [new UserError('Choose a channel before publishing.'),Object.assign(Error('Too many requests'),{code:'HTTP_429'}),Error('Internal database failure')])test(`errors contain useful guidance without technical details: ${error.name}/${error.code||'none'}`,async()=>{
   const sent=[],logs=[];await reportFailure({reply:async p=>sent.push(p)},error,p=>logs.push(p));
   assert.equal(sent[0].flags,undefined);assert.doesNotMatch(sent[0].content,/Reference:|HTTP_429|database|Error:/);assert.match(logs[0],/^\[[a-f0-9]{8}\]/);
+});
+test('policy: replies and errors inside a server are always public and still delivered',async()=>{
+  const sent=[];const i={guildId:'g',privateResponse:true,reply:async function(p){this.replied=true;sent.push(p);},followUp:async p=>sent.push(p),editReply:async p=>sent.push(p)};
+  await respond(i,{content:'Done',flags:64});assert.equal(sent.length,1);assert.ok(!((sent[0].flags||0)&64));
+  const j={guildId:'g',reply:async function(p){this.replied=true;sent.push(p);}};
+  await reportFailure(j,new UserError('Choose a channel before saving.'),()=>{});assert.equal(sent.length,2);assert.ok(!((sent[1].flags||0)&64));assert.match(sent[1].content,/channel/);
 });

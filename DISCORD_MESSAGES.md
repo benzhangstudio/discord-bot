@@ -23,7 +23,7 @@ This requirement is permanent in `AGENTS.md`. Regression tests cover validation,
 
 ## Completing every reply
 
-Use the shared response helpers for commands, buttons, menus and forms. Known protected moderation targets are rejected before network preflight, avoiding a deferred loading state. Delayed replies that hit a long Discord cooldown retain their exact final content and retry on the independent reply transport after the cooldown. Recovery edits the original deferred reply; it never reruns a command, resends an announcement or reissues a moderation action. Setup-form errors preserve the existing form and private follow-up.
+Use the shared response helpers for commands, buttons, menus and forms. Known protected moderation targets are rejected before network preflight, avoiding a deferred loading state. Delayed replies that hit a long Discord cooldown retain their exact final content and retry on the independent reply transport after the cooldown. Recovery edits the original deferred reply; it never reruns a command, resends an announcement or reissues a moderation action. Setup-form errors preserve the existing form and use a public follow-up.
 
 Cooldowns apply to the affected interaction token, except when Discord explicitly reports a global limit. Each request is bounded. Recovery stops on permanent rejection, its attempt limit or before the interaction token expires; final failures are recorded in Wispbyte without secrets. No bot can clear a Discord loading state while Discord refuses all reply requests, but a transient cooldown must not silently discard the result. Do not instruct the user to repeat a completed action because its reply is waiting.
 
@@ -47,10 +47,6 @@ The `/appeals panel` message is for members still in the server and says that re
 
 ## Reply visibility
 
-| Public (default) | Private (only the invoking user) |
-| --- | --- |
-| Moderation actions, warnings, modlogs, case, reason, delwarn, purge, mod-reconcile | Permission denials and disabled-plugin notices |
-| /appeals list, show, review, record, panel confirmation | Moderation validation errors before acknowledgement |
-| /mod-settings, /emergency, /settings, /portal, /help | "Could not DM the member…" note to the moderator |
-| /schedule list/show/post for public events, /embed send, /embed delete | Member appeal forms and status (panel buttons and DMs) |
-| /instagram list, pause, resume, remove | /embed create/edit/list/remove-section, /instagram setup/preview, /access list, staff-only schedules, RSVP acknowledgements |
+Every reply in a server channel is public, including errors, permission denials, access lists, embed editors and previews, Instagram setup, schedules, help and settings. No reply is removed: each command still confirms its result and each failure still gets a short public error. Moderator notes such as "Could not DM the member…" are part of the public action reply.
+
+Private by nature only: the appeal DM (notice, **Appeal** button, modal and its confirmation) and Discord modals. Verification cases and evidence are dashboard-only; no slash command, button or message shows them.

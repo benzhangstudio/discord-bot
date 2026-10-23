@@ -21,7 +21,7 @@ function harness() {
 }
 test('Instagram replaces feed and setup exposes Discord channel/role pickers and valid forms',async()=>{
   assert.ok(!commands.some(c=>c.name==='feed'));assert.ok(commands.find(c=>c.name==='instagram').options.some(s=>s.name==='setup'));
-  const h=harness();await h.run();const p=h.outputs[0];assert.equal(p.flags,MessageFlags.Ephemeral);assert.equal(p.components.length,5);
+  const h=harness();await h.run();const p=h.outputs[0];assert.equal(p.flags,undefined);assert.equal(p.components.length,5);
   for(const r of p.components)ActionRowBuilder.from(r).toJSON();
   assert.equal(p.components[1].components[0].type,8);assert.equal(p.components[2].components[0].type,6);
   for(const action of ['source','schedule']){await h.run(action);const form=h.outputs.at(-1);assert.ok(form.components.length<=5);for(const r of form.components){assert.ok(r.components[0].label.length<=45);assert.ok(r.components[0].value.length<=r.components[0].max_length);}}
