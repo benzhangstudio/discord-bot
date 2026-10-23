@@ -38,12 +38,12 @@ export function instagramPanel(d,sources,notice='') {
     row({type:3,custom_id:prefix+'choose',placeholder:'Add a source or manage an existing one',options:[{label:'＋ Add a new source',value:'new',default:!d.sourceId},...sources.map(f=>({label:String(f.name).slice(0,100),value:f.id,description:f.paused?'Paused':'Active',default:f.id===d.sourceId}))]}),
     row({type:8,custom_id:prefix+'channel',placeholder:'Choose where Instagram posts go',channel_types:[0,5],min_values:1,max_values:1,...(d.channel?{default_values:[{id:d.channel,type:'channel'}]}:{})}),
     row({type:6,custom_id:prefix+'role',placeholder:'Optional: choose a role to notify (clear to disable)',min_values:0,max_values:1,...(d.role?{default_values:[{id:d.role,type:'role'}]}:{})}),
-    row({type:3,custom_id:prefix+'delivery',placeholder:'How often should posts arrive?',options:[{label:'Weekly roundup',value:'weekly',description:'All new posts on your chosen day',default:d.delivery!=='daily'},{label:'Daily roundup',value:'daily',description:'New posts once a day at your chosen time',default:d.delivery==='daily'}]}),
+    row({type:3,custom_id:prefix+'delivery',placeholder:'Delivery frequency',options:[{label:'Weekly roundup',value:'weekly',description:'All new posts on your chosen day',default:d.delivery!=='daily'},{label:'Daily roundup',value:'daily',description:'New posts once a day at your chosen time',default:d.delivery==='daily'}]}),
     row(...[['source','Source',2],['schedule','Schedule',2],['preview','Preview',2],['save','Save',3],['close','Close',2]].map(([action,label,style])=>({type:2,custom_id:prefix+action,label,style})))
   ]};
 }
 function form(d,action) {
-  const fields=action==='source'?[['name','Name, e.g. Rosé updates',d.name||'',80],['url','RSS / Atom feed link',d.url||'',1500]]:[['zone','City or timezone, e.g. Seoul or Europe/London',d.zone,80],['time','Delivery time · 24-hour clock, e.g. 09:00',d.time,5],['day','Weekly delivery day, e.g. Sunday',days[d.weekday-1],12],['previews','Show link previews? yes or no',d.showPreviews?'yes':'no',3]];
+  const fields=action==='source'?[['name','Name, e.g. News',d.name||'',80],['url','RSS / Atom feed link',d.url||'',1500]]:[['zone','City or timezone, e.g. Seoul or Europe/London',d.zone,80],['time','Delivery time · 24-hour clock, e.g. 09:00',d.time,5],['day','Weekly delivery day, e.g. Sunday',days[d.weekday-1],12],['previews','Show link previews? yes or no',d.showPreviews?'yes':'no',3]];
   return new ModalBuilder().setCustomId(`instagram:${d.id}:${action}form`).setTitle(action==='source'?'Instagram · Choose a source':'Instagram · Delivery schedule').addComponents(fields.map(([id,label,value,max])=>new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(max).setValue(value))));
 }
 
@@ -85,7 +85,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       const items=await step(i,load(d.url));
       if(!items.length)throw new UserError('There are no posts to preview yet. You can still save this source.');
       const sample=digestParts({...d,role:null,name:d.name||'Instagram'},items.slice(0,3))[0];
-      await respond(i,{...sample,flags:MessageFlags.Ephemeral,content:`**Sample roundup · Nothing has been posted or removed from your queue**\n${sample.content}`,allowedMentions:{parse:[]}});return true;
+      await respond(i,{...sample,flags:MessageFlags.Ephemeral,content:`**Preview** · Nothing was posted or removed from the queue.\n${sample.content}`,allowedMentions:{parse:[]}});return true;
     }
     if(action==='close'){store.remove(i.guildId,'instagram-draft',d.id);await updateResponse(i,{content:'Setup closed. Your saved sources keep their existing settings.',embeds:[],components:[]});return true;}
     if(action==='choose') {
@@ -128,7 +128,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       store.put(i.guildId,'feed',f);
       d.sourceId=f.id;d.version=f.settingsVersion;
       store.put(i.guildId,'instagram-draft',d);
-      await respond(i,panel(i,d,`Saved! ${f.paused?'This source remains paused. Resume it with /instagram resume.':`Next roundup: <t:${Math.floor(f.nextDigest/1000)}:F>.`} ${changed?'Only new posts will be collected; older posts will not be resent.':'Waiting posts are preserved.'}`));return true;
+      await respond(i,panel(i,d,`Saved. ${f.paused?'This source remains paused. Resume it with /instagram resume.':`Next roundup: <t:${Math.floor(f.nextDigest/1000)}:F>.`} ${changed?'Only new posts will be collected; older posts will not be resent.':'Waiting posts are preserved.'}`));return true;
     } else throw new UserError('This control is no longer available. Open /instagram setup again.');
     store.put(i.guildId,'instagram-draft',d);await updateResponse(i,panel(i,d,'Changes are ready to review. Choose Save to apply them.'));return true;
   };

@@ -46,7 +46,7 @@ async function destination(i,id,{writing=true,privateOnly=false}={}) {
 function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
   if(!channel || ![0,5].includes(channel.type)) throw new UserError('Choose a text or announcement channel in this server.');
   if(!channel.permissionsFor(i.member)?.has([P.ViewChannel,...(writing?[P.SendMessages]:[])])) throw new UserError(writing?'Choose a channel you can view and send messages in.':'You cannot view this event’s channel. Ask a staff member if you need access.');
-  if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw new UserError('Number One needs View Channel, Send Messages, and Embed Links there.');
+  if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw new UserError('The bot needs View Channel, Send Messages, and Embed Links there.');
   if(privateOnly && channel.permissionsFor(i.guild.roles.everyone)?.has(P.ViewChannel)) throw new UserError('Choose a staff-only channel for meetings and rotations. It must be hidden from @everyone.');
   return channel;
 }
@@ -55,7 +55,7 @@ async function pingRole(i,roleId,channel) {
   let role=i.guild.roles.cache?.get(roleId);
   if(!role){await acknowledge(i);role=await step(i,i.guild.roles.fetch(roleId));}
   if(!role || role.id===i.guildId || role.managed) throw new UserError('Choose a role created for your members, rather than @everyone or a role managed by another app.');
-  if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw new UserError('That role cannot be notified here. Ask an administrator to make it mentionable, or give you and Number One the Mention Everyone permission in this channel.');
+  if(!role.mentionable && (!channel.permissionsFor(i.member)?.has(P.MentionEveryone) || !channel.permissionsFor(i.guild.members.me)?.has(P.MentionEveryone))) throw new UserError('That role cannot be notified here. Ask an administrator to make it mentionable, or give you and the bot the Mention Everyone permission in this channel.');
   return role.id;
 }
 function modal(id,title,fields) {
@@ -150,10 +150,10 @@ async function handle(i) {
   }
   // Appeal buttons arrive in DMs after a ban or kick; moderation validates them without guild context.
   if(!i.inGuild()&&i.customId?.startsWith('mod-appeal-dm')){i.privateResponse=true;if(await moderation.handle(i))return;}
-  if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
+  if(!i.inGuild()) throw new UserError('Use this command in a server.');
   if (i.isChatInputCommand()) {
     needStaff(i);
-    if(!commandPluginEnabled(store,i.guildId,i.commandName)){i.privateResponse=true;throw new UserError('This feature is turned off for this server. A server manager can turn it on in the Number One dashboard.');}
+    if(!commandPluginEnabled(store,i.guildId,i.commandName)){i.privateResponse=true;throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');}
   }
   i.privateResponse=responsePrivacy(i);
   if(await moderation.handle(i))return;
@@ -190,7 +190,7 @@ async function handle(i) {
     const clean=value=>String(value).replace(/[\\*_~`|<>@\[\]]/g,'');
     const content=events.length?
       `**Upcoming events · page ${page}/${total}**\n`+events.slice((page-1)*5,page*5).map(e=>`**${clean(e.title).slice(0,150)}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')+'\n\nUse /schedule show and choose an event by name for details and replies.':
-      'No upcoming events you can view right now. Check back soon.'+(staff(i)?'\n\nUse /schedule add to plan an event.':'');
+      'No upcoming events.'+(staff(i)?'\n\nUse /schedule add to plan an event.':'');
     console.log(`Sending /schedule list directly (${events.length} visible events).`);
     await respond(i,reply(content));
     console.log('Discord accepted /schedule list.');
@@ -277,17 +277,17 @@ async function handle(i) {
     if(sub==='timezone')s.zone=zone(opt.getString('zone'));
     if(sub==='status') {
       const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A roundup could not be confirmed. Check its channel before sending another copy.');
-      for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check that Number One can view and send messages in its channel.');
-      for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and Number One’s channel permissions.`);
+      for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check that the bot can view and send messages in its channel.');
+      for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and the bot’s channel permissions.`);
       return respond(i,reply(issues.length?[...new Set(issues)].join('\n').slice(0,1900):'No recent reminder or Instagram delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,reply(`**Your server’s settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator**, **Manage Server**, or approval from this server’s owner. Existing events keep their original timezone.`));
+    store.put(i.guildId,'settings',s);return respond(i,reply(`**Server settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator**, **Manage Server**, or approval from this server’s owner. Existing events keep their original timezone.`));
   }
   if(name==='embed') {
     needStaff(i);
     if(sub==='create') {
       if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved messages. Delete one you no longer need before making another.');
-      const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0x5865f2},content:''});
+      const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your message text goes here.',color:0x5865f2},content:''});
       return showForm(i,editModal(d,'form'));
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,reply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}

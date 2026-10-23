@@ -64,7 +64,7 @@ export function createAccessCommands(store) {
           throw new UserError('This server already has 100 approved members. Remove someone before adding another.');
         }
         store.put(i.guildId,'access',{id:user.id,grantedBy:i.user.id,grantedAt:Date.now()});
-        await reply(`Added <@${user.id}>. They can use Number One slash commands in this server. Only the server owner can grant access to others.`);
+        await reply(`Added <@${user.id}>. They can now use the bot’s commands here. Only the server owner can grant access to others.`);
       }
     } else {
       throw new UserError('Use /access add, /access remove, or /access list.');
