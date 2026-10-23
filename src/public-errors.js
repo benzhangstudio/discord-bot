@@ -5,6 +5,9 @@ export const GENERIC_ERROR='Something went wrong. Please try again later.';
 export const UNCERTAIN_ACTION='I couldn’t confirm that action. Check the result before trying again.';
 export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "This feature is turned off for this server. A server manager can turn it on in the Number One dashboard.": "This feature is turned off here. A server manager can turn it on in the Number One dashboard.",
+  "Enter a short appeal contact such as a link or email address.": "Enter a short appeal contact, such as a link or email address.",
+  "This appeal link is not valid.": "This appeal link is not valid.",
+  "This appeal link is not valid for your account.": "This appeal link is not valid for your account, or the case cannot be appealed.",
   "Member role details are unavailable.": "I couldn’t check this member’s roles. Please try again.",
   "A different moderator must review this appeal.": "Another moderator needs to review this appeal.",
   "A message can have at most 25 sections. Remove one before adding another.": "A message can have at most 25 sections. Remove one before adding another.",
@@ -41,7 +44,7 @@ export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "Choose a source from the suggestions.": "Choose a source from the suggestions.",
   "Choose a staff-only channel for meetings and rotations. It must be hidden from @everyone.": "Choose a private staff channel for meetings and rotations.",
   "Choose a staff-only text log channel.": "Choose a staff-only text log channel.",
-  "Choose a text channel you and Number One can write in.": "Choose a text channel you and Number One can write in.",
+  "Choose a text channel you and the bot can write in.": "Choose a text channel you and the bot can write in.",
   "Choose a text or announcement channel in this server.": "Choose a text or announcement channel in this server.",
   "Choose a text or announcement channel.": "Choose a text or announcement channel.",
   "Choose a timezone from the city suggestions, such as New York or Seoul.": "Choose a timezone from the city suggestions, such as New York or Seoul.",

@@ -29,7 +29,7 @@ const topics=[
   {value:'home',label:'All categories',description:'Choose which commands to view.'},
   {value:'mod',label:'Moderation',description:'Actions, warnings, and private case history.',root:'mod'},
   {value:'mod-settings',label:'Moderation settings',description:'Owner: roles, automod, logs, and retention.',root:'mod-settings'},
-  {value:'appeals',label:'Appeals',description:'Member appeal panel and independent staff review.',root:'appeals'},
+  {value:'appeals',label:'Appeals',description:'Appeal button by direct message, in-server panel and staff review.',root:'appeals'},
   {value:'emergency',label:'Emergency lockdown',description:'Lock channels and restore writing permissions.',root:'emergency'},
   {value:'portal',label:'Dashboard',description:'Open this server’s web dashboard.',root:'portal'},
   {value:'embeds',label:'Embeds',description:'Create, edit, and publish saved messages.',root:'embed'},

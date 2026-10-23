@@ -10,7 +10,7 @@ This module runs inside the existing bot and uses its server-scoped SQLite store
 4. For staff without Administrator or Manage Server, the current owner first uses `/access add user:...`. The owner may then configure `mod-role` using `/mod-settings set`. A role alone never bypasses Number One command authorization. A staff member also needs either the relevant native moderation permission or the configured moderation role. Manage Server alone does not confer moderation powers.
 5. Optional message filters need `MODERATION_MESSAGE_CONTENT=1` in Wispbyte and Message Content Intent enabled in the Discord Developer Portal, followed by a restart. Then enable `/mod-settings set automod:true`. Without that option, moderation slash commands work without privileged intents. No Guild Members intent is requested; individual members are fetched as needed.
 6. Set `blocked-words` (comma-separated literal phrases), `mention-limit`, `spam-limit`, `block-invites` and `retention-days` through `/mod-settings set`. Defaults: filters off, mention limit 8, six messages per ten seconds, invites blocked when filters are enabled, retention 365 days. Set automod false to stop enforcement immediately.
-7. Post `/appeals panel channel:#appeals`. Publish an external staff contact for members who are banned or have left. Staff must give affected members their case ID through the server's established notification process; this bot does not send unsolicited DMs.
+7. Post `/appeals panel channel:#appeals` for members still in the server. Banned, kicked and timed-out members get an **Appeal** button by DM automatically. Optionally set `/mod-settings set appeal-contact:` (link or email) as a fallback for members whose DMs are closed.
 
 Startup registers familiar standalone moderation commands including `/ban`, `/kick`, `/warn`, `/mute`, `/timeout`, `/purge`, `/warnings` and `/modlogs`. The old `/mod` group is retired automatically. `/help` groups moderation actions together and lists required inputs. Case fields offer suggestions by member, action, reason or ID. No token, database migration command or replacement upload is required for this update.
 
@@ -46,11 +46,17 @@ Flood windows are local, ten-second windows and reset on restart. Filters cover 
 
 Moderation appeals are separate from age verification: `mod-appeal` records live in the bot's `rose.sqlite`, while verification uses `age_cases` in `age-verification.sqlite`. The queues, reviewer authorization and case IDs are independent. Only in-server and externally received **moderation** appeals share a review queue; neither path enters the verification queue.
 
-The public panel has Submit an appeal and Check appeal status buttons. Members use their own successful case ID; membership and server scope are checked before saving or showing a result. They need no slash-command grant to use the panel. One appeal per case is accepted.
+There are two appeal paths:
+
+- **Members still in the server** use the `/appeals panel` message: **Appeal a case** (case ID + statement) and **Check appeal status**.
+- **Banned, kicked or timed-out members** receive a DM *before* the action is applied (Discord does not let a bot open a DM with someone who shares no server). The DM states the server, action, reason and case number and has an **Appeal** button. The button's custom ID carries the server and case; on click and on submit the bot checks that the clicking user is the case's target, the case completed, and no appeal exists for it. The modal only asks for the statement. Buttons are handled statelessly, so they keep working after restarts and after the member has left the server. `dm-appeals:false` in `/mod-settings set` removes the button (the notice is still sent).
+- If the DM fails (closed DMs, error 50007, timeout), the sanction still proceeds, the case records `dm: failed`, and the moderator sees: "Could not DM the member. If they contact staff another way, use /appeals record." Staff then enter the appeal with `/appeals record`.
+
+Members who leave on their own get no DM and must use the server's published contact (shown on the panel if `appeal-contact` is set).
 
 Staff use `/appeals list`, `/appeals show appeal:...` and `/appeals review appeal:... decision:accepted|denied reason:...`. Neither the subject nor the original moderator can review the appeal. A decision and its case event are saved together. The member can read the decision privately through the panel. Accepted appeals do not automatically reverse bans/timeouts or erase warnings: staff use the explicit reversal/void command and record a reason.
 
-Banned or departed members cannot use an in-server panel. This build relies on the server's published external contact for those appeals; it does not provide an unauthenticated web appeals endpoint or reuse the synthetic age-verification portal. Staff use `/appeals record user:... case:... statement:...` to enter an externally received appeal into the same review queue. The case must belong to that person; the recorder and source are audited. Review and reversal then follow the normal independent-review workflow. Communicate the result through the established external contact.
+Appeals never use a public web form or the verification portal. Accepting an appeal never reverses a sanction automatically; the confirmation reminds staff to use `/unban` or `/untimeout`. The member is sent a best-effort DM with the decision.
 
 ## Critical Emergency Mode and privacy roles
 

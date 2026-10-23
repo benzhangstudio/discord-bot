@@ -13,6 +13,7 @@ const caseStatus=c=>({succeeded:'Completed',failed:'Not completed',uncertain:'Ne
 const caseText=c=>`Case ${c.id} · ${c.action} · ${caseStatus(c)}\nMember: ${c.target}\nReason: ${c.reason}${['uncertain','pending'].includes(c.state)?'\nCheck the result before trying this action again.':''}`;
 const rank=m=>m.roles.highest.position;
 const COLOR=0x5865f2;
+export const appealPanelText=contact=>`**Moderation appeals**\nFor members currently in this server: use **Appeal a case** to ask staff to review a warning, timeout or other case. Only staff can see appeals.\n\nBanned or kicked members receive an **Appeal** button by DM when the action is taken. If that DM did not arrive: ${contact?`${clean(contact)}`:'contact the server staff through the server’s published appeal contact.'}`;
 export const ACTION_TITLES={ban:'Member banned',unban:'Member unbanned',kick:'Member kicked',warn:'Member warned',timeout:'Member timed out',untimeout:'Timeout removed',purge:'Messages deleted','emergency-on':'Channel locked','emergency-off':'Channel unlocked',configure:'Moderation settings updated','automod-delete':'Message deleted by automod','appeal-panel':'Appeal panel posted',note:'Case note added',void:'Warning removed'};
 const mention=id=>/^\d{15,25}$/.test(String(id))?`<@${id}>`:clean(String(id));
 const caseEmbed=(c,{title,actor,reason}={})=>{
@@ -24,14 +25,20 @@ const caseEmbed=(c,{title,actor,reason}={})=>{
  fields.push({name:'Reason',value:clean(reason||c.reason||'No reason provided').slice(0,1000)},{name:'Case',value:clean(String(c.id)),inline:true});
  return {title:title||ACTION_TITLES[c.action]||'Case updated',color:COLOR,fields,timestamp:new Date(c.updatedAt||c.createdAt||Date.now()).toISOString()};
 };
-// Best-effort, bounded DM to the affected member. Never blocks or fails the action.
+// Bounded DM to the affected member, sent BEFORE ban/kick/timeout because Discord
+// will not open a DM with a user who shares no server. Never blocks the action.
 const DM_TEXT={ban:'You were banned from',kick:'You were kicked from',timeout:'You were timed out in',warn:'You were warned in'};
-async function notifyMember(member,action,guildName,reason,until,contact){
- if(!member?.send||!DM_TEXT[action])return false;
- const lines=[`${DM_TEXT[action]} **${clean(guildName||'the server')}**.`,`Reason: ${clean(reason||'No reason provided').slice(0,500)}`];
+export const appealButtonId=(guild,caseId)=>`mod-appeal-dm:${guild}:${caseId}`;
+async function notifyMember(member,{action,guild,guildName,caseId,reason,until,contact,appealButton}){
+ if(!member?.send||!DM_TEXT[action])return 'skipped';
+ const lines=[`${DM_TEXT[action]} **${clean(guildName||'the server')}**.`,`Reason: ${clean(reason||'No reason provided').slice(0,500)}`,`Case: ${clean(String(caseId))}`];
  if(until)lines.push(`Ends: <t:${Math.floor(until/1000)}:f>`);
- try{await withDeadline(member.send({content:lines.join('\n'),allowedMentions:{parse:[]}}),3000);return true;}catch{return false;}
+ if(appealButton)lines.push('To appeal, use the button below.');else if(contact&&['ban','kick'].includes(action))lines.push(`To appeal: ${clean(contact)}`);
+ const message={content:lines.join('\n'),allowedMentions:{parse:[]}};
+ if(appealButton)message.components=[{type:1,components:[{type:2,style:2,label:'Appeal',custom_id:appealButtonId(guild,caseId)}]}];
+ try{await withDeadline(member.send(message),3000);return 'sent';}catch{return 'failed';}
 }
+
 export function durationMinutes(value){
  const match=/^(\d+)\s*(m|h|d|w)$/i.exec(String(value||'').trim());
  const minutes=match?Number(match[1])*({m:1,h:60,d:1440,w:10080}[match[2].toLowerCase()]):NaN;
@@ -91,14 +98,15 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const lastAction=c.events.at(-1)?.action;
   const result=lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+new Date(c.details.until).toISOString():''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
   const last=c.events.at(-1);
-  await respond(i,{content:result,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
+  const dmNote=c.details?.dm==='failed'&&c.state==='succeeded'?'\nCould not DM the member. If they contact staff another way, use /appeals record.':'';
+  await respond(i,{content:result+dmNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
  }
  async function config(i,sub){
   const cfg=core.config(i.guildId);
   if(sub==='view'){
    const logIssues=store.list(i.guildId,'mod-log').filter(l=>l.state!=='sent').length;
    const review=core.cases(i.guildId).filter(c=>['pending','uncertain'].includes(c.state)).length;
-   return respond(i,{content:[`**Moderation settings**`,`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Privacy role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'}`,`Invite filter: ${cfg.blockInvites?'On':'Off'}`,`Mention limit: ${cfg.mentionLimit}`,`Spam limit: ${cfg.spamLimit} messages per 10 seconds`,`Blocked phrases: ${cfg.blockedWords.length}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n'),allowedMentions:{parse:[]}});
+   return respond(i,{content:[`**Moderation settings**`,`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Privacy role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'}`,`Invite filter: ${cfg.blockInvites?'On':'Off'}`,`Appeal button in DMs: ${cfg.dmAppeals===false?'Off':'On'}`,`Appeal contact: ${cfg.appealContact?clean(cfg.appealContact):'Not set'}`,`Mention limit: ${cfg.mentionLimit}`,`Spam limit: ${cfg.spamLimit} messages per 10 seconds`,`Blocked phrases: ${cfg.blockedWords.length}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n'),allowedMentions:{parse:[]}});
   }
   must(owner(i),'Only the current server owner can configure moderation.');
   if(sub==='clear-role'){
@@ -115,7 +123,9 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const ch=i.options.getChannel('log-channel');
   if(ch){const live=await read(i.guild.channels.fetch(ch.id));must(live&&[0,5].includes(live.type)&&!live.permissionsFor(i.guild.roles.everyone).has(P.ViewChannel),'Choose a staff-only text log channel.');patch.logChannel=ch.id;}
   for(const [opt,key]of [['retention-days','retentionDays'],['mention-limit','mentionLimit'],['spam-limit','spamLimit']]){const v=i.options.getInteger(opt);if(v!==null)patch[key]=v;}
-  for(const [opt,key]of [['automod','automod'],['block-invites','blockInvites']]){const v=i.options.getBoolean(opt);if(v!==null)patch[key]=v;}
+  for(const [opt,key]of [['automod','automod'],['block-invites','blockInvites'],['dm-appeals','dmAppeals']]){const v=i.options.getBoolean(opt);if(v!==null)patch[key]=v;}
+  const contact=i.options.getString('appeal-contact');
+  if(contact!==null){const v=clean(contact).trim();must(v.length<=200&&!/@(everyone|here)|<[@#]/.test(v),'Enter a short appeal contact such as a link or email address.');patch.appealContact=/^none$/i.test(v)||!v?null:v;}
   const words=i.options.getString('blocked-words');if(words!==null)patch.blockedWords=words.split(',').map(w=>w.trim()).filter(Boolean).slice(0,100);
   if(patch.automod)must(process.env.MODERATION_MESSAGE_CONTENT==='1','Set MODERATION_MESSAGE_CONTENT=1, enable Message Content Intent in Discord, and restart before enabling automod.');
   await members(i);must(owner(i),'Only the current server owner can configure moderation.');
@@ -173,9 +183,33 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    return finish(i,c);
   }finally{pending.delete(key);}
  }
+ // DM appeal flow: guild and case are bound to the custom_id; the user is taken from the signed interaction.
+ function dmCase(i,prefix){
+  const m=new RegExp(`^${prefix}:([\\w-]{1,40}):([\\w-]{1,40})$`).exec(i.customId||'');must(m,'This appeal link is not valid.');
+  const [,guild,caseId]=m;const c=store.get(guild,'mod-case',caseId);
+  must(c&&c.target===i.user.id&&c.state==='succeeded'&&['ban','kick','timeout','warn'].includes(c.action),'This appeal link is not valid for your account.');
+  must(!store.list(guild,'mod-appeal').some(a=>a.caseId===caseId&&a.actor===i.user.id),'An appeal already exists for that case. Ask staff for its status.');
+  return {guild,caseId};
+ }
+ async function notifyDecision(i,a){
+  try{const user=await withDeadline(client.users.fetch(a.actor),3000);await withDeadline(user.send({content:`Your appeal for case ${clean(a.caseId)} in **${clean(i.guild.name)}** was ${a.state}.${a.reason?`\nReason: ${clean(a.reason).slice(0,500)}`:''}`,allowedMentions:{parse:[]}}),3000);}catch{}
+ }
+ async function handleDm(i){
+  if(i.isButton?.()){
+   const {guild,caseId}=dmCase(i,'mod-appeal-dm');
+   const modal=new ModalBuilder().setCustomId(`mod-appeal-dm-submit:${guild}:${caseId}`).setTitle('Appeal').addComponents(
+    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('body').setLabel('Why should this case be reconsidered?').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)));
+   await read(i.showModal(modal));return true;
+  }
+  must(i.isModalSubmit?.(),'This appeal link is not valid.');
+  const {guild,caseId}=dmCase(i,'mod-appeal-dm-submit');
+  const a=core.appeal(guild,i.id,i.user.id,caseId,i.fields.getTextInputValue('body'));
+  await respond(i,payload(`Appeal ${a.id} submitted for case ${caseId}. Staff will review it.`));return true;
+ }
  async function handle(i){
   const ours=moderationCommands.some(c=>c.name===i.commandName)||i.customId?.startsWith('mod-appeal');if(!ours)return false;
   i.privateResponse=true;
+  if(i.customId?.startsWith('mod-appeal-dm'))return handleDm(i);
   if(['mod-appeal-open','mod-appeal-status'].includes(i.customId)){
    const status=i.customId==='mod-appeal-status';
    const modal=new ModalBuilder().setCustomId(status?'mod-appeal-status-submit':'mod-appeal-submit').setTitle(status?'Appeal status':'Appeal a moderation case').addComponents(
@@ -226,15 +260,15 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     const a=core.appeal(i.guildId,i.id,i.options.getUser('user').id,i.options.getString('case'),i.options.getString('statement'),i.user.id);
     await respond(i,payload(`Appeal ${a.id} recorded. The member and the original moderator cannot review it.`));
    }else if(sub==='panel'){
-    const ch=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));must(ch&&[0,5].includes(ch.type)&&ch.permissionsFor(actor).has([P.ViewChannel,P.SendMessages])&&ch.permissionsFor(bot).has([P.ViewChannel,P.SendMessages]),'Choose a text channel you and Number One can write in.');
-    const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'panel:'+ch.id,action:'appeal-panel',reason:'Posted member appeal entry point',effect:()=>ch.send({...payload('Appeal a Number One moderation case. Your submission is private to staff. Banned or departed members: contact the server’s published appeal contact.'),components:[{type:1,components:[{type:2,style:1,label:'Submit an appeal',custom_id:'mod-appeal-open'},{type:2,style:2,label:'Check appeal status',custom_id:'mod-appeal-status'}]}]})});await finish(i,c);
+    const ch=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));must(ch&&[0,5].includes(ch.type)&&ch.permissionsFor(actor).has([P.ViewChannel,P.SendMessages])&&ch.permissionsFor(bot).has([P.ViewChannel,P.SendMessages]),'Choose a text channel you and the bot can write in.');
+    const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'panel:'+ch.id,action:'appeal-panel',reason:'Posted member appeal entry point',effect:()=>ch.send({...payload(appealPanelText(core.config(i.guildId).appealContact)),components:[{type:1,components:[{type:2,style:1,label:'Appeal a case',custom_id:'mod-appeal-open'},{type:2,style:2,label:'Check appeal status',custom_id:'mod-appeal-status'}]}]})});await finish(i,c);
    }else if(sub==='list'){
     const rows=store.list(i.guildId,'mod-appeal').filter(a=>a.state==='open'),page=i.options.getInteger('page')||1;
-    await respond(i,payload(rows.slice((page-1)*5,page*5).map(a=>`${a.id} · case ${a.caseId} · ${a.actor}`).join('\n')||'No open appeals on this page.'));
+    await respond(i,payload(rows.slice((page-1)*5,page*5).map(a=>`${a.id} · case ${a.caseId} · <@${a.actor}>`).join('\n')||'No open appeals on this page.'));
    }else if(sub==='show'){
     const a=store.get(i.guildId,'mod-appeal',i.options.getString('appeal'));must(a,'Appeal not found in this server.');
     await respond(i,{content:`Appeal ${a.id} · case ${a.caseId} · ${a.state}\n${clean(a.body)}${a.reason?'\nDecision: '+clean(a.reason):''}`.slice(0,1900),allowedMentions:{parse:[]}});
-   }else{const a=core.review(i.guildId,i.options.getString('appeal'),i.user.id,i.options.getString('decision'),i.options.getString('reason'));await respond(i,payload(`Appeal ${a.id}: ${a.state}. Communicate the decision privately to the member. Accepted appeals require a separate explicit reversal command.`));}
+   }else{const a=core.review(i.guildId,i.options.getString('appeal'),i.user.id,i.options.getString('decision'),i.options.getString('reason'));await respond(i,payload((void notifyDecision(i,a),a.state==='accepted')?`Appeal ${a.id} accepted. The sanction was not changed; use /unban or /untimeout if needed. Let the member know the decision.`:`Appeal ${a.id} denied. Let the member know the decision.`));}
    return true;
   }
   if(sub==='case'){const c=core.get(i.guildId,i.options.getString('id'));await respond(i,payload(caseText(c)+'\n'+c.events.slice(-5).map(e=>`${e.action}: ${e.reason}`).join('\n')));return true;}
@@ -286,9 +320,10 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   allowed(i,fresh.actor,required);must(has(fresh.bot,required),'Number One lost the required Discord permission.');
   if(selectedMember){const live=await read(i.guild.members.fetch({user:target,force:true}));targetSafe(i,fresh.actor,fresh.bot,live);}
   // Banned/kicked members can no longer receive a DM, so notify first (bounded, best effort).
-  if(['ban','kick'].includes(sub)&&selectedMember)await notifyMember(selectedMember,sub,i.guild.name,reason,null,core.config(i.guildId).appealContact);
+  const mcfg=core.config(i.guildId);const dm=opts=>notifyMember(selectedMember,{action:sub,guild:i.guildId,guildName:i.guild.name,caseId:i.id,reason,until:details.until,contact:mcfg.appealContact,appealButton:mcfg.dmAppeals!==false,...opts});
+  if(['ban','kick','timeout'].includes(sub)&&selectedMember&&!core.store.get(i.guildId,'mod-case',i.id))details.dm=await dm();
   const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target,action,reason,effect,details});await finish(i,c);
-  if(c.state==='succeeded'&&['warn','timeout'].includes(sub)&&selectedMember)void notifyMember(selectedMember,sub,i.guild.name,reason,details.until);
+  if(c.state==='succeeded'&&sub==='warn'&&selectedMember)void dm();
   return true;
  }
  async function onMessage(message){

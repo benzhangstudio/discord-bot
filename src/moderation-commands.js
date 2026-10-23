@@ -33,13 +33,15 @@ export const moderationCommands=[
    number('mention-limit','Maximum mentions per message',1,50,false),
    number('spam-limit','Maximum messages per member in 10 seconds',3,30,false),
    {type:5,name:'block-invites',description:'Delete Discord invite links'},
+   {type:5,name:'dm-appeals',description:'Include an Appeal button in ban, kick, timeout and warning DMs'},
+   {...text('appeal-contact','Where banned or kicked members can appeal (link or email); "none" clears',false),max_length:200},
   ]),sub('clear-role','Clear a moderation role setting (owner only)',[choice('kind','Role setting',[['Moderator role','modRole'],['Protected role','privacyRole']])]),
  ]},
  {name:'appeals',description:'Manage moderation appeals',options:[
-  sub('panel','Post an appeal button in a channel',[channel]),
-  sub('record','Record an appeal from a member who left or was banned',[user,id,text('statement','Appeal text')]),
+  sub('panel','Post an appeal button for members still in the server',[channel]),
+  sub('record','Staff: record an appeal received through the external contact',[user,id,text('statement','Appeal text')]),
   sub('list','List open appeals',[number('page','Page number',1,10000,false)]),sub('show','Show an appeal',[text('appeal','Appeal ID')]),
-  sub('review','Accept or deny an appeal',[text('appeal','Appeal ID'),choice('decision','Decision',[['Accept','accepted'],['Deny','denied']]),reason]),
+  sub('review','Accept or deny an appeal (does not change the sanction)',[text('appeal','Appeal ID'),choice('decision','Decision',[['Accept','accepted'],['Deny','denied']]),reason]),
  ]},
  {name:'emergency',description:'Emergency lockdown: lock and restore channels',options:[
   sub('on','Lock a channel',[channel,reason]),

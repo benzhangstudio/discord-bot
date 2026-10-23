@@ -32,3 +32,11 @@ Warnings and local moderation record operations use the signed interaction plus 
 ## Voice
 
 Bot copy uses a neutral, concise, functional voice. Avoid product branding in titles, footers and modal headings ("Commands", "Edit message", not "Number One · …"). Default embed color is Discord blurple (`5865F2`); `pink` remains an accepted color name. Verification is one dashboard plugin: its test-only/synthetic disclaimer appears only where verification is used (the `/portal open` message and the verification page), not in general commands or help.
+
+## Moderation notices and appeals
+
+Action confirmations are a one-line result plus an embed titled like `Member banned`, with User, Moderator, Reason and Case fields in blurple. Log-channel posts use the same embed.
+
+Affected members get a plain DM before ban, kick or timeout (after a warning): `You were banned from **Server**.` / `Reason: …` / `Case: …`, plus an **Appeal** button unless `dm-appeals` is off. If the DM fails, the moderator's reply adds: "Could not DM the member. If they contact staff another way, use /appeals record."
+
+The `/appeals panel` message is for members still in the server and says that removed members receive an Appeal button by DM. Review replies never imply a sanction changed: "Appeal X accepted. The sanction was not changed; use /unban or /untimeout if needed."

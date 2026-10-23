@@ -148,6 +148,8 @@ async function handle(i) {
       return i.respond(suggestions(store,i,{canManage:true,canConfigure:true}));
     }
   }
+  // Appeal buttons arrive in DMs after a ban or kick; moderation validates them without guild context.
+  if(!i.inGuild()&&i.customId?.startsWith('mod-appeal-dm')){i.privateResponse=true;if(await moderation.handle(i))return;}
   if(!i.inGuild()) throw new UserError('Use Number One inside a Discord server.');
   if (i.isChatInputCommand()) {
     needStaff(i);

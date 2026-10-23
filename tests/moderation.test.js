@@ -226,3 +226,48 @@ test('ban DMs the member first with server and reason; DM failures never block t
   assert.equal(sent.length,1);assert.match(sent[0].content,/^You were banned from \*\*.+\*\*\.\nReason: Spam/);assert.deepEqual(sent[0].allowedMentions,{parse:[]});
  }finally{h.close();}
 });
+function dmInteraction(h,customId,{user='target',body=null}={}){
+ return {id:'dm'+customId.length+(body?'s':'b')+Math.random().toString(36).slice(2,8),guildId:null,guild:null,channelId:'dm',user:{id:user},customId,inGuild:()=>false,
+  isChatInputCommand:()=>false,isButton:()=>body===null,isModalSubmit:()=>body!==null,isAutocomplete:()=>false,
+  fields:{getTextInputValue:()=>body},replied:false,deferred:false,
+  reply:async function(p){this.replied=true;h.outputs.push(p);},deferReply:async function(){this.deferred=true;},editReply:async p=>h.outputs.push(p),followUp:async p=>h.outputs.push(p),showModal:async p=>h.outputs.push(p.toJSON())};
+}
+test('ban sends the DM with an Appeal button before the ban, and the member can appeal from DMs after removal',async()=>{
+ const h=harness();try{
+  const order=[];let dm;h.target.send=async p=>{order.push('dm');dm=p;};const ban=h.target.ban;h.target.ban=async(...a)=>{order.push('ban');return ban(...a);};
+  const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
+  assert.deepEqual(order,['dm','ban']);assert.match(dm.content,/You were banned from .*\nReason: Spam\nCase: /);
+  const button=dm.components[0].components[0];assert.equal(button.label,'Appeal');assert.equal(button.custom_id,`mod-appeal-dm:guild:${i.id}`);
+  await h.app.handle(dmInteraction(h,button.custom_id));assert.equal(h.outputs.at(-1).custom_id,`mod-appeal-dm-submit:guild:${i.id}`);
+  await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'I was hacked'}));
+  assert.match(h.outputs.at(-1).content,/submitted for case/);
+  const appeal=h.store.list('guild','mod-appeal').find(a=>a.caseId===i.id);assert.equal(appeal.actor,'target');assert.equal(appeal.body,'I was hacked');
+  // Duplicate submission is blocked.
+  await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'Again'})).catch(()=>{});
+  assert.equal(h.store.list('guild','mod-appeal').filter(a=>a.caseId===i.id).length,1);
+ }finally{h.close();}
+});
+test('DM appeal from a different user is rejected and stores nothing',async()=>{
+ const h=harness();try{
+  h.target.send=async()=>{};const i=h.interaction('kick',{reason:'Rule 2'});await h.app.handle(i);
+  const before=h.store.list('guild','mod-appeal').length;
+  await assert.rejects(h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{user:'intruder',body:'Let me in'})),/not valid/);
+  await assert.rejects(h.app.handle(dmInteraction(h,`mod-appeal-dm:guild:${i.id}`,{user:'intruder'})),/not valid/);
+  await assert.rejects(h.app.handle(dmInteraction(h,'mod-appeal-dm:other-guild:'+i.id)),/not valid/);
+  assert.equal(h.store.list('guild','mod-appeal').length,before);
+ }finally{h.close();}
+});
+test('closed DMs never block the sanction; the case records it and the moderator is told to use /appeals record',async()=>{
+ const h=harness();try{
+  h.target.send=async()=>{const e=new Error('Cannot send messages to this user');e.code=50007;e.status=403;throw e;};
+  const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
+  const c=h.core.get('guild',i.id);assert.equal(c.state,'succeeded');assert.equal(c.details.dm,'failed');assert.ok(h.effects.includes('ban'));
+  assert.match(h.outputs.at(-1).content,/Could not DM the member\. If they contact staff another way, use \/appeals record\./);
+ }finally{h.close();}
+});
+test('appeal review never reverses the sanction and says so plainly',async()=>{
+ const h=harness();try{
+  const i=h.interaction('appeals','review',{appeal:'appeal',decision:'accepted',reason:'Fair'});await h.app.handle(i);
+  assert.match(h.outputs.at(-1).content,/accepted\. The sanction was not changed; use \/unban or \/untimeout if needed/);assert.ok(!h.effects.includes('unban'));
+ }finally{h.close();}
+});
