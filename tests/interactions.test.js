@@ -64,7 +64,7 @@ test('only the server owner can grant, revoke or list added access',async()=>{
   const h=harness(),target='345678901234567890';
   const owner=(sub,values)=>{const i=h.interaction('access',sub,values);i.user={id:i.guild.ownerId};return i;};
   await h.app.handle(owner('add',{user:target}));assert.ok(h.store.get('server-a','access',target));
-  const approved=h.interaction('help');approved.user={id:target};approved.memberPermissions=new PermissionsBitField([]);await h.app.handle(approved);assert.match(h.outputs.at(-1).embeds[0].toJSON().title,/Commands/);
+  const approved=h.interaction('help');approved.user={id:target};approved.memberPermissions=new PermissionsBitField([]);await h.app.handle(approved);assert.match(h.outputs.at(-1).embeds[0].toJSON().title,/^Help$/);
   const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(h.outputs.at(-1).content,/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
   await h.app.handle(owner('list',{}));assert.match(h.outputs.at(-1).content,new RegExp(target));
   await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);

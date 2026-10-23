@@ -1,58 +1,37 @@
 import {EmbedBuilder} from 'discord.js';
 import {commands} from './commands.js';
 import {UserError} from './user-error.js';
-import {moderationActions} from './moderation-commands.js';
 
-const summaries={
-  help:'Show this command list.',
-  'portal open':'Get this server’s dashboard link.', 'portal setup':'Open dashboard setup for this server.',
-  'embed create':'Open the draft form.', 'embed edit':'Reopen a saved draft.', 'embed list':'List saved drafts.', 'embed delete':'Delete a saved draft.', 'embed remove-section':'Remove a numbered section.', 'embed send':'Publish a saved draft.',
-  'schedule add':'Create an event, meeting, or rotation.', 'schedule list':'List upcoming events.', 'schedule show':'View details and replies.', 'schedule edit':'Change details or the start time.', 'schedule post':'Post an event card.', 'schedule configure':'Change reminders, duration, or repeats.', 'schedule cancel':'Stop the event and future reminders.',
-  'instagram setup':'Set up sources, channels, and delivery.', 'instagram list':'List sources and queued posts.', 'instagram preview':'Preview the latest post.', 'instagram pause':'Stop collection and delivery.', 'instagram resume':'Resume a paused source.', 'instagram remove':'Remove a source.',
-  'settings view':'View server settings.', 'settings timezone':'Set the default timezone.', 'settings status':'Check delivery problems.',
-  'access add':'Allow a member to use commands.', 'access remove':'Remove an owner-granted permission.', 'access list':'List owner-approved members.'
-};
-const labels={mod:'Moderation','mod-settings':'Moderation settings',appeals:'Appeals',emergency:'Emergency lockdown',help:'Help',portal:'Dashboard',embed:'Embeds',schedule:'Schedules',instagram:'Instagram',settings:'Settings',access:'Access · server owner only'};
-export function referenceFields() {
-  const order=['help','portal','embed','schedule','instagram','settings','access'];
-  return [...commands].sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name)).map(command=>{
-    const entries=command.options?.some(o=>o.type===1)?command.options:[null];
-    const lines=entries.map(sub=>{
-      const key=command.name+(sub?' '+sub.name:'');
-      const inputs=(sub?.options||(!sub?command.options:[])||[]).filter(option=>option.required).map(option=>option.name).join(' ');
-      return '\u0060/'+key+(inputs?' '+inputs:'')+'\u0060 — '+(summaries[key]||sub?.description||command.description);
-    });
-    return {name:labels[command.name]||command.name,value:lines.join('\n')};
+// Every registered command belongs to exactly one category (enforced by tests).
+// Command lines are generated from the registered definitions so help stays in sync.
+export const categories=[
+  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','mute','untimeout','unmute','kick','ban','unban','purge','warnings','modlogs','case','reason','delwarn','mod-reconcile']},
+  {value:'mod-settings',label:'Moderation settings',description:'Moderator role, log channel, automod and retention',commands:['mod-settings']},
+  {value:'appeals',label:'Appeals',description:'Appeal panel and staff review',commands:['appeals']},
+  {value:'emergency',label:'Emergency lockdown',description:'Lock and unlock channels',commands:['emergency']},
+  {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
+  {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
+  {value:'feeds',label:'Instagram',description:'Instagram feed sources and roundups',commands:['instagram']},
+  {value:'portal',label:'Dashboard',description:'Web dashboard links',commands:['portal']},
+  {value:'setup',label:'Settings',description:'Server timezone, delivery status and help',commands:['settings','help']},
+  {value:'access',label:'Access',description:'Grant command access (server owner only)',commands:['access']},
+];
+const plain=text=>String(text||'').trim().replace(/\.$/,'');
+export function commandLines(names) {
+  return names.map(name=>commands.find(c=>c.name===name)).filter(Boolean).flatMap(c=>{
+    const subs=c.options?.filter(o=>o.type===1)||[];
+    return subs.length?subs.map(s=>`\`/${c.name} ${s.name}\` – ${plain(s.description)}`):[`\`/${c.name}\` – ${plain(c.description)}`];
   });
 }
-const topics=[
-  {value:'home',label:'All categories',description:'Choose which commands to view.'},
-  {value:'mod',label:'Moderation',description:'Actions, warnings, and private case history.',root:'mod'},
-  {value:'mod-settings',label:'Moderation settings',description:'Owner: roles, automod, logs, and retention.',root:'mod-settings'},
-  {value:'appeals',label:'Appeals',description:'Appeal button by direct message, in-server panel and staff review.',root:'appeals'},
-  {value:'emergency',label:'Emergency lockdown',description:'Lock channels and restore writing permissions.',root:'emergency'},
-  {value:'portal',label:'Dashboard',description:'Open this server’s web dashboard.',root:'portal'},
-  {value:'embeds',label:'Embeds',description:'Create, edit, and publish saved messages.',root:'embed'},
-  {value:'events',label:'Schedules',description:'Events, meetings, and rotations.',root:'schedule'},
-  {value:'feeds',label:'Instagram',description:'Sources and automatic roundups.',root:'instagram'},
-  {value:'setup',label:'Settings',description:'Timezone and delivery status.',root:'settings'},
-  {value:'access',label:'Access',description:'Server owner: approve or remove members.',root:'access'}
-];
+const FOOTER='Some commands require Manage Server or staff access.';
 export function helpMenu({page='home'}={}) {
-  const topic=topics.find(topic=>topic.value===page);
-  if(!topic)throw new UserError('Open /help for the current command menu.');
-  const embed=new EmbedBuilder().setColor(0x5865f2).setTitle(page==='home'?'Commands':topic.label);
-  if(page==='home') {
-    embed.setDescription('Choose a category below to see its commands.').addFields(topics.filter(t=>t.root).map(t=>({name:t.label,value:t.description,inline:true})));
-  } else {
-    const fields=referenceFields();
-    const selected=page==='mod'?fields.filter(f=>Object.keys(moderationActions).includes(f.name)):fields.filter(field=>field.name===labels[topic.root]);
-    const lines=selected.flatMap(f=>f.value.split('\n')),chunks=[''];
-    for(const line of lines){if(chunks.at(-1).length+line.length>1000)chunks.push('');chunks[chunks.length-1]+=(chunks.at(-1)?'\n':'')+line;}
-    embed.setDescription('Required inputs follow each command. Optional inputs appear in Discord.').addFields(chunks.map((value,n)=>({name:(labels[topic.root]||topic.label)+(n?' · continued':''),value})));
-  }
-  embed.setFooter({text:'Access: Administrator, Manage Server, or approval from this server’s owner. Use /help to reopen.'});
+  const topic=page==='home'?null:categories.find(c=>c.value===page);
+  if(page!=='home'&&!topic)throw new UserError('Open /help for the current command menu.');
+  const embed=new EmbedBuilder().setColor(0x5865f2).setFooter({text:FOOTER});
+  if(!topic)embed.setTitle('Help').setDescription(['Select a category to see its commands.','',...categories.map(c=>`**${c.label}** – ${c.description}`)].join('\n'));
+  else embed.setTitle(topic.label).setDescription(commandLines(topic.commands).join('\n').slice(0,4000));
   return {content:'',embeds:[embed],components:[
-    {type:1,components:[{type:3,custom_id:'help:topic',placeholder:'Choose a command category',min_values:1,max_values:1,options:topics.map(({value,label,description})=>({value,label,description,default:value===page}))}]}
+    {type:1,components:[{type:3,custom_id:'help:topic',placeholder:'Select a category',min_values:1,max_values:1,
+      options:[{value:'home',label:'Overview',description:'All categories',default:page==='home'},...categories.map(c=>({value:c.value,label:c.label,description:c.description.slice(0,100),default:c.value===page}))]}]}
   ],allowedMentions:{parse:[]}};
 }
