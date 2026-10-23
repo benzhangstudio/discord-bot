@@ -1,6 +1,6 @@
 import {MessageFlags,PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
 import {Moderation,clean} from './moderation-core.js';
-import {moderationCommands,moderationActions} from './moderation-commands.js';
+import {moderationCommands,moderationAction} from './moderation-commands.js';
 import {UserError} from './user-error.js';
 import {acknowledge,respond,withDeadline,updateResponse} from './responses.js';
 import {caseListPayload,caseEmbedFull,appealListPayload,appealEmbed} from './mod-format.js';
@@ -124,36 +124,12 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const dmNote=c.details?.dm==='failed'&&c.state==='succeeded'?'\nCould not DM the member. If they contact staff another way, use /appeals record.':'';
   await respond(i,{content:result+dmNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
  }
- async function config(i,sub){
-  const cfg=core.config(i.guildId);
-  if(sub==='view'){
-   const logIssues=store.list(i.guildId,'mod-log').filter(l=>l.state!=='sent').length;
-   const review=core.cases(i.guildId).filter(c=>['pending','uncertain'].includes(c.state)).length;
-   return respond(i,{content:[`**Moderation settings**`,`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Privacy role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'}`,`Invite filter: ${cfg.blockInvites?'On':'Off'}`,`DM members by default: ${cfg.dmMembers===false?'Off':'On'}`,`Appeal button in DMs: ${cfg.dmAppeals===false?'Off':'On'}`,`Appeal contact: ${cfg.appealContact?clean(cfg.appealContact):'Not set'}`,`Mention limit: ${cfg.mentionLimit}`,`Spam limit: ${cfg.spamLimit} messages per 10 seconds`,`Blocked phrases: ${cfg.blockedWords.length}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n'),allowedMentions:{parse:[]}});
-  }
-  must(owner(i),'Only the current server owner can configure moderation.');
-  if(sub==='clear-role'){
-   const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'configuration',action:'configure',reason:'Cleared '+i.options.getString('kind'),effect:()=>core.saveConfig(i.guildId,{[i.options.getString('kind')]:null})});
-   return finish(i,c);
-  }
-  const patch={};
-  for(const [option,key]of [['mod-role','modRole'],['privacy-role','privacyRole']]){
-   const selected=i.options.getRole(option);if(!selected)continue;
-   const role=await read(i.guild.roles.fetch(selected.id));
-   must(role&&!role.managed&&role.id!==i.guildId,'Choose a custom server role.');patch[key]=role.id;
-  }
-  must((patch.modRole??cfg.modRole)!==(patch.privacyRole??cfg.privacyRole)||(patch.modRole??cfg.modRole)===null,'Privacy and moderation roles must differ.');
-  const ch=i.options.getChannel('log-channel');
-  if(ch){const live=await read(i.guild.channels.fetch(ch.id));must(live&&[0,5].includes(live.type)&&!live.permissionsFor(i.guild.roles.everyone).has(P.ViewChannel),'Choose a staff-only text log channel.');patch.logChannel=ch.id;}
-  for(const [opt,key]of [['retention-days','retentionDays'],['mention-limit','mentionLimit'],['spam-limit','spamLimit']]){const v=i.options.getInteger(opt);if(v!==null)patch[key]=v;}
-  for(const [opt,key]of [['automod','automod'],['block-invites','blockInvites'],['dm-appeals','dmAppeals'],['dm-members','dmMembers']]){const v=i.options.getBoolean(opt);if(v!==null)patch[key]=v;}
-  const contact=i.options.getString('appeal-contact');
-  if(contact!==null){const v=clean(contact).trim();must(v.length<=200&&!/@(everyone|here)|<[@#]/.test(v),'Enter a short appeal contact such as a link or email address.');patch.appealContact=/^none$/i.test(v)||!v?null:v;}
-  const words=i.options.getString('blocked-words');if(words!==null)patch.blockedWords=words.split(',').map(w=>w.trim()).filter(Boolean).slice(0,100);
-  if(patch.automod)must(process.env.MODERATION_MESSAGE_CONTENT==='1','Set MODERATION_MESSAGE_CONTENT=1, enable Message Content Intent in Discord, and restart before enabling automod.');
-  await members(i);must(owner(i),'Only the current server owner can configure moderation.');
-  const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'configuration',action:'configure',reason:'Updated moderation policy',details:{before:cfg,patch},effect:()=>core.saveConfig(i.guildId,patch)});
-  return finish(i,c);
+ // Read-only summary for /settings view. Moderation settings are edited on the dashboard.
+ function settingsSummary(guildId){
+  const cfg=core.config(guildId);
+  const logIssues=store.list(guildId,'mod-log').filter(l=>l.state!=='sent').length;
+  const review=core.cases(guildId).filter(c=>['pending','uncertain'].includes(c.state)).length;
+  return [`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Protected role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'} · Invite filter: ${cfg.blockInvites?'On':'Off'}`,`DM members by default: ${cfg.dmMembers===false?'Off':'On'}`,`Appeal button in DMs: ${cfg.dmAppeals===false?'Off':'On'} · Appeal contact: ${cfg.appealContact?clean(cfg.appealContact):'Not set'}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n');
  }
  async function emergency(i,sub,actor,bot){
   allowed(i,actor,P.ManageChannels);
@@ -166,7 +142,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   try{
    let lock=store.get(i.guildId,'mod-lock',channel.id);
    if(sub==='on'){
-    must(!lock,'A saved lock already exists. Use /emergency off to restore it first.');
+    must(!lock,'A saved lock already exists. Use /lockdown off to restore it first.');
     const overwrites=[...channel.permissionOverwrites.cache.values()].map(o=>({id:o.id,type:o.type,allow:String(o.allow.bitfield),deny:String(o.deny.bitfield)}));
     if(!overwrites.some(o=>o.id===i.guildId))overwrites.push({id:i.guildId,type:0,allow:'0',deny:'0',added:true});
     lock={id:channel.id,state:'applying',entries:overwrites,created:Date.now()};store.put(i.guildId,'mod-lock',lock);
@@ -256,12 +232,12 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    await updateResponse(i,kind==='appeals'?appealsPayload(i,Number(page)):await listPayload(i,kind,target,Number(page),invoker));return true;
   }
   needStaff(i);
-  const routeAction=moderationActions[i.commandName]||i.options.getSubcommand();
+  const routeAction=moderationAction(i.commandName,i.options.getSubcommand(false));
   const local=['warn','case','history','warnings','note','void','reconcile'].includes(routeAction)||
-   i.commandName==='mod-settings'&&routeAction==='view'||i.commandName==='emergency'&&routeAction==='status'||i.commandName==='appeals'&&['list','show'].includes(routeAction);
+   i.commandName==='lockdown'&&routeAction==='status'||i.commandName==='appeals'&&['list','show'].includes(routeAction);
   // These targets can be rejected from signed interaction data, before network
   // preflight can trigger a deferred reply. Full fresh checks still follow.
-  if(['warn','ban','kick','mute','timeout','unmute','untimeout'].includes(i.commandName)){
+  if(['warn','ban','kick','timeout','untimeout'].includes(i.commandName)){
    const target=i.options.getUser('user');
    must(target&&![i.user.id,i.guild.ownerId,client.user?.id].includes(target.id),'You cannot moderate yourself, the bot, or the server owner.');
    const resolved=i.options.getMember?.('user');
@@ -273,8 +249,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const grant=store.get(i.guildId,'access',i.user.id);
   must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your command access has expired. Ask the current owner.');
   const sub=routeAction;
-  if(i.commandName==='mod-settings'){await config(i,sub);return true;}
-  if(i.commandName==='emergency'){await emergency(i,sub,actor,bot);return true;}
+  if(i.commandName==='lockdown'){await emergency(i,sub,actor,bot);return true;}
   allowed(i,actor,({ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub])||P.ModerateMembers);
   if(sub==='warn'){
    const target=i.options.getMember?.('user');
@@ -383,5 +358,5 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  const onUpdate=(_old,m)=>{if(!m.partial)void onMessage(m);};
  client.on('messageUpdate',onUpdate);
  const timer=setInterval(()=>void tick().catch(()=>console.warn('Moderation maintenance failed. Check private storage.')),30000);timer.unref();
- return {handle,core,onMessage,tick,stop(){stopped=true;clearInterval(timer);client.off?.('messageCreate',onMessage);client.off?.('messageUpdate',onUpdate);}};
+ return {handle,core,settingsSummary,onMessage,tick,stop(){stopped=true;clearInterval(timer);client.off?.('messageCreate',onMessage);client.off?.('messageUpdate',onUpdate);}};
 }

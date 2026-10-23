@@ -8,7 +8,7 @@ import {loadFeed,feedMessage} from './feeds.js';
 import {startWorker} from './worker.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {createInstagramSetup} from './instagram.js';
-import {commands} from './commands.js';
+import {commands,RETIRED_COMMANDS} from './commands.js';
 import {acknowledge,respond,updateResponse,showForm,reportFailure,safeError,step,cancelAcknowledgement} from './responses.js';
 import {helpMenu} from './help.js';
 import {createAccessCommands,isServerOwner} from './access.js';
@@ -156,8 +156,8 @@ async function handle(i) {
     d[key]=i.values[0]||null;saveDraft(i,d);return updateResponse(i,editor(d,i));
   }
   const helpOptions=()=>({canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
-  if(i.isChatInputCommand()&&i.commandName==='portal') {
-    return respond(i,portalMessage(i.guildId,i.options.getSubcommand(false)));
+  if(i.isChatInputCommand()&&i.commandName==='dashboard') {
+    return respond(i,portalMessage(i.guildId));
   }
   if(i.isChatInputCommand()&&i.commandName==='help') {
     // Help is built entirely from local data. Send it as the initial response,
@@ -195,7 +195,7 @@ async function handle(i) {
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
     const definition=commands.find(command=>command.name===i.commandName);
-    if(!definition)return respond(i,reply('This is an older or unavailable command. Use /schedule list for upcoming events, or /help for current commands.'));
+    if(!definition)return respond(i,reply(RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.'));
     if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current options, or use /help.');
   }
   if(i.isButton()) {
@@ -270,7 +270,7 @@ async function handle(i) {
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and the bot’s channel permissions.`);
       return respond(i,listEmbed('Delivery status',null,null,issues.length?[...new Set(issues)].join('\n').slice(0,4000):'No recent reminder or Instagram delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'}]));
+    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'},...(sub==='view'?[{name:'Moderation',value:moderation.settingsSummary(i.guildId).slice(0,1000)},{name:'Change settings',value:'Moderation, automod and appeal settings are on the dashboard (/dashboard).'}]:[])]));
   }
   if(name==='embed') {
     needStaff(i);

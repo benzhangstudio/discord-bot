@@ -9,6 +9,12 @@ const sub = (name,description,options=[]) => ({type:1,name,description,options})
 const labels={event:'Community event','staff-meeting':'Staff meeting',rotation:'Staff rotation',none:'One time only',daily:'Every day',weekly:'Every week'};
 const choice = values => values.map(v => ({name:labels[v]||v,value:v}));
 const role = {type:8,name:'role',description:'Optional role to notify'};
+// Retired command names -> replacement. Startup sync replaces the global command set, so these
+// disappear from Discord; clients that still show a cached copy get this guidance instead.
+export const RETIRED_COMMANDS=Object.freeze({
+  mute:'/timeout',unmute:'/untimeout',delwarn:'/warnings remove',modlogs:'/case history',reason:'/case reason',
+  'mod-reconcile':'/case resolve','mod-settings':'the dashboard (Moderation, Automod) or /settings view',emergency:'/lockdown',portal:'/dashboard',events:'/schedule list'
+});
 export const commands = [
   ...moderationCommands,
   reactionRoleCommand,
@@ -18,10 +24,7 @@ export const commands = [
     sub('list','List members with command access',[integer('page','Page number',1,100)])
   ]},
   {name:'help',description:'Show available commands'},
-  {name:'portal',description:'Open this server’s web dashboard',options:[
-    sub('open','Get the dashboard link for this server'),
-    sub('setup','Open dashboard setup for this server')
-  ]},
+  {name:'dashboard',description:'Get this server’s web dashboard link'},
   {name:'settings',description:'Server timezone and delivery status',default_member_permissions:'32',options:[
     sub('view','View server settings'),sub('timezone','Set the default timezone for new events',[str('zone','City or timezone, e.g. New York',true,{autocomplete:true})]),
     sub('status','Show reminder and feed delivery problems')

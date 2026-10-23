@@ -2,17 +2,15 @@ import {UserError} from './user-error.js';
 
 // The guild is taken from Discord's interaction, never from a user-supplied option.
 // Opening a portal grants no website permissions and changes no server settings.
-export function portalMessage(guildId,action,origin=process.env.AGE_ORIGIN || 'https://number-one.wispbyte.app') {
+export function portalMessage(guildId,origin=process.env.AGE_ORIGIN || 'https://number-one.wispbyte.app') {
   let base;
   try {base=new URL(origin);} catch {throw new UserError('The dashboard address is unavailable. Ask the bot operator to correct its public website address.');}
   if(base.protocol!=='https:'||base.origin!==origin||base.username||base.password)throw new UserError('The dashboard needs a valid HTTPS address. Ask the bot operator to correct its public website address.');
-  if(!guildId||!['open','setup'].includes(action))throw new UserError('Use /portal open or /portal setup inside your server.');
-  const link=new URL(`/dashboard/${encodeURIComponent(guildId)}${action==='setup'?'/overview':''}`,base);
+  if(!guildId)throw new UserError('Use /dashboard inside your server.');
+  const link=new URL(`/dashboard/${encodeURIComponent(guildId)}`,base),verify=new URL(`/dashboard/${encodeURIComponent(guildId)}/verification`,base);
   return {
-    content:action==='setup'
-      ?'**Dashboard setup**\nSign in with Discord to configure plugins, automod and verification. Requires server owner, Administrator or Manage Server.'
-      :'**Server dashboard**\nSign in with Discord to manage this server, or to check your verification status as a member.\n\nVerification runs in test mode; real ID uploads are disabled.',
-    components:[{type:1,components:[{type:2,style:5,label:action==='setup'?'Open setup':'Open dashboard',url:link.href}]}],
+    content:'**Server dashboard**\nSign in with Discord to manage plugins, moderation, automod, reaction roles and verification. Managing requires server owner, Administrator or Manage Server. Members can check their verification status.\n\nVerification runs in test mode; real ID uploads are disabled.',
+    components:[{type:1,components:[{type:2,style:5,label:'Open dashboard',url:link.href},{type:2,style:5,label:'Verification',url:verify.href}]}],
     allowedMentions:{parse:[]}
   };
 }

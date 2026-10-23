@@ -31,7 +31,7 @@ Warnings and local moderation record operations use the signed interaction plus 
 
 ## Voice
 
-Bot copy uses a neutral, concise, functional voice. Avoid product branding in titles, footers and modal headings ("Commands", "Edit message", not "Number One · …"). Default embed color is Discord blurple (`5865F2`); `pink` remains an accepted color name. Verification is one dashboard plugin: its test-only/synthetic disclaimer appears only where verification is used (the `/portal open` message and the verification page), not in general commands or help.
+Bot copy uses a neutral, concise, functional voice. Avoid product branding in titles, footers and modal headings ("Commands", "Edit message", not "Number One · …"). Default embed color is Discord blurple (`5865F2`); `pink` remains an accepted color name. Verification is one dashboard plugin: its test-only/synthetic disclaimer appears only where verification is used (the `/dashboard` message and the verification page), not in general commands or help.
 
 ## Moderation notices and appeals
 

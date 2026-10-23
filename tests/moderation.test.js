@@ -14,12 +14,11 @@ import {suggestions} from '../src/suggestions.js';
 const never=()=>new Promise(()=>{});
 const perm=bits=>new PermissionsBitField(bits);
 const scenarios={
- warn:{},kick:{},ban:{},unban:{},untimeout:{},unmute:{},timeout:{duration:'10m'},mute:{duration:'1h'},purge:{count:10},
- case:{id:'saved'},warnings:{},modlogs:{},reason:{},delwarn:{},'mod-reconcile':{case:'uncertain',outcome:'failed'},
- 'mod-settings view':{},'mod-settings set':{'retention-days':90},'mod-settings clear-role':{kind:'privacyRole'},
+ warn:{},kick:{},ban:{},unban:{},untimeout:{},timeout:{duration:'10m'},purge:{count:10},
+ 'case view':{id:'saved'},'case history':{},'case reason':{},'case resolve':{case:'uncertain',outcome:'failed'},'warnings list':{},'warnings remove':{},
  'appeals panel':{},'appeals list':{},'appeals show':{appeal:'appeal'},'appeals review':{appeal:'appeal',decision:'accepted'},
  'appeals record':{statement:'Externally received appeal'},
- 'emergency on':{},'emergency off':{},'emergency status':{},
+ 'lockdown on':{},'lockdown off':{},'lockdown status':{},
 };
 function harness({authorized=true}={}){
  const store=new Store(':memory:'),client=new EventEmitter(),outputs=[],effects=[];
@@ -38,7 +37,7 @@ function harness({authorized=true}={}){
  let seq=0;
  function interaction(name,sub,values={}){
   if(sub&&typeof sub==='object'){values=sub;sub=undefined;}
-  if(name==='mod')name=({history:'modlogs',note:'reason',void:'delwarn',reconcile:'mod-reconcile'})[sub]||sub;
+  if(name==='mod'){[name,sub]=({history:['case','history'],note:['case','reason'],void:['warnings','remove'],reconcile:['case','resolve'],case:['case','view'],warnings:['warnings','list']})[sub]||[sub];}
   const v={user:name==='purge'?null:'target',id:'saved',case:'saved',duration:'10m',reason:'Test reason',...values};return {
   id:String(++seq),guildId:'guild',guild,channelId:'channel',user:actor.user,member:actor,memberPermissions:actor.permissions,commandName:name,
   inGuild:()=>true,isChatInputCommand:()=>true,isButton:()=>false,isModalSubmit:()=>false,
@@ -52,7 +51,7 @@ test('moderation scenarios exactly cover every registered subcommand',()=>{
 });
 test('common commands are standalone with simple inputs and no mandatory purge confirmation',()=>{
  assert.ok(!moderationCommands.some(c=>c.name==='mod'));
- for(const name of ['ban','kick','warn','mute','timeout','purge','warnings','modlogs','case'])assert.ok(moderationCommands.find(c=>c.name===name).options.every(o=>o.type!==1));
+ for(const name of ['ban','kick','warn','timeout','purge'])assert.ok(moderationCommands.find(c=>c.name===name).options.every(o=>o.type!==1));
  assert.deepEqual(moderationCommands.find(c=>c.name==='purge').options.filter(o=>o.required).map(o=>o.name),['count']);
  for(const c of moderationCommands){let optional=false;for(const o of c.options){if(o.type===1)continue;if(!o.required)optional=true;else assert.equal(optional,false,c.name);}}
 });
@@ -63,8 +62,8 @@ test('human-readable durations accept common units and reject invalid or excessi
 test('simple ban records an omitted reason and replies with a clear result',async()=>{
  const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case','DM']);assert.equal(e.fields[3].value,'#'+c.number);}finally{h.close();}
 });
-test('warning list hides voided warnings while modlogs retains them',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('delwarn'));await h.app.handle(h.interaction('warnings'));assert.match(h.outputs.at(-1).embeds[0].description,/has no warnings\./);await h.app.handle(h.interaction('modlogs'));assert.match(h.outputs.at(-1).embeds[0].fields[0].value,/Status:\*\* Removed/);}finally{h.close();}
+test('warning list hides voided warnings while case history retains them',async()=>{
+ const h=harness();try{await h.app.handle(h.interaction('warnings','remove'));await h.app.handle(h.interaction('warnings','list'));assert.match(h.outputs.at(-1).embeds[0].description,/has no warnings\./);await h.app.handle(h.interaction('case','history'));assert.match(h.outputs.at(-1).embeds[0].fields[0].value,/Status:\*\* Removed/);}finally{h.close();}
 });
 test('case suggestions search by member name, scope servers, and deny unprivileged members',()=>{
  const h=harness();try{const c=h.core.get('guild','saved');c.details={memberName:'Alex'};h.store.put('guild','mod-case',c);const i=h.interaction('case');i.options.getFocused=()=>({name:'id',value:'Alex'});assert.deepEqual(suggestions(h.store,i,{canManage:true}).map(v=>v.value),['saved']);i.guildId='other';assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);i.guildId='guild';i.memberPermissions=perm([P.ManageGuild]);i.user={id:'manager'};assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);}finally{h.close();}
@@ -79,10 +78,10 @@ test('moderation rejections and uncertain outcomes show concise public errors, n
   }finally{h.close();}
  }
 });
-test('settings and emergency status show readable summaries without internal delivery state dumps',async()=>{
+test('settings and lockdown status show readable summaries without internal delivery state dumps',async()=>{
  const h=harness();try{
-  await h.app.handle(h.interaction('mod-settings','view'));assert.match(h.outputs.at(-1).content,/Moderation settings/);assert.doesNotMatch(h.outputs.at(-1).content,/"id":|logChannel|retentionDays|queued|sending|uncertain/);
-  h.store.put('guild','mod-lock',{id:'channel',state:'needs-review'});await h.app.handle(h.interaction('emergency','status'));assert.match(h.outputs.at(-1).content,/Needs review/);assert.doesNotMatch(h.outputs.at(-1).content,/needs-review/);
+  await h.app.handle(h.interaction('settings','view'));const view=JSON.stringify(h.outputs.at(-1).embeds);assert.ok(h.outputs.at(-1).embeds[0].fields.some(f=>f.name==='Moderation'&&/DM members by default: On/.test(f.value)));assert.doesNotMatch(view,/\\"id\\":|logChannel|retentionDays|queued|sending|uncertain/);
+  h.store.put('guild','mod-lock',{id:'channel',state:'needs-review'});await h.app.handle(h.interaction('lockdown','status'));assert.match(h.outputs.at(-1).content,/Needs review/);assert.doesNotMatch(h.outputs.at(-1).content,/needs-review/);
  }finally{h.close();}
 });
 test('purge member filter excludes other members without deleting pinned messages',async()=>{
@@ -91,7 +90,7 @@ test('purge member filter excludes other members without deleting pinned message
 for(const [name,values]of Object.entries(scenarios)){
  test(`authorized scenario /${name} finishes`,async()=>{
   const h=harness();try{
-   if(name==='emergency off')await h.app.handle(h.interaction('emergency','on'));
+   if(name==='lockdown off')await h.app.handle(h.interaction('lockdown','on'));
    if(name==='appeals record')h.store.remove('guild','mod-appeal','appeal');
    await h.app.handle(h.interaction(...name.split(' '),values));assert.ok(h.outputs.length);assert.ok(h.outputs.at(-1).flags===64||h.outputs.at(-1).flags===undefined);
   }finally{h.close();}
@@ -128,9 +127,9 @@ for(const networkStep of ['channel','messages','ban-lookup','panel-send','overwr
   if(networkStep==='messages')h.channel.messages.fetch=never;
   if(networkStep==='ban-lookup'){i=h.interaction('mod','unban');guild.bans.fetch=never;}
   if(networkStep==='panel-send'){i=h.interaction('appeals','panel');h.channel.send=never;}
-  if(networkStep==='overwrite'){i=h.interaction('emergency','on');h.channel.permissionOverwrites.edit=never;}
+  if(networkStep==='overwrite'){i=h.interaction('lockdown','on');h.channel.permissionOverwrites.edit=never;}
   if(networkStep==='restore-fetch'){
-   await h.app.handle(h.interaction('emergency','on'));i=h.interaction('emergency','off');let calls=0;guild.channels.fetch=()=>++calls===1?Promise.resolve(h.channel):never();
+   await h.app.handle(h.interaction('lockdown','on'));i=h.interaction('lockdown','off');let calls=0;guild.channels.fetch=()=>++calls===1?Promise.resolve(h.channel):never();
   }
   if(networkStep==='modal'){i.commandName=undefined;i.customId='mod-appeal-open';i.isChatInputCommand=()=>false;i.showModal=never;}
   if(['panel-send','overwrite','restore-fetch'].includes(networkStep)){await h.app.handle(i);assert.equal(h.core.get('guild',i.id).state,'uncertain');}
@@ -155,15 +154,15 @@ test('purge excludes pinned and old messages and records exact selected IDs',asy
 test('lockdown restores writing bits while preserving independent privacy changes',async()=>{
  const h=harness();try{
   const o=h.channel.permissionOverwrites.cache.get('guild');const before=o.allow.bitfield;
-  await h.app.handle(h.interaction('emergency','on'));assert.equal(o.allow.has(P.SendMessages),false);
+  await h.app.handle(h.interaction('lockdown','on'));assert.equal(o.allow.has(P.SendMessages),false);
   o.allow.remove(P.ViewChannel);o.deny.add(P.ViewChannel);
-  await h.app.handle(h.interaction('emergency','off'));assert.equal(o.allow.bitfield,before&~P.ViewChannel);assert.ok(o.deny.has(P.ViewChannel));assert.equal(h.store.list('guild','mod-lock').length,0);
+  await h.app.handle(h.interaction('lockdown','off'));assert.equal(o.allow.bitfield,before&~P.ViewChannel);assert.ok(o.deny.has(P.ViewChannel));assert.equal(h.store.list('guild','mod-lock').length,0);
  }finally{h.close();}
 });
 test('lockdown refuses conflicting writing changes and retains restoration journal',async()=>{
  const h=harness();try{
-  await h.app.handle(h.interaction('emergency','on'));const o=h.channel.permissionOverwrites.cache.get('guild');o.allow.add(P.SendMessages);o.deny.remove(P.SendMessages);
-  await h.app.handle(h.interaction('emergency','off'));assert.equal(h.store.get('guild','mod-lock','channel').state,'needs-review');assert.equal(h.core.cases('guild').find(c=>c.action==='emergency-off').state,'uncertain');
+  await h.app.handle(h.interaction('lockdown','on'));const o=h.channel.permissionOverwrites.cache.get('guild');o.allow.add(P.SendMessages);o.deny.remove(P.SendMessages);
+  await h.app.handle(h.interaction('lockdown','off'));assert.equal(h.store.get('guild','mod-lock','channel').state,'needs-review');assert.equal(h.core.cases('guild').find(c=>c.action==='emergency-off').state,'uncertain');
  }finally{h.close();}
 });
 test('appeals reject cross-server IDs, self review, original moderator and duplicate submissions',()=>{
@@ -273,7 +272,7 @@ test('appeal review never reverses the sanction and says so plainly',async()=>{
 });
 test('staff moderation results, including the DM-failure note, are public',async()=>{
  const h=harness();try{
-  for(const [name,sub,values] of [['appeals','list',{}],['appeals','show',{appeal:'appeal'}],['warnings',undefined,{}],['modlogs',undefined,{}],['case',undefined,{id:'saved'}],['mod-settings','view',{}],['emergency','status',{}]]){
+  for(const [name,sub,values] of [['appeals','list',{}],['appeals','show',{appeal:'appeal'}],['warnings','list',{}],['case','history',{}],['case','view',{id:'saved'}],['settings','view',{}],['lockdown','status',{}]]){
    const i=h.interaction(name,sub,values);await h.app.handle(i);assert.equal(h.outputs.at(-1).flags,undefined,`${name} ${sub||''}`);
   }
   h.target.send=async()=>{throw Object.assign(new Error('closed'),{code:50007,status:403});};
@@ -281,7 +280,7 @@ test('staff moderation results, including the DM-failure note, are public',async
   const result=h.outputs.at(-1);assert.equal(result.embeds[0].title,'Member banned');assert.equal(result.flags,undefined);assert.match(result.content,/Could not DM the member/);
  }finally{h.close();}
 });
-const DM_ACTIONS=['ban','kick','warn','timeout','mute','untimeout','unmute','unban'];
+const DM_ACTIONS=['ban','kick','warn','timeout','untimeout','unban'];
 for(const name of DM_ACTIONS)for(const mode of ['true','false','failed','default-off']){
  test(`/${name} dm=${mode} records the DM result and shows it in the public confirmation`,async()=>{
   const h=harness();try{
@@ -296,7 +295,7 @@ for(const name of DM_ACTIONS)for(const mode of ['true','false','failed','default
    const c=h.core.get('guild',i.id);
    if(mode==='true'){
     assert.match(sent.content,new RegExp(`Case: #${c.number}`));assert.match(sent.content,/Reason: Spam/);
-    const appealable=['ban','kick','timeout','mute','warn'].includes(name);
+    const appealable=['ban','kick','timeout','warn'].includes(name);
     assert.equal(!!sent.components,appealable,`${name} appeal button`);
    }else assert.equal(sent,null);
   }finally{h.close();}
@@ -318,7 +317,7 @@ test('cases get sequential per-server numbers, backfilled by creation order, and
 test('warnings list paginates with public Previous/Next buttons limited to the invoker or staff',async()=>{
  const h=harness();try{
   for(let n=0;n<12;n++)h.store.put('guild','mod-case',{id:'w'+n,guild:'guild',actor:'mod',target:'target',action:'warn',reason:'R'+n,created:1000+n,state:'succeeded',events:[]});
-  await h.app.handle(h.interaction('warnings'));const out=h.outputs.at(-1);
+  await h.app.handle(h.interaction('warnings','list'));const out=h.outputs.at(-1);
   assert.equal(out.embeds[0].fields.length,10);assert.match(out.embeds[0].footer.text,/^Total: 13 warnings · Page 1 of 2$/);
   const next=out.components[0].components[1];assert.equal(next.label,'Next');assert.equal(out.components[0].components[0].disabled,true);
   const b=h.interaction('component','');Object.assign(b,{commandName:undefined,customId:next.custom_id,isChatInputCommand:()=>false,isButton:()=>true,update:async p=>h.outputs.push(p)});

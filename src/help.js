@@ -5,16 +5,15 @@ import {UserError} from './user-error.js';
 // Every registered command belongs to exactly one category (enforced by tests).
 // Command lines are generated from the registered definitions so help stays in sync.
 export const categories=[
-  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','mute','untimeout','unmute','kick','ban','unban','purge','warnings','modlogs','case','reason','delwarn','mod-reconcile']},
-  {value:'mod-settings',label:'Moderation settings',description:'Moderator role, log channel, automod and retention',commands:['mod-settings']},
+  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','untimeout','kick','ban','unban','purge','warnings','case']},
   {value:'appeals',label:'Appeals',description:'Appeal panel and staff review',commands:['appeals']},
-  {value:'emergency',label:'Emergency lockdown',description:'Lock and unlock channels',commands:['emergency']},
+  {value:'lockdown',label:'Lockdown',description:'Lock and unlock channels',commands:['lockdown']},
   {value:'roles',label:'Reaction roles',description:'Let members pick roles by reacting',commands:['reaction-roles']},
   {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
   {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
   {value:'feeds',label:'Instagram',description:'Instagram feed sources and roundups',commands:['instagram']},
-  {value:'portal',label:'Dashboard',description:'Web dashboard links',commands:['portal']},
-  {value:'setup',label:'Settings',description:'Server timezone, delivery status and help',commands:['settings','help']},
+  {value:'portal',label:'Dashboard',description:'Web dashboard link; moderation settings live there',commands:['dashboard']},
+  {value:'setup',label:'Settings',description:'Settings overview, timezone, delivery status and help',commands:['settings','help']},
   {value:'access',label:'Access',description:'Grant command access (server owner only)',commands:['access']},
 ];
 const plain=text=>String(text||'').trim().replace(/\.$/,'');

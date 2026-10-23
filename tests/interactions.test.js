@@ -30,7 +30,7 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 // adding an exercised scenario fails the suite instead of silently missing it.
 const scenarios={
   help:{},
-  'portal open':{},'portal setup':{},
+  dashboard:{},
   'access add':{user:'345678901234567890'},'access remove':{user:'345678901234567890'},'access list':{},
   'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings status':{},
   'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},
@@ -40,7 +40,7 @@ const scenarios={
 const textOf=p=>[p?.content,...(p?.embeds||[]).flatMap(e=>[e.title,e.description,...(e.fields||[]).flatMap(f=>[f.name,f.value]),e.footer?.text])].filter(Boolean).join('\n');
 test('every registered subcommand has a complete reply or modal scenario',()=>{
   // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
-  const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','mute','untimeout','unmute','purge','warnings','modlogs','case','reason','delwarn','mod-reconcile','mod-settings','appeals','emergency','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
+  const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','untimeout','purge','warnings','case','appeals','lockdown','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
   assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
 });
 
@@ -278,7 +278,13 @@ test('RSVP rejects obsolete occurrences and cancel marks future delivery inactiv
 test('legacy /events returns a useful reply without fetching a member',async()=>{
   const h=harness();const i=h.interaction('events',null);
   i.guild.members.fetch=async()=>{throw Error('Should not fetch a member');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/older or unavailable/);assert.match(h.outputs[0].content,/schedule list/);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/renamed/);assert.match(h.outputs[0].content,/schedule list/);h.store.close();
+});
+test('retired commands still cached by Discord point to their replacement',async()=>{
+  for(const [old,replacement] of [['delwarn','/warnings remove'],['modlogs','/case history'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
+    const h=harness();const i=h.interaction(old,null);await h.app.dispatch(i);
+    assert.equal(h.outputs.length,1,old);assert.ok(h.outputs[0].content.includes(replacement),old);assert.ok(!((h.outputs[0].flags||0)&64));h.store.close();
+  }
 });
 test('slow channel work is acknowledged before the REST request',async()=>{
   const h=harness();const e={id:'event',title:'Test',channel:h.channel.id,start:Date.now()+600000,duration:60,zone:'America/New_York',kind:'event',repeat:'none'};

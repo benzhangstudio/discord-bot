@@ -13,31 +13,18 @@ export const moderationCommands=[
  {name:'unban',description:'Remove a member’s ban',options:[user,optionalReason,dm]},
  {name:'kick',description:'Kick a member from the server',options:[user,optionalReason,dm]},
  {name:'warn',description:'Warn a member',options:[user,reason,dm]},
- ...['timeout','mute'].map(name=>({name,description:'Time out a member',options:[user,text('duration','Duration, e.g. 10m, 1h, 1d (max 28d)'),optionalReason,dm]})),
- ...['untimeout','unmute'].map(name=>({name,description:'Remove a member’s timeout',options:[user,optionalReason,dm]})),
+ {name:'timeout',description:'Time out a member',options:[user,text('duration','Duration, e.g. 10m, 1h, 1d (max 28d)'),optionalReason,dm]},
+ {name:'untimeout',description:'Remove a member’s timeout',options:[user,optionalReason,dm]},
  {name:'purge',description:'Delete recent messages from this channel',options:[number('count','Number of messages (1–100); pinned messages are skipped',1,100),{...user,required:false,description:'Only delete messages from this member'},optionalReason]},
- {name:'warnings',description:'View a member’s warnings',options:[user,number('page','Page number',1,10000,false)]},
- {name:'modlogs',description:'View a member’s moderation history',options:[user,number('page','Page number',1,10000,false)]},
- {name:'case',description:'View a moderation case',options:[{...id,name:'id'}]},
- {name:'reason',description:'Add a reason or note to a moderation case',options:[id,reason]},
- {name:'delwarn',description:'Remove a warning',options:[id,optionalReason]},
- {name:'mod-reconcile',description:'Resolve an unconfirmed moderation action (owner only)',options:[id,choice('outcome','Result seen in Discord',[['Completed','succeeded'],['Not completed','failed']]),reason]},
- {name:'mod-settings',description:'View or change moderation settings',options:[
-  sub('view','View moderation settings'),
-  sub('set','Change moderation settings (owner only)',[
-   {type:8,name:'mod-role',description:'Role allowed to use moderation commands'},
-   {type:8,name:'privacy-role',description:'Role protected from moderation'},
-   {...channel,name:'log-channel',required:false},
-   number('retention-days','Days to keep cases (30–3650)',30,3650,false),
-   {type:5,name:'automod',description:'Turn automod on or off'},
-   {...text('blocked-words','Comma-separated words to delete; leave empty to clear',false),max_length:1000},
-   number('mention-limit','Maximum mentions per message',1,50,false),
-   number('spam-limit','Maximum messages per member in 10 seconds',3,30,false),
-   {type:5,name:'block-invites',description:'Delete Discord invite links'},
-   {type:5,name:'dm-members',description:'Default for the dm option on moderation commands'},
-   {type:5,name:'dm-appeals',description:'Include an Appeal button in ban, kick, timeout and warning DMs'},
-   {...text('appeal-contact','Where banned or kicked members can appeal (link or email); "none" clears',false),max_length:200},
-  ]),sub('clear-role','Clear a moderation role setting (owner only)',[choice('kind','Role setting',[['Moderator role','modRole'],['Protected role','privacyRole']])]),
+ {name:'warnings',description:'View or remove a member’s warnings',options:[
+  sub('list','View a member’s active warnings',[user,number('page','Page number',1,10000,false)]),
+  sub('remove','Remove a warning',[id,optionalReason]),
+ ]},
+ {name:'case',description:'View and update moderation cases',options:[
+  sub('view','View a moderation case',[{...id,name:'id'}]),
+  sub('history','View a member’s moderation history',[user,number('page','Page number',1,10000,false)]),
+  sub('reason','Add a reason or note to a case',[id,reason]),
+  sub('resolve','Resolve an unconfirmed action (owner only)',[id,choice('outcome','Result seen in Discord',[['Completed','succeeded'],['Not completed','failed']]),reason]),
  ]},
  {name:'appeals',description:'Manage moderation appeals',options:[
   sub('panel','Post an appeal button for members still in the server',[channel]),
@@ -45,11 +32,14 @@ export const moderationCommands=[
   sub('list','List open appeals',[number('page','Page number',1,10000,false)]),sub('show','Show an appeal',[text('appeal','Appeal ID')]),
   sub('review','Accept or deny an appeal (does not change the sanction)',[text('appeal','Appeal ID'),choice('decision','Decision',[['Accept','accepted'],['Deny','denied']]),reason]),
  ]},
- {name:'emergency',description:'Lock and unlock channels',options:[
+ {name:'lockdown',description:'Lock and unlock channels',options:[
   sub('on','Lock a channel',[channel,reason]),
   sub('off','Unlock a channel',[channel,reason]),
   sub('status','Show locked channels'),
  ]},
 ].map(c=>({...c,type:1,default_member_permissions:null,contexts:[0],integration_types:[0]}));
 
-export const moderationActions={ban:'ban',unban:'unban',kick:'kick',warn:'warn',timeout:'timeout',mute:'timeout',untimeout:'untimeout',unmute:'untimeout',purge:'purge',warnings:'warnings',modlogs:'history',case:'case',reason:'note',delwarn:'void','mod-reconcile':'reconcile'};
+// Internal action keys. Grouped commands resolve by subcommand, e.g. /case reason -> note.
+export const moderationActions={ban:'ban',unban:'unban',kick:'kick',warn:'warn',timeout:'timeout',untimeout:'untimeout',purge:'purge',
+ 'warnings list':'warnings','warnings remove':'void','case view':'case','case history':'history','case reason':'note','case resolve':'reconcile'};
+export const moderationAction=(name,sub)=>moderationActions[name]||moderationActions[name+' '+sub]||sub;

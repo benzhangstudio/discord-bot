@@ -12,13 +12,13 @@ import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
 
 export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
 const commandsFor={
-  moderation:['/ban','/kick','/warn','/timeout','/purge','/warnings','/modlogs','/case','/appeals','/emergency','/mod-settings'],
-  automod:['/mod-settings automod','/mod-settings block-invites','/mod-settings blocked-words','/mod-settings mention-limit','/mod-settings spam-limit'],
+  moderation:['/ban','/kick','/warn','/timeout','/untimeout','/purge','/warnings list','/warnings remove','/case view','/case history','/case reason','/case resolve','/appeals','/lockdown'],
+  automod:[],
   embeds:['/embed create','/embed edit','/embed send','/embed list','/embed delete'],
   scheduler:['/schedule add','/schedule list','/schedule show','/schedule edit','/schedule cancel','/settings timezone'],
   instagram:['/instagram setup','/instagram list','/instagram preview','/instagram pause','/instagram resume','/instagram remove'],
   reactionroles:['/reaction-roles create','/reaction-roles attach','/reaction-roles add','/reaction-roles remove','/reaction-roles edit','/reaction-roles delete','/reaction-roles list'],
-  access:['/access'],settings:['/settings timezone','/settings status','/help','/portal']
+  access:['/access'],settings:['/settings view','/settings timezone','/settings status','/help','/dashboard']
 };
 const text=(value,max=200)=>String(value??'').slice(0,max);
 const only=(data,allowed)=>assert(data&&Object.keys(data).every(k=>allowed.includes(k)),400,'Unsupported fields for this plugin.');
@@ -72,7 +72,8 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     const base={plugin:name,enabled,toggleable:TOGGLEABLE_PLUGINS.includes(name),commands:commandsFor[name]||[]};
     if(name==='moderation'){
       const cfg=modConfig(guild);
-      return {...base,editable:false,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false},
+      const {channels,roles}=rrView(guild);
+      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false,appealContact:cfg.appealContact?text(cfg.appealContact,200):null},
         recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
         locks:store.list(guild,'mod-lock').length};
     }
@@ -105,7 +106,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
       return plugin(guild,name);
     }
-    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','dmMembers','dmAppeals']:name==='settings'?['timezone']:['enabled']);
+    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','logChannel','retentionDays','dmAppeals','dmMembers','appealContact']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
       assert(TOGGLEABLE_PLUGINS.includes(name),400,'This section cannot be turned off.');assert(typeof data.enabled==='boolean',400,'Choose on or off.');
       setPluginEnabled(store,guild,name,data.enabled,identity.id);
@@ -114,15 +115,32 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       assert(typeof data.timezone==='string'&&data.timezone.length<=64&&IANAZone.isValidZone(data.timezone),400,'Choose a valid IANA timezone, such as America/New_York.');
       store.put(guild,'settings',{...settings(guild),id:'main',zone:data.timezone});
     }
-    if(name==='moderation'&&('dmMembers' in data||'dmAppeals' in data)){
+    if(name==='moderation'&&Object.keys(data).some(k=>k!=='enabled')){
+      // Moderation policy (formerly /mod-settings): only the current owner configures it; each change is a case.
       assert(identity.owner,403,'Only the current server owner can change moderation settings.');
-      const patch={};for(const k of ['dmMembers','dmAppeals'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
-      const core=new Moderation(store);
-      const result=await core.run({guild,id:'dash-'+randomUUID().slice(0,12),actor:identity.id,target:'configuration',action:'configure',reason:'Updated member DM settings on the dashboard',details:{before:modConfig(guild),patch},effect:()=>core.saveConfig(guild,patch)});
-      assert(result.state==='succeeded',500,'Moderation settings could not be saved.');
+      const g=cached(guild),cfg=modConfig(guild),patch={},snow=v=>v===null||typeof v==='string'&&/^\d{17,20}$/.test(v);
+      for(const key of ['modRole','privacyRole'])if(key in data){
+        assert(snow(data[key]),400,'Choose a role.');
+        if(data[key]&&g){const r=g.roles.cache.get(data[key]);assert(r&&!r.managed&&r.id!==guild,400,'Choose a custom server role.');}
+        patch[key]=data[key];
+      }
+      assert((patch.modRole??cfg.modRole)===null||(patch.modRole??cfg.modRole)!==(patch.privacyRole??cfg.privacyRole),400,'Protected and moderator roles must differ.');
+      if('logChannel' in data){
+        assert(snow(data.logChannel),400,'Choose a channel.');
+        if(data.logChannel&&g){const ch=g.channels.cache.get(data.logChannel);assert(ch&&[0,5].includes(ch.type)&&!ch.permissionsFor(g.roles.everyone)?.has?.(1024n),400,'Choose a staff-only text log channel.');}
+        patch.logChannel=data.logChannel;
+      }
+      if('retentionDays' in data){assert(Number.isInteger(data.retentionDays)&&data.retentionDays>=30&&data.retentionDays<=3650,400,'Case retention must be 30 to 3650 days.');patch.retentionDays=data.retentionDays;}
+      for(const k of ['dmAppeals','dmMembers'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
+      if('appealContact' in data){const v=data.appealContact==null?'':String(data.appealContact).trim();assert(v.length<=200&&!/@(everyone|here)|<[@#]|[*_~`|]/.test(v),400,'Enter a short appeal contact, such as a link or email address.');patch.appealContact=v||null;}
+      if(Object.keys(patch).length){
+        const core=new Moderation(store);
+        const result=await core.run({guild,id:'dash-'+randomUUID().slice(0,12),actor:identity.id,target:'configuration',action:'configure',reason:'Updated moderation settings on the dashboard',details:{before:cfg,patch},effect:()=>core.saveConfig(guild,patch)});
+        assert(result.state==='succeeded',500,'Moderation settings could not be saved.');
+      }
     }
     if(name==='automod'){
-      // Mirrors /mod-settings: only the current owner configures moderation policy.
+      // Only the current owner configures moderation policy. only the current owner configures moderation policy.
       assert(identity.owner,403,'Only the current server owner can change automod settings.');
       const patch={};
       if('enabled' in data)data={...data,automod:data.enabled};

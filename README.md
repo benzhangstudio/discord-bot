@@ -1,6 +1,6 @@
 # Number One
 
-Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (ban/kick/timeout DMs with an Appeal button are sent before the action; `/mod-settings set dm-appeals` and `appeal-contact` control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
+Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
 
@@ -36,9 +36,9 @@ Normal successes and actionable errors appear publicly in the channel. Error ref
 
 ## Server portal
 
-`/portal open` replies publicly with a button for the current server's member portal, ready to share. `/portal setup` opens that server's website setup. Both are global commands, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an owner-approved command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied (publicly) before options or data access.
+`/dashboard` replies publicly with two buttons: **Open dashboard** (server settings) and **Verification** (the member portal, ready to share). It is a global command, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an owner-approved command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied (publicly) before options or data access.
 
-Each community's owner/manager signs in with Discord and opens the web dashboard (`/portal open` or `/dashboard`) and configures plugins and verification roles. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Website reviewer/configuration rights are checked independently; an owner-granted slash-command permission does not grant website management. Members use the shared link without needing slash-command access. Real-ID uploads remain disabled.
+Each community's owner/manager signs in with Discord and opens the web dashboard (`/dashboard`) and configures plugins and verification roles. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Website reviewer/configuration rights are checked independently; an owner-granted slash-command permission does not grant website management. Members use the shared link without needing slash-command access. Real-ID uploads remain disabled.
 
 ## Embed builder
 

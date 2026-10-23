@@ -47,7 +47,7 @@ export class Moderation {
  async run({guild,id,actor,target,action,reason,effect,details={}}) {
   const prior=this.store.get(guild,'mod-case',id);if(prior)return prior;
   if(!reason?.trim())throw new UserError('A reason is required.');
-  if(this.cases(guild).some(c=>c.target===target&&['pending','uncertain'].includes(c.state)))throw new UserError('An earlier action for this target is uncertain. The server owner must inspect Discord and use /mod-reconcile.');
+  if(this.cases(guild).some(c=>c.target===target&&['pending','uncertain'].includes(c.state)))throw new UserError('An earlier action for this target is uncertain. The server owner must inspect Discord and use /case resolve.');
   const key=guild+':'+target;if(this.busy.has(key))throw new UserError('Another action is in progress for this target.');
   this.busy.add(key);
   const c={id,guild,number:this.reserveNumber(guild,id),actor,target,action,reason:clean(reason),created:this.now(),state:'pending',events:[],details};

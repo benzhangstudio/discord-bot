@@ -71,10 +71,16 @@ async function renderPlugin(guild,name){
   if(d.toggleable){$('pluginSwitch').hidden=false;const box=$('pluginEnabled');box.checked=d.enabled;box.onchange=NO.action(async()=>{const r=await NO.api(`${base}/plugins/${name}`,{enabled:box.checked},'PUT');box.checked=r.enabled;NO.message(`${TITLES[name]} ${r.enabled?'enabled':'disabled'}.`);});}
   const parts=[];
   if(name==='moderation'){
-    parts.push(el('div',{class:'card'},el('h2',{text:'Configuration'}),el('dl',{class:'facts'},el('dt',{text:'Moderator role'}),el('dd',{text:ref(d.config.modRole)}),el('dt',{text:'Privacy role'}),el('dd',{text:ref(d.config.privacyRole)}),el('dt',{text:'Log channel'}),el('dd',{text:ref(d.config.logChannel)}),el('dt',{text:'Case retention'}),el('dd',{text:d.config.retentionDays+' days'}),el('dt',{text:'Locked channels'}),el('dd',{text:String(d.locks)})),el('p',{class:'muted',text:'The server owner changes these with /mod-settings.'})));
-    {const f=el('form',{class:'card'}),dmm=el('input',{type:'checkbox',id:'modDmMembers'}),dma=el('input',{type:'checkbox',id:'modDmAppeals'});dmm.checked=d.config.dmMembers;dma.checked=d.config.dmAppeals;
-     f.append(el('h2',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),el('label',{class:'check'},dma,'Include an Appeal button in ban, kick, timeout and warning DMs'),el('p',{class:'muted',text:'Only the server owner can save changes.'}),el('button',{class:'primary',text:'Save'}));
-     f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{dmMembers:dmm.checked,dmAppeals:dma.checked},'PUT');NO.message('Moderation settings saved.');});parts.push(f);}
+    const c=d.config,f=el('form',{class:'card'});
+    const pick=(id,list,value,blank)=>{const s=el('select',{id});s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name,x.id));if(value&&!list.some(x=>x.id===value.id))s.append(new Option(value.id,value.id));s.value=value?.id||'';return s;};
+    const lab=(t,n)=>el('label',{},t,n);
+    const dm=el('input',{type:'checkbox',id:'modDm'}),dmm=el('input',{type:'checkbox',id:'modDmMembers'});dm.checked=c.dmAppeals;dmm.checked=c.dmMembers;
+    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (members with it cannot be moderated)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),lab('Staff log channel (hidden from @everyone)',pick('modLog',d.channels,c.logChannel,'Not set')),
+      lab('Case retention in days (30–3650)',Object.assign(el('input',{type:'number',id:'modRetention',min:30,max:3650,required:''}),{value:c.retentionDays})),
+      el('h3',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),el('h3',{text:'Appeals'}),el('label',{class:'check'},dm,'Include an Appeal button in ban, kick, timeout and warning DMs'),lab('Appeal contact for banned or kicked members (link or email)',Object.assign(el('input',{id:'modContact',maxlength:200}),{value:c.appealContact||''})),
+      el('p',{class:'muted',text:`Locked channels: ${d.locks}. Only the server owner can save changes. Each change is recorded as a moderation case.`}),el('button',{class:'primary',text:'Save'}));
+    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,logChannel:$('modLog').value||null,retentionDays:Number($('modRetention').value),dmAppeals:dm.checked,dmMembers:dmm.checked,appealContact:$('modContact').value.trim()||null},'PUT');NO.message('Moderation settings saved.');});
+    parts.push(f);
     parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created)]),'No cases yet.')));
   }
   if(name==='automod'){
