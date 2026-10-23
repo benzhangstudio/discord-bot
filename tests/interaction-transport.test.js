@@ -1,3 +1,4 @@
+import {textOf,messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -31,25 +32,25 @@ test('native follow-ups keep results private and do not retry Discord HTTP failu
 test('both stalled confirmation attempts terminate and preserve the completed result', {timeout:1000},async()=>{
   const i={replied:true,confirmationTransport:()=>new Promise(()=>{})};let error;
   try{await respond(i,{content:'Message shared: private link'},{editTimeoutMs:5,fallbackTimeoutMs:5});}catch(e){error=e;}
-  assert.equal(error.replyDeliveryFailed,true);assert.equal(error.result.content,'Message shared: private link');
+  assert.equal(error.replyDeliveryFailed,true);assert.equal(messageOf(error.result),'Message shared: private link');
   let directMessages=0;i.user={send:async()=>{directMessages++;}};const logs=[];await reportFailure(i,error,line=>logs.push(line));assert.equal(directMessages,0);assert.ok(logs.some(line=>line.includes('Action result is ready')));
 });
 test('fast actions send only their final success message, without a receipt or deferral',async()=>{
   const sent=[];const i={reply:async p=>sent.push(p),deferReply:()=>{throw Error('Fast action must not defer');}};
-  await acknowledge(i);assert.equal(sent.length,0);await respond(i,{content:'Message sent.',flags:64});assert.equal(sent.length,1);assert.equal(sent[0].content,'Message sent.');
+  await acknowledge(i);assert.equal(sent.length,0);await respond(i,{content:'Message sent.',flags:64});assert.equal(sent.length,1);assert.equal(messageOf(sent[0]),'Message sent.');
 });
 
 test('longer actions acknowledge before expiry, then replace the loading state with the final result',async()=>{
   const sent=[];const i={acknowledgementDelayMs:2,deferReply:async p=>{i.deferred=true;sent.push({type:5,...p});},editReply:async p=>sent.push({type:4,...p})};
   await acknowledge(i);await new Promise(resolve=>setTimeout(resolve,10));await respond(i,{content:'Message sent.',flags:64});
-  assert.equal(sent.length,2);assert.equal(sent[0].type,5);assert.equal(sent[0].content,undefined);assert.equal(sent[1].content,'Message sent.');assert.equal(i.acknowledgementScheduled,false);
+  assert.equal(sent.length,2);assert.equal(sent[0].type,5);assert.equal(messageOf(sent[0]),undefined);assert.equal(messageOf(sent[1]),'Message sent.');assert.equal(i.acknowledgementScheduled,false);
 });
 
 test('failed delayed acknowledgement is cleared so a user-facing error can still be sent',async()=>{
   const sent=[];const i={acknowledgementDelayMs:2,deferReply:async()=>{throw Error('Acknowledgement failed');},reply:async p=>sent.push(p)};
   await acknowledge(i);await new Promise(resolve=>setTimeout(resolve,10));
   await assert.rejects(respond(i,{content:'Done'}),/Acknowledgement failed/);assert.equal(i.acknowledgementScheduled,false);
-  await reportFailure(i,Error('Backend unavailable'),()=>{});assert.equal(sent.length,1);assert.match(sent[0].content,/Something went wrong/);assert.equal(sent[0].flags,undefined);
+  await reportFailure(i,Error('Backend unavailable'),()=>{});assert.equal(sent.length,1);assert.match(textOf(sent[0]),/Something went wrong/);assert.equal(sent[0].flags,undefined);
 });
 
 test('429 retry waits for Retry-After before repeating the same confirmation request', {timeout:1000},async()=>{

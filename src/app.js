@@ -1,3 +1,4 @@
+import {errorPayload} from './error-embed.js';
 import {UserError} from './user-error.js';
 import {createModeration} from './moderation.js';
 import {canManageServer,MANAGEMENT_ONLY_MESSAGE} from './permissions.js';
@@ -195,7 +196,7 @@ async function handle(i) {
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
     const definition=commands.find(command=>command.name===i.commandName);
-    if(!definition)return respond(i,reply(RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.'));
+    if(!definition)return respond(i,errorPayload(RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.',{title:RETIRED_COMMANDS[i.commandName]?'Command renamed':'Command unavailable'}));
     if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current options, or use /help.');
   }
   if(i.isButton()) {

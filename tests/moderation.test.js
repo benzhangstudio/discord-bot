@@ -1,3 +1,4 @@
+import {textOf,messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -61,7 +62,7 @@ test('human-readable durations accept common units and reject invalid or excessi
  for(const value of ['',0,'forever','-1h','1.5h','29d','0m','99999999999999999999w'])assert.throws(()=>durationMinutes(value),/duration/);
 });
 test('simple ban records an omitted reason and replies with a clear result',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case','DM']);assert.equal(e.fields[3].value,'#'+c.number);}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(textOf(h.outputs.at(-1)),/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case','DM']);assert.equal(e.fields[3].value,'#'+c.number);}finally{h.close();}
 });
 test('warning list hides voided warnings while case history retains them',async()=>{
  const h=harness();try{await h.app.handle(h.interaction('warnings','remove'));await h.app.handle(h.interaction('warnings','list'));assert.match(h.outputs.at(-1).embeds[0].description,/has no warnings\./);await h.app.handle(h.interaction('case','history'));assert.match(h.outputs.at(-1).embeds[0].fields[0].value,/Status:\*\* Removed/);}finally{h.close();}
@@ -74,7 +75,7 @@ test('moderation rejections and uncertain outcomes show concise public errors, n
   const h=harness();try{
    h.target.ban=uncertain?never:async()=>{throw Object.assign(Error('SQLITE diagnostic Wispbyte restart at C:/private/.env'),{status:403,code:50013});};
    await h.app.handle(h.interaction('ban'));
-   const message=h.outputs.at(-1).content;assert.ok(message.length<200);assert.doesNotMatch(message,/SQLITE|Wispbyte|\.env|50013|\bfailed\b|\buncertain\b|Reason:|Member:/);
+   const message=messageOf(h.outputs.at(-1));assert.equal(h.outputs.at(-1).embeds[0].title,uncertain?'Result not confirmed':'Action failed');assert.ok(message.length<200);assert.doesNotMatch(message,/SQLITE|Wispbyte|\.env|50013|\bfailed\b|\buncertain\b|Reason:|Member:/);
    assert.match(message,uncertain?/Check the result/:/permissions/);
   }finally{h.close();}
  }
@@ -82,7 +83,7 @@ test('moderation rejections and uncertain outcomes show concise public errors, n
 test('settings and lockdown status show readable summaries without internal delivery state dumps',async()=>{
  const h=harness();try{
   await h.app.handle(h.interaction('settings','view'));const view=JSON.stringify(h.outputs.at(-1).embeds);assert.ok(h.outputs.at(-1).embeds[0].fields.some(f=>f.name==='Moderation'&&/DM members by default: On/.test(f.value)));assert.doesNotMatch(view,/\\"id\\":|logChannel|retentionDays|queued|sending|uncertain/);
-  h.store.put('guild','mod-lock',{id:'channel',state:'needs-review'});await h.app.handle(h.interaction('lockdown','status'));assert.match(h.outputs.at(-1).content,/Needs review/);assert.doesNotMatch(h.outputs.at(-1).content,/needs-review/);
+  h.store.put('guild','mod-lock',{id:'channel',state:'needs-review'});await h.app.handle(h.interaction('lockdown','status'));assert.match(textOf(h.outputs.at(-1)),/Needs review/);assert.doesNotMatch(textOf(h.outputs.at(-1)),/needs-review/);
  }finally{h.close();}
 });
 test('purge member filter excludes other members without deleting pinned messages',async()=>{
@@ -212,7 +213,7 @@ test('protected targets get an immediate error without network calls, a deferral
   const h=harness();try{
    const i=h.interaction('warn',{user:target});let networkCalls=0,deferred=0;
    i.guild.fetch=async()=>{networkCalls++;throw Error('Must not wait on this request');};i.deferReply=async()=>{deferred++;};
-   await h.app.dispatch(i);assert.equal(networkCalls,0);assert.equal(deferred,0);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/cannot moderate yourself/);assert.equal(h.core.cases('guild').length,2);
+   await h.app.dispatch(i);assert.equal(networkCalls,0);assert.equal(deferred,0);assert.equal(h.outputs.length,1);assert.match(textOf(h.outputs[0]),/cannot moderate yourself/);assert.equal(h.core.cases('guild').length,2);
   }finally{h.close();}
  }
 });
@@ -223,7 +224,7 @@ test('ban DMs the member first with server and reason; DM failures never block t
   orig.guild.members.fetch=async(...a)=>{const m=await realFetch(...a);if(m&&typeof m==='object')m.send=async p=>{sent.push(p);throw new Error('DMs closed');};return m;};
   await h.app.handle(orig);
   const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.state,'succeeded');
-  assert.equal(sent.length,1);assert.match(sent[0].content,/^You were banned from \*\*.+\*\*\.\nReason: Spam/);assert.deepEqual(sent[0].allowedMentions,{parse:[]});
+  assert.equal(sent.length,1);assert.match(textOf(sent[0]),/^You were banned from \*\*.+\*\*\.\nReason: Spam/);assert.deepEqual(sent[0].allowedMentions,{parse:[]});
  }finally{h.close();}
 });
 function dmInteraction(h,customId,{user='target',body=null}={}){
@@ -236,11 +237,11 @@ test('ban sends the DM with an Appeal button before the ban, and the member can 
  const h=harness();try{
   const order=[];let dm;h.target.send=async p=>{order.push('dm');dm=p;};const ban=h.target.ban;h.target.ban=async(...a)=>{order.push('ban');return ban(...a);};
   const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
-  assert.deepEqual(order,['dm','ban']);assert.match(dm.content,/You were banned from .*\nReason: Spam\nCase: /);
+  assert.deepEqual(order,['dm','ban']);assert.match(textOf(dm),/You were banned from .*\nReason: Spam\nCase: /);
   const button=dm.components[0].components[0];assert.equal(button.label,'Appeal');assert.equal(button.custom_id,`mod-appeal-dm:guild:${i.id}`);
   await h.app.handle(dmInteraction(h,button.custom_id));assert.equal(h.outputs.at(-1).custom_id,`mod-appeal-dm-submit:guild:${i.id}`);
   await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'I was hacked'}));
-  assert.match(h.outputs.at(-1).content,/^Appeal for Case #\d+ submitted/);
+  assert.match(textOf(h.outputs.at(-1)),/^Appeal for Case #\d+ submitted/);
   const appeal=h.store.list('guild','mod-appeal').find(a=>a.caseId===i.id);assert.equal(appeal.actor,'target');assert.equal(appeal.body,'I was hacked');
   // Duplicate submission is blocked.
   await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'Again'})).catch(()=>{});
@@ -262,13 +263,13 @@ test('closed DMs never block the sanction; the case records it and the moderator
   h.target.send=async()=>{const e=new Error('Cannot send messages to this user');e.code=50007;e.status=403;throw e;};
   const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
   const c=h.core.get('guild',i.id);assert.equal(c.state,'succeeded');assert.equal(c.details.dm,'failed');assert.ok(h.effects.includes('ban'));
-  assert.match(h.outputs.at(-1).content,/Could not DM the member\. If they contact staff another way, use \/appeals record\./);
+  assert.match(textOf(h.outputs.at(-1)),/Could not DM the member\. If they contact staff another way, use \/appeals record\./);
  }finally{h.close();}
 });
 test('appeal review never reverses the sanction and says so plainly',async()=>{
  const h=harness();try{
   const i=h.interaction('appeals','review',{appeal:'appeal',decision:'accepted',reason:'Fair'});await h.app.handle(i);
-  assert.match(h.outputs.at(-1).content,/accepted\. The sanction was not changed; use \/unban or \/untimeout if needed/);assert.ok(!h.effects.includes('unban'));
+  assert.match(textOf(h.outputs.at(-1)),/accepted\. The sanction was not changed; use \/unban or \/untimeout if needed/);assert.ok(!h.effects.includes('unban'));
  }finally{h.close();}
 });
 test('staff moderation results, including the DM-failure note, are public',async()=>{
@@ -278,7 +279,7 @@ test('staff moderation results, including the DM-failure note, are public',async
   }
   h.target.send=async()=>{throw Object.assign(new Error('closed'),{code:50007,status:403});};
   const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
-  const result=h.outputs.at(-1);assert.equal(result.embeds[0].title,'Member banned');assert.equal(result.flags,undefined);assert.match(result.content,/Could not DM the member/);
+  const result=h.outputs.at(-1);assert.equal(result.embeds[0].title,'Member banned');assert.equal(result.flags,undefined);assert.match(textOf(result),/Could not DM the member/);
  }finally{h.close();}
 });
 const DM_ACTIONS=['ban','kick','warn','timeout','untimeout','unban'];
@@ -295,7 +296,7 @@ for(const name of DM_ACTIONS)for(const mode of ['true','false','failed','default
    assert.equal(field?.value,expected);
    const c=h.core.get('guild',i.id);
    if(mode==='true'){
-    assert.match(sent.content,new RegExp(`Case: #${c.number}`));assert.match(sent.content,/Reason: Spam/);
+    assert.match(textOf(sent),new RegExp(`Case: #${c.number}`));assert.match(textOf(sent),/Reason: Spam/);
     const appealable=['ban','kick','timeout','warn'].includes(name);
     assert.equal(!!sent.components,appealable,`${name} appeal button`);
    }else assert.equal(sent,null);
@@ -368,14 +369,14 @@ test('proof can be added later with /case proof and /case reason, and is never p
  const h=harness();try{
   let dm;h.target.send=async p=>{dm=p;};
   const i=h.interaction('warn',{reason:'Spam',proof:shot(1)});await h.app.handle(i);assert.ok(dm);assert.doesNotMatch(JSON.stringify(dm),/cdn\.discordapp|Proof|Screenshot/);
-  await h.app.handle(h.interaction('case','proof',{case:i.id,proof:shot(2)}));assert.match(h.outputs.at(-1).content,/^Proof added\./);
+  await h.app.handle(h.interaction('case','proof',{case:i.id,proof:shot(2)}));assert.match(textOf(h.outputs.at(-1)),/^Proof added\./);
   await h.app.handle(h.interaction('case','reason',{case:i.id,reason:'More context',proof:shot(3)}));
   assert.equal(h.core.get('guild',i.id).details.proof.length,3);
   await assert.rejects(h.app.handle(h.interaction('case','proof',{case:i.id})),/Attach a screenshot or add a message link/);
  }finally{h.close();}
 });
 test('without a log channel the confirmation explains that screenshots are not stored durably',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',proof:shot(1),dm:false}));assert.match(h.outputs.at(-1).content,/No moderation log channel is set/);}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',proof:shot(1),dm:false}));assert.match(textOf(h.outputs.at(-1)),/No moderation log channel is set/);}finally{h.close();}
 });
 test('every moderation action command offers proof, proof2, proof3 and proof_link',()=>{
  const want=['ban','unban','kick','warn','timeout','untimeout','purge','warnings remove','case reason','case proof','lockdown on','lockdown off'];

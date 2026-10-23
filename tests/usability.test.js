@@ -1,3 +1,4 @@
+import {messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PermissionFlagsBits as P,PermissionsBitField} from 'discord.js';
@@ -36,7 +37,9 @@ test('saved-item options use meaningful names and descriptions avoid backend ter
   assert.doesNotMatch(descriptions.join(' '),/IANA|ISO |recurrence|occurrences|hostname|schema|payload|saved item ID|user IDs/i);
 });
 test('users see helpful validation messages while unexpected backend errors stay in the console',async()=>{
-  const messages=[],logs=[];const i={commandName:'feed',reply:async p=>messages.push(p.content)};
+  const messages=[],logs=[];const payloads=[];const i={commandName:'feed',reply:async p=>{payloads.push(p);messages.push(messageOf(p));}};
   await reportFailure(i,Error('XML parser failed with internal details'),s=>logs.push(s));assert.doesNotMatch(messages[0],/XML|internal details/);assert.match(logs[0],/XML/);
   await reportFailure(i,new UserError('Choose a source from the suggestions.'),()=>{});assert.match(messages[1],/Choose a source/);
+  for(const p of payloads){assert.equal(p.content,'');assert.equal(p.embeds.length,1);assert.equal(p.embeds[0].color,0x4F545C);assert.ok(p.embeds[0].title);assert.equal(p.flags,undefined);}
+  assert.equal(payloads[1].embeds[0].title,'Check your input');
 });

@@ -1,3 +1,4 @@
+import {textOf,messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
@@ -44,15 +45,15 @@ for(const detail of diagnostics)for(const kind of ['Error','UserError','forged']
  const error=kind==='UserError'?new UserError(detail):new Error(detail);
  if(kind==='forged'){error.name='UserError';error.publicMessage=detail;}
  const sent=[],logs=[];await reportFailure({commandName:'ban',reply:async p=>sent.push(p)},error,s=>logs.push(s));
- assert.equal(sent[0].content,GENERIC_ERROR);assert.doesNotMatch(JSON.stringify(sent),technical);assert.ok(sent[0].content.length<=160);
+ assert.equal(messageOf(sent[0]),GENERIC_ERROR);assert.doesNotMatch(JSON.stringify(sent),technical);assert.ok(sent[0].content.length<=160);
  assert.match(logs[0],/failed/);assert.ok(!JSON.stringify(sent).includes('private-token'));
 });
 
 test('hosting setup failures offer support guidance while preserving operator instructions only in logs',async()=>{
  const detail='Set MODERATION_MESSAGE_CONTENT=1, enable Message Content Intent in Discord, and restart before enabling automod.';
  const sent=[],logs=[];await reportFailure({reply:async p=>sent.push(p)},new UserError(detail),s=>logs.push(s));
- assert.equal(sent[0].content,'Automod is not enabled for this bot. Contact the bot operator.');
- assert.match(logs[0],/MODERATION_MESSAGE_CONTENT=1/);assert.doesNotMatch(sent[0].content,technical);
+ assert.equal(messageOf(sent[0]),'Automod is not enabled for this bot. Contact the bot operator.');
+ assert.match(logs[0],/MODERATION_MESSAGE_CONTENT=1/);assert.doesNotMatch(textOf(sent[0]),technical);
 });
 
 test('deferred errors and their independent fallback share safe copy and preserve privacy',async()=>{
@@ -60,7 +61,7 @@ test('deferred errors and their independent fallback share safe copy and preserv
   const sent=[];let attempts=0;
   const i={commandName:'ban',deferred:true,privateResponse,confirmationTransport:async(_i,method,p)=>{attempts++;sent.push({method,...p});if(method==='PATCH')throw Error('SDK backend queue failed');}};
   await reportFailure(i,new UserError(diagnostics[1]),()=>{});
-  assert.equal(attempts,2);assert.equal(sent[0].content,GENERIC_ERROR);assert.equal(sent[1].content,GENERIC_ERROR);
+  assert.equal(attempts,2);assert.equal(messageOf(sent[0]),GENERIC_ERROR);assert.equal(messageOf(sent[1]),GENERIC_ERROR);
   assert.equal(sent[1].flags,privateResponse?64:undefined);assert.doesNotMatch(JSON.stringify(sent),technical);
  }
 });

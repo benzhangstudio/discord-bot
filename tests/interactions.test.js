@@ -1,3 +1,4 @@
+import {textOf,messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -37,7 +38,6 @@ const scenarios={
   'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
   'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
 };
-const textOf=p=>[p?.content,...(p?.embeds||[]).flatMap(e=>[e.title,e.description,...(e.fields||[]).flatMap(f=>[f.name,f.value]),e.footer?.text])].filter(Boolean).join('\n');
 test('every registered subcommand has a complete reply or modal scenario',()=>{
   // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
   const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','untimeout','purge','warnings','case','appeals','lockdown','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
@@ -69,14 +69,14 @@ test('only the server owner can grant, revoke or list added access',async()=>{
   const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(textOf(h.outputs.at(-1)),/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
   await h.app.handle(owner('list',{}));assert.match(textOf(h.outputs.at(-1)),new RegExp(`<@${target}>`));
   await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);
-  const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(h.outputs.at(-1).content,/You don’t have permission/);h.store.close();
+  const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);h.store.close();
 });
 
 test('added access is scoped to one server and cannot bypass channel permissions',async()=>{
   const h=harness({manager:false,visible:false});h.store.put('other-server','access',{id:h.member.id});
-  await h.app.dispatch(h.interaction('help'));assert.match(h.outputs.at(-1).content,/You don’t have permission/);
+  await h.app.dispatch(h.interaction('help'));assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);
   h.store.put('server-a','access',{id:h.member.id});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
-  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(h.outputs.at(-1).content,/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
+  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(textOf(h.outputs.at(-1)),/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
 });
 
 test('owner access checks reject nonmembers, full grant lists, and ownership changes during lookups',async()=>{
@@ -85,7 +85,7 @@ test('owner access checks reject nonmembers, full grant lists, and ownership cha
     if(mode==='missing member')i.guild.members.fetch=async()=>{throw Error('Unknown member');};
     if(mode==='full')for(let n=0;n<100;n++)h.store.put('server-a','access',{id:String(n)});
     if(mode==='owner changed')i.guild.members.fetch=async()=>{i.guild.ownerId='888888888888888888';return {id:'345678901234567890'};};
-    await h.app.dispatch(i);assert.equal(h.store.get('server-a','access','345678901234567890'),undefined);assert.match(h.outputs.at(-1).content,/current member|100 approved|current server owner/);h.store.close();
+    await h.app.dispatch(i);assert.equal(h.store.get('server-a','access','345678901234567890'),undefined);assert.match(textOf(h.outputs.at(-1)),/current member|100 approved|current server owner/);h.store.close();
   }
 });
 
@@ -96,7 +96,7 @@ test('help and retired manual buttons never send a DM and finish immediately',as
   const old=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'help:manual'});
   old.user.send=async()=>{dms++;};await h.app.dispatch(old);
   assert.equal(dms,0);assert.equal(old.replied,true);assert.ok(!old.deferred);
-  assert.match(h.outputs.at(-1).content,/no longer available.*\/help/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
+  assert.match(textOf(h.outputs.at(-1)),/no longer available.*\/help/);assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
 });
 for(const access of ['manager','administrator'])for(const [name,values] of Object.entries(scenarios))test(`command audit (${access}): /${name} finishes with a visible response`,{timeout:2000},async()=>{
   const h=harness();
@@ -120,19 +120,19 @@ for(const access of ['manager','administrator'])for(const [name,values] of Objec
 test('settings timezone validation replies immediately and preserves the previous timezone',async()=>{
   const h=harness();h.store.put('server-a','settings',{id:'main',zone:'Asia/Tokyo'});const i=h.interaction('settings','timezone',{zone:'Not a timezone'});
   i.deferReply=async()=>{throw Error('Validation must reply immediately');};
-  await h.app.dispatch(i);assert.match(h.outputs[0].content,/Choose a timezone/);assert.equal(h.store.get('server-a','settings','main').zone,'Asia/Tokyo');assert.equal(i.replied,true);h.store.close();
+  await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/Choose a timezone/);assert.equal(h.store.get('server-a','settings','main').zone,'Asia/Tokyo');assert.equal(i.replied,true);h.store.close();
 });
 
 test('unknown saved names across commands get immediate useful replies without network work',async()=>{
   for(const [command,subs,key] of [['embed',['edit','send','delete','remove-section'],'message'],['schedule',['show','edit','post','configure','cancel'],'event'],['instagram',['preview','pause','resume','remove'],'source']]) {
-    for(const sub of subs){const h=harness();const i=h.interaction(command,sub,{[key]:'deleted'});i.guild.channels.fetch=async()=>{throw Error('Must not fetch a missing item');};await h.app.dispatch(i);assert.match(h.outputs[0].content,/no longer available/);assert.equal(i.replied,true);h.store.close();}
+    for(const sub of subs){const h=harness();const i=h.interaction(command,sub,{[key]:'deleted'});i.guild.channels.fetch=async()=>{throw Error('Must not fetch a missing item');};await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/no longer available/);assert.equal(i.replied,true);h.store.close();}
   }
 });
 
 test('regular members get immediate permission replies for every registered slash command',async()=>{
   for(const [name,values] of Object.entries(scenarios)) {
     const h=harness({manager:false}),[command,sub]=name.split(' '),i=h.interaction(command,sub,values);
-    await h.app.dispatch(i);assert.match(h.outputs[0].content,/You don’t have permission/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
+    await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/You don’t have permission/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
   }
 });
 
@@ -147,7 +147,7 @@ for(const access of ['moderator','legacy staff role','missing permissions'])test
     i.options=new Proxy({}, {get:()=>{throw Error('Unauthorized options must not be processed');}});
     const before=h.store.db.prepare('SELECT * FROM records').all();
     await h.app.dispatch(i);
-    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,undefined);assert.equal(h.outputs[0].content,'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
+    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,undefined);assert.equal(messageOf(h.outputs[0]),'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
     assert.deepEqual(h.store.db.prepare('SELECT * FROM records').all(),before);assert.equal(h.sent.length,0);h.store.close();
   }
 });
@@ -164,56 +164,56 @@ test('unauthorized autocomplete returns no names or timezone suggestions without
 test('failed message publishing and channel permission checks finish with an error reply',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   h.channel.send=async()=>{throw Object.assign(Error('Missing Permissions'),{code:50013});};
-  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/permissions/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
+  const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(textOf(h.outputs[0]),/permissions/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });
 
 test('an event cancelled during a channel lookup cannot be revived by configure',async()=>{
   const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
   h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=async()=>{const e=h.store.get('server-a','event','event');e.cancelled=true;h.store.put('server-a','event',e);return h.channel;};
-  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',duration:90}));assert.equal(h.store.get('server-a','event','event').cancelled,true);assert.match(h.outputs[0].content,/no longer active/);h.store.close();
+  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',duration:90}));assert.equal(h.store.get('server-a','event','event').cancelled,true);assert.match(textOf(h.outputs[0]),/no longer active/);h.store.close();
 });
 
 test('an announcement removed while permissions are being checked is not posted',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Old',embed:{description:'Hello'}});
   h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=async()=>{h.store.remove('server-a','embed','saved');return h.channel;};
-  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.equal(h.sent.length,0);assert.match(h.outputs[0].content,/no longer available/);h.store.close();
+  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.equal(h.sent.length,0);assert.match(textOf(h.outputs[0]),/no longer available/);h.store.close();
 });
 
 test('a fast send replies with success without editing or using a follow-up',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=async()=>{throw Error('PATCH failed');};i.followUp=async p=>followups.push(p);
-  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(h.outputs.at(-1).content,/Message sent/);h.store.close();
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(textOf(h.outputs.at(-1)),/Message sent/);h.store.close();
 });
 
 test('invalid reminder settings do not partially overwrite an existing event',async()=>{
   const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
-  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(h.outputs[0].content,/overlaps its next repeat/);h.store.close();
+  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',repeat:'daily',duration:1440}));const saved=h.store.get('server-a','event','event');assert.equal(saved.duration,60);assert.equal(saved.repeat,'none');assert.match(textOf(h.outputs[0]),/overlaps its next repeat/);h.store.close();
 });
 
 test('retired staff-role commands cannot grant access',async()=>{
-  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(h.outputs[0].content,/command’s current options/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
+  const h=harness();const i=h.interaction('settings','staff');i.options.getRole=()=>({id:i.guildId,managed:false});await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/command’s current options/);assert.equal(h.store.get('server-a','settings','main'),undefined);h.store.close();
 });
 
 test('combined embed form saves a renamed draft, closes, reopens and publishes from its builder',async()=>{
   const h=harness();await h.app.handle(h.interaction('embed','create',{name:'Welcome'}));
   const d=h.store.list('server-a','embed')[0];assert.equal(h.outputs[0].custom_id,`embedform:${d.id}:form`);assert.equal(h.outputs[0].components.length,5);
   const form=h.interaction();Object.assign(form,{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>false,customId:`embedform:${d.id}:form`,fields:{getTextInputValue:k=>({name:'Member welcome',title:'Welcome!',description:'Visit <#234567890123456789>',color:'blue',content:'Hello everyone'})[k]}});
-  await h.app.handle(form);const panel=h.outputs.at(-1);assert.match(panel.content,/Saved automatically/);assert.equal(panel.components.length,5);for(const row of panel.components)ActionRowBuilder.from(row).toJSON();
+  await h.app.handle(form);const panel=h.outputs.at(-1);assert.match(textOf(panel),/Saved automatically/);assert.equal(panel.components.length,5);for(const row of panel.components)ActionRowBuilder.from(row).toJSON();
   const saved=h.store.get('server-a','embed',d.id);assert.equal(saved.name,'Member welcome');assert.equal(saved.embed.color,0x3498db);assert.ok(saved.updatedAt);
   const button=action=>Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:`embed:${d.id}:${action}`});
-  await h.app.handle(button('save'));assert.deepEqual(h.outputs.at(-1).components,[]);assert.match(h.outputs.at(-1).content,/is saved/);
+  await h.app.handle(button('save'));assert.deepEqual(h.outputs.at(-1).components,[]);assert.match(textOf(h.outputs.at(-1)),/is saved/);
   await h.app.handle(h.interaction('embed','edit',{message:d.id}));assert.equal(h.outputs.at(-1).embeds[0].toJSON().title,'Welcome!');
   for(const [action,value] of [['channel',h.channel.id],['role','345678901234567890'],['user',h.member.id]]) {
     const i=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isChannelSelectMenu:()=>action==='channel',isRoleSelectMenu:()=>action==='role',isUserSelectMenu:()=>action==='user',customId:`embed:${d.id}:${action}`,values:[value]});await h.app.dispatch(i);assert.equal(i.replied,true);
   }
   const publish=button('publish');publish.id='987654321098765432';await h.app.handle(publish);
-  assert.equal(h.sent.length,1);assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[h.member.id]});assert.equal(h.sent[0].nonce,publish.id);assert.equal(h.sent[0].enforceNonce,true);assert.ok(h.store.get('server-a','embed',d.id));assert.match(h.outputs.at(-1).content,/Message sent/);h.store.close();
+  assert.equal(h.sent.length,1);assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[h.member.id]});assert.equal(h.sent[0].nonce,publish.id);assert.equal(h.sent[0].enforceNonce,true);assert.ok(h.store.get('server-a','embed',d.id));assert.match(textOf(h.outputs.at(-1)),/Message sent/);h.store.close();
 });
 
 test('a fast send bypasses stalled webhook confirmations without reposting', {timeout:2000},async()=>{
   const h=harness({replyEditTimeoutMs:10});h.store.put('server-a','embed',{id:'saved',name:'Test',embed:{description:'Hello'}});
   const i=h.interaction('embed','send',{message:'saved'}),followups=[];i.editReply=()=>new Promise(()=>{});i.followUp=async p=>followups.push(p);i.deleteReply=async()=>{throw Error('Must not delete the completed result');};
-  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(h.outputs.at(-1).content,/Message sent/);assert.equal(i.deferred,undefined);h.store.close();
+  await h.app.dispatch(i);assert.equal(h.sent.length,1);assert.equal(followups.length,0);assert.match(textOf(h.outputs.at(-1)),/Message sent/);assert.equal(i.deferred,undefined);h.store.close();
 });
 
 for(const stage of ['channel','role','member','send'])test(`Publish stops and reports a never-returning ${stage} request`,{timeout:1000},async()=>{
@@ -224,7 +224,7 @@ for(const stage of ['channel','role','member','send'])test(`Publish stops and re
   if(stage==='member')h.channel.guild.members.fetch=never;
   if(stage==='send')h.channel.send=()=>{attempts++;return never();};
   const i=h.interaction('embed','send',{message:'saved',...(stage==='role'?{role:'345678901234567890'}:{}),...(stage==='member'?{user:h.member.id}:{})});
-  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(h.outputs[0].content,/too long|Could not confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(h.outputs[0].content,/Check the channel before sending it again/);h.store.close();
+  await h.app.dispatch(i);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.outputs.length,1);assert.match(textOf(h.outputs[0]),/too long|Could not confirm/);assert.ok(h.store.get('server-a','embed','saved'));assert.equal(attempts,stage==='send'?1:0);if(stage==='send')assert.match(textOf(h.outputs[0]),/Check the channel before sending it again/);h.store.close();
 });
 
 test('embed copies are independent saved drafts and require a fresh publishing destination',async()=>{
@@ -236,7 +236,7 @@ test('embed copies are independent saved drafts and require a fresh publishing d
 
 test('missing publishing destinations and invalid form submissions preserve saved work',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'saved',name:'Original',embed:{description:'Keep this'}});
-  const button=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'embed:saved:publish'});await h.app.dispatch(button);assert.match(h.outputs.at(-1).content,/Choose a channel/);assert.equal(h.sent.length,0);
+  const button=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isButton:()=>true,customId:'embed:saved:publish'});await h.app.dispatch(button);assert.match(textOf(h.outputs.at(-1)),/Choose a channel/);assert.equal(h.sent.length,0);
   const form=Object.assign(h.interaction(),{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>false,customId:'embedform:saved:form',fields:{getTextInputValue:k=>({name:'Renamed',title:'',description:'',color:'',content:''})[k]}});await h.app.dispatch(form);
   assert.equal(h.store.get('server-a','embed','saved').name,'Original');assert.equal(h.store.get('server-a','embed','saved').embed.description,'Keep this');h.store.close();
 });
@@ -250,7 +250,7 @@ test('embed form saves edits and publication only permits explicit mentions',asy
   Object.assign(i,{isChatInputCommand:()=>false,isModalSubmit:()=>true,isFromMessage:()=>true,customId:`embedform:${d.id}:text`,fields:{getTextInputValue:k=>({title:'Welcome',description:`Visit <#${h.channel.id}>`,color:'E5A1B3',content:'@everyone hello'})[k]}});
   await h.app.handle(i);assert.equal(h.store.get('server-a','embed',d.id).embed.title,'Welcome');
   await h.app.handle(h.interaction('embed','send',{message:d.id,role:'345678901234567890'}));
-  assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[]});assert.match(h.sent[0].content,/@everyone/);h.store.close();
+  assert.deepEqual(h.sent[0].allowedMentions,{parse:[],roles:['345678901234567890'],users:[]});assert.match(textOf(h.sent[0]),/@everyone/);h.store.close();
 });
 test('another server cannot publish an embed by guessing its ID',async()=>{
   const h=harness({guildId:'server-b'});h.store.put('server-a','embed',{id:'secret',name:'Secret',embed:{description:'private'}});
@@ -278,12 +278,12 @@ test('RSVP rejects obsolete occurrences and cancel marks future delivery inactiv
 test('legacy /events returns a useful reply without fetching a member',async()=>{
   const h=harness();const i=h.interaction('events',null);
   i.guild.members.fetch=async()=>{throw Error('Should not fetch a member');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.match(h.outputs[0].content,/renamed/);assert.match(h.outputs[0].content,/schedule list/);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.match(textOf(h.outputs[0]),/renamed/);assert.match(textOf(h.outputs[0]),/schedule list/);h.store.close();
 });
 test('retired commands still cached by Discord point to their replacement',async()=>{
   for(const [old,replacement] of [['delwarn','/warnings remove'],['modlogs','/case history'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
     const h=harness();const i=h.interaction(old,null);await h.app.dispatch(i);
-    assert.equal(h.outputs.length,1,old);assert.ok(h.outputs[0].content.includes(replacement),old);assert.ok(!((h.outputs[0].flags||0)&64));h.store.close();
+    assert.equal(h.outputs.length,1,old);assert.ok(messageOf(h.outputs[0]).includes(replacement),old);assert.equal(h.outputs[0].embeds[0].title,'Command renamed');assert.ok(!((h.outputs[0].flags||0)&64));h.store.close();
   }
 });
 test('slow channel work is acknowledged before the REST request',async()=>{
@@ -298,7 +298,7 @@ test('forms remain the initial response and do not defer before showModal',async
 });
 test('the production dispatcher replies to permission failures instead of swallowing them',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('embed','create',{name:'Test'}));
-  assert.match(h.outputs[0].content,/You don’t have permission/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
+  assert.match(textOf(h.outputs[0]),/You don’t have permission/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });
 
 test('clearing the only embed content is rejected without corrupting its saved template',async()=>{
@@ -379,11 +379,11 @@ test('production dispatcher routes Instagram setup and channel/role pickers to t
 test('a legacy staff role does not bypass Administrator or Manage Server requirements',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);
   h.store.put('server-a','settings',{id:'main',zone:'Europe/Paris',staff:'helpers'});h.member.roles.cache.set('helpers',{});
-  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(h.outputs.at(-1).content,/You don’t have permission/);h.store.close();
+  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);h.store.close();
 });
 
 test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{
-  const h=harness();await h.app.handle(h.interaction('feed','list'));assert.match(h.outputs.at(-1).content,/older or unavailable/);
+  const h=harness();await h.app.handle(h.interaction('feed','list'));assert.match(textOf(h.outputs.at(-1)),/older or unavailable/);
   h.store.put('server-a','feed',{id:'orphan',name:'Old source',channel:'gone'});await h.app.handle(h.interaction('instagram','remove',{source:'orphan'}));assert.equal(h.store.list('server-a','feed').length,0);h.store.close();
 });
 
@@ -414,5 +414,5 @@ for(const sub of ['list','show','configure','cancel','post'])test(`staff schedul
 
 test('owner-only access denial is a public explanation without a diagnostic code',async()=>{
   const h=harness();await h.app.dispatch(h.interaction('access','add',{user:'345678901234567890'}));
-  assert.equal(h.outputs[0].flags,undefined);assert.match(h.outputs[0].content,/Only the server owner/);assert.doesNotMatch(h.outputs[0].content,/Reference:/);h.store.close();
+  assert.equal(h.outputs[0].flags,undefined);assert.match(textOf(h.outputs[0]),/Only the server owner/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });

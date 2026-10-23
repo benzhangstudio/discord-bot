@@ -1,3 +1,4 @@
+import {textOf,messageOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {queueReplyRecovery,cancelReplyRecovery} from '../src/reply-recovery.js';
@@ -15,14 +16,14 @@ for(const privateResponse of [true,false])test(`rate-limited ${privateResponse?'
  let error;try{await respond(i,{content:'Banned Alex.',...(privateResponse?{flags:64}:{})});}catch(e){error=e;}
  assert.equal(error.replyRecoveryScheduled,true);assert.equal(calls.length,1);assert.equal(i.responsePending,true);assert.ok(c.jobs[0].delay>=60000);
  await reportFailure(i,error,s=>c.logs.push(s));assert.equal(calls.length,1);
- await c.next();assert.equal(calls.length,2);assert.ok(calls.every(call=>call.method==='PATCH'));assert.equal(calls[1].payload.content,'Banned Alex.');assert.equal(calls[1].payload.flags,undefined);assert.equal(i.responsePending,false);assert.match(c.logs.at(-1),/reply delivered/);
+ await c.next();assert.equal(calls.length,2);assert.ok(calls.every(call=>call.method==='PATCH'));assert.equal(messageOf(calls[1].payload),'Banned Alex.');assert.equal(calls[1].payload.flags,undefined);assert.equal(i.responsePending,false);assert.match(c.logs.at(-1),/reply delivered/);
 });
 test('the reported protected-target error completes its deferred reply instead of abandoning thinking',async()=>{
  const c=clock(),calls=[];let attempts=0;
  const i={commandName:'warn',deferred:true,privateResponse:true,replyRecoveryOptions:c.options,confirmationTransport:async(_i,method,payload)=>{calls.push({method,payload});if(++attempts===1)throw limited(20000);}};
  await reportFailure(i,new UserError('You cannot moderate yourself, the bot, or the server owner.'),s=>c.logs.push(s));
  assert.equal(calls.length,1);assert.equal(i.responsePending,true);assert.match(c.logs.at(-1),/queued/);
- await c.next();assert.equal(calls.length,2);assert.match(calls[1].payload.content,/cannot moderate yourself/);assert.equal(calls[1].method,'PATCH');assert.equal(i.responsePending,false);
+ await c.next();assert.equal(calls.length,2);assert.match(textOf(calls[1].payload),/cannot moderate yourself/);assert.equal(calls[1].method,'PATCH');assert.equal(i.responsePending,false);
 });
 test('repeated rate limits update the same reply without switching routes or repeating an action',async()=>{
  const c=clock(),calls=[];let attempts=0;

@@ -1,3 +1,4 @@
+import {textOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ActionRowBuilder,MessageFlags} from 'discord.js';
@@ -39,7 +40,7 @@ test('editing saved schedule preserves queued posts and does not refetch or rese
 });
 test('private preview never pings, activates a draft or consumes queued posts',async()=>{
   const h=harness();await h.configure();await h.run('role',['234567890123456789']);await h.run('preview');
-  assert.equal(h.store.list('g','feed').length,0);assert.deepEqual(h.outputs.at(-1).allowedMentions,{parse:[]});assert.doesNotMatch(h.outputs.at(-1).content,/<@&/);await h.run('close');assert.equal(h.store.list('g','instagram-draft').length,0);h.store.close();
+  assert.equal(h.store.list('g','feed').length,0);assert.deepEqual(h.outputs.at(-1).allowedMentions,{parse:[]});assert.doesNotMatch(textOf(h.outputs.at(-1)),/<@&/);await h.run('close');assert.equal(h.store.list('g','instagram-draft').length,0);h.store.close();
 });
 
 for(const action of ['preview','save'])test(`Instagram ${action} stops when its feed service never returns`,{timeout:1000},async()=>{
@@ -86,7 +87,7 @@ test('worker delivers and advances a configured daily roundup in Seoul',async()=
   const s=new Store(':memory:'),now=Date.parse('2026-10-19T01:30:00Z'),sent=[];
   s.put('g','feed',{id:'f',name:'Posts',url:'https://provider.example/rss',channel:'c',zone:'Asia/Seoul',delivery:'daily',time:'10:30',seen:[],pending:[],nextCheck:now,nextDigest:now});
   await processFeeds({channels:{fetch:async()=>({guildId:'g',isTextBased:()=>true})}},s,now,{load:async()=>[post],send:async(st,key,ch,p)=>{sent.push(p);return true;}});
-  assert.match(sent[0].content,/Daily posts/);assert.equal(s.get('g','feed','f').nextDigest,now+86400000);s.close();
+  assert.match(textOf(sent[0]),/Daily posts/);assert.equal(s.get('g','feed','f').nextDigest,now+86400000);s.close();
 });
 test('network loader blocks private DNS and redirects, pins DNS and parses public RSS without approval',async()=>{
   assert.equal(allowedUrl('https://any-provider.example/rss').hostname,'any-provider.example');

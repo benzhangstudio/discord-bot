@@ -1,3 +1,4 @@
+import {textOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Store} from '../src/store.js';
@@ -23,7 +24,7 @@ test('daily collection queues posts without sending; Sunday batch survives a wor
   assert.equal(h.sent.length,0);assert.equal(h.store.get('g','feed','f').pending.length,2);
   await processFeeds(h.client,h.store,h.now+86400000+15000,{load,send:deliver});assert.equal(fetched,1);
   const sunday=time('2026-10-25T00:00:00-04:00');
-  await processFeeds(h.client,h.store,sunday,{load:async()=>[],send:deliver});assert.equal(h.sent.length,1);assert.match(h.sent[0].content,/Post 1[\s\S]*Post 2/);assert.doesNotMatch(h.sent[0].content,/posts\/old/);
+  await processFeeds(h.client,h.store,sunday,{load:async()=>[],send:deliver});assert.equal(h.sent.length,1);assert.match(textOf(h.sent[0]),/Post 1[\s\S]*Post 2/);assert.doesNotMatch(textOf(h.sent[0]),/posts\/old/);
   await processFeeds(h.client,h.store,sunday+15000,{load,send:deliver});assert.equal(h.sent.length,1);assert.deepEqual(h.store.get('g','feed','f').pending,[]);h.store.close();
 });
 test('empty weeks are silent and paused feeds do not collect or post',async()=>{

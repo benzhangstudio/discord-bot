@@ -1,3 +1,4 @@
+import {textOf} from './text-of.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -160,14 +161,14 @@ test('every /reaction-roles subcommand confirms publicly; errors and denials rep
   assert.deepEqual(Object.keys(values).sort(),subs.sort());
   for(const sub of ['create','attach','add','remove','edit','list','delete']){
     const {i,outputs}=slash(w,sub,values[sub]);await app.dispatch(i);
-    assert.equal(outputs.length,1,sub);assert.ok(!((outputs[0].flags||0)&64),sub);assert.ok(outputs[0].content.length>5,sub);assert.doesNotMatch(outputs[0].content,/wrong|permission/i,sub);
+    assert.equal(outputs.length,1,sub);assert.ok(!((outputs[0].flags||0)&64),sub);assert.ok(outputs[0].content.length>5,sub);assert.doesNotMatch(textOf(outputs[0]),/wrong|permission/i,sub);
   }
   const err=slash(w,'add',{message:'missing',emoji:'🎮',role:R1});await app.dispatch(err.i);
-  assert.match(err.outputs[0].content,/no longer available/);assert.ok(!((err.outputs[0].flags||0)&64));
-  const high=slash(w,'create',{emoji:'🎮',role:HIGH});await app.dispatch(high.i);assert.match(high.outputs[0].content,/above the bot’s highest role/);
+  assert.match(textOf(err.outputs[0]),/no longer available/);assert.ok(!((err.outputs[0].flags||0)&64));
+  const high=slash(w,'create',{emoji:'🎮',role:HIGH});await app.dispatch(high.i);assert.match(textOf(high.outputs[0]),/above the bot’s highest role/);
   const denied=slash(w,'list',{},{member:{id:'400000000000000009',roles:{highest:{position:1}}},perms:[]});await app.dispatch(denied.i);
-  assert.match(denied.outputs[0].content,/permission/);assert.ok(!((denied.outputs[0].flags||0)&64));
-  setPluginEnabled(w.store,G,'reactionroles',false,'x');const off=slash(w,'list');await app.dispatch(off.i);assert.match(off.outputs[0].content,/turned off/);
+  assert.match(textOf(denied.outputs[0]),/permission/);assert.ok(!((denied.outputs[0].flags||0)&64));
+  setPluginEnabled(w.store,G,'reactionroles',false,'x');const off=slash(w,'list');await app.dispatch(off.i);assert.match(textOf(off.outputs[0]),/turned off/);
   app.stop();
 });
 

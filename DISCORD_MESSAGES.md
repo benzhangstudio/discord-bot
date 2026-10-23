@@ -15,6 +15,10 @@ Use one or two short sentences: what the user needs to know and their next usefu
 
 `src/public-errors.js` owns the reviewed message catalogue and `publicErrorMessage(error)`. `reportFailure` logs the redacted diagnostic separately and uses only this formatter for Discord. A `UserError` retains diagnostic context in `.message`; its name alone never grants permission to display that message. Unknown messages fail closed to generic copy. Do not automatically forward exception text or an alleged `publicMessage` property from an external service.
 
+## Error embed format
+
+Every error is sent as a clean neutral embed via `errorPayload(message,{title,fields})` in `src/error-embed.js`: grey colour `0x4F545C`, empty content, no buttons and no mentions. The title is concise (`Check your input`, `Not allowed`, `Not found`, `Couldn’t complete that`, `Result not confirmed`, `Action failed`, `Command renamed`) and the description is the catalogue copy. Failed or uncertain moderation actions add a `Case` field. Errors in server channels stay public; the DM appeal flow keeps its private replies.
+
 Add a reviewed catalogue entry when introducing a validation error. Keep public copy under 160 characters, without hosting details, codes, secrets or technical paths. Preserve useful commands and input examples. The source-coverage regression test checks current validation messages; the unknown-error tests verify that future unmapped failures remain safe.
 
 Saved moderation failures use short public outcome copy, not an exception or full case dump. Case-history screens are embeds that show `Case #N` numbers, mentions and Discord timestamps (never raw snowflake IDs or ISO dates), but no raw stored backend errors. Settings/status screens use readable labels and summaries rather than JSON or internal delivery states. Keep uncertain outcomes honest; never promise failure merely because confirmation timed out, and never repeat the mutation to send its result.

@@ -5,6 +5,7 @@ import {UserError} from './user-error.js';
 import {acknowledge,respond,withDeadline,updateResponse} from './responses.js';
 import {caseListPayload,caseEmbedFull,appealListPayload,appealEmbed} from './mod-format.js';
 import {publicErrorMessage,UNCERTAIN_ACTION} from './public-errors.js';
+import {errorPayload} from './error-embed.js';
 import {readProof,addProof,proofItems,proofSummary,firstImage,PROOF} from './mod-proof.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
 const has=(m,p)=>!!m?.permissions?.has(p);
@@ -131,7 +132,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  function dmArgs(i,c,action,reason){const cfg=core.config(i.guildId);return {action,guild:i.guildId,guildName:i.guild.name,caseId:c.id,caseNumber:c.number,reason,contact:cfg.appealContact,appealButton:cfg.dmAppeals!==false};}
  function recordDm(g,c,state){c.details={...c.details,dm:state==='skipped'?'failed':state};return store.put(g,'mod-case',c);}
  async function finish(i,c){
-  if(c.state!=='succeeded')return respond(i,payload((['uncertain','pending'].includes(c.state)?UNCERTAIN_ACTION:publicErrorMessage({code:c.error}))+`\n${caseLabel(c)}`));
+  if(c.state!=='succeeded'){const unsure=['uncertain','pending'].includes(c.state);return respond(i,errorPayload(unsure?UNCERTAIN_ACTION:publicErrorMessage({code:c.error}),{title:unsure?'Result not confirmed':'Action failed',fields:c.number?[{name:'Case',value:`#${c.number}`,inline:true}]:[]}));}
   const member=i.guild.members.cache?.get(c.target);
   const name=clean(member?.displayName||member?.user?.username||c.details?.memberName||c.target);
   const lastAction=c.events.at(-1)?.action;
