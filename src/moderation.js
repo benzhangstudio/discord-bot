@@ -1,4 +1,4 @@
-import {PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
+import {MessageFlags,PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
 import {Moderation,clean} from './moderation-core.js';
 import {moderationCommands,moderationActions} from './moderation-commands.js';
 import {UserError} from './user-error.js';
@@ -98,8 +98,9 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const lastAction=c.events.at(-1)?.action;
   const result=lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+new Date(c.details.until).toISOString():''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
   const last=c.events.at(-1);
-  const dmNote=c.details?.dm==='failed'&&c.state==='succeeded'?'\nCould not DM the member. If they contact staff another way, use /appeals record.':'';
-  await respond(i,{content:result+dmNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
+  await respond(i,{content:result,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
+  // Moderator-only note, sent privately so the member's DM status is not announced.
+  if(c.details?.dm==='failed'&&c.state==='succeeded')try{await withDeadline(i.followUp({content:'Could not DM the member. If they contact staff another way, use /appeals record.',flags:MessageFlags.Ephemeral,allowedMentions:{parse:[]}}),5000);}catch{}
  }
  async function config(i,sub){
   const cfg=core.config(i.guildId);
@@ -208,7 +209,9 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  async function handle(i){
   const ours=moderationCommands.some(c=>c.name===i.commandName)||i.customId?.startsWith('mod-appeal');if(!ours)return false;
-  i.privateResponse=true;
+  // Staff results are public (AGENTS.md). Member-facing appeal forms stay private, and
+  // validation errors raised before acknowledgement are shown only to the invoking user.
+  i.privateResponse=!!i.customId?.startsWith('mod-appeal');i.privateErrors=true;
   if(i.customId?.startsWith('mod-appeal-dm'))return handleDm(i);
   if(['mod-appeal-open','mod-appeal-status'].includes(i.customId)){
    const status=i.customId==='mod-appeal-status';

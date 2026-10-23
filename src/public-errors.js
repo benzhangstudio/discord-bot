@@ -8,6 +8,7 @@ export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "Enter a short appeal contact such as a link or email address.": "Enter a short appeal contact, such as a link or email address.",
   "This appeal link is not valid.": "This appeal link is not valid.",
   "This appeal link is not valid for your account.": "This appeal link is not valid for your account, or the case cannot be appealed.",
+  "Could not DM the member. If they contact staff another way, use /appeals record.": "Could not DM the member. If they contact staff another way, use /appeals record.",
   "Member role details are unavailable.": "Could not check this member’s roles. Try again.",
   "A different moderator must review this appeal.": "Another moderator needs to review this appeal.",
   "A message can have at most 25 sections. Remove one before adding another.": "A message can have at most 25 sections. Remove one before adding another.",

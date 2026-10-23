@@ -44,3 +44,13 @@ The `/appeals panel` message is for members still in the server and says that re
 ## Help and command text
 
 `/help` shows a **Help** overview (one line per category) and a category page listing each `/command subcommand – description`, generated from the registered command definitions. Every command must belong to exactly one help category (`tests/help.test.js`). Command, option and choice descriptions use sentence case, no trailing period, no first person, no branding. Review them with `node scripts/dump-command-text.mjs`.
+
+## Reply visibility
+
+| Public (default) | Private (only the invoking user) |
+| --- | --- |
+| Moderation actions, warnings, modlogs, case, reason, delwarn, purge, mod-reconcile | Permission denials and disabled-plugin notices |
+| /appeals list, show, review, record, panel confirmation | Moderation validation errors before acknowledgement |
+| /mod-settings, /emergency, /settings, /portal, /help | "Could not DM the member…" note to the moderator |
+| /schedule list/show/post for public events, /embed send, /embed delete | Member appeal forms and status (panel buttons and DMs) |
+| /instagram list, pause, resume, remove | /embed create/edit/list/remove-section, /instagram setup/preview, /access list, staff-only schedules, RSVP acknowledgements |

@@ -271,3 +271,14 @@ test('appeal review never reverses the sanction and says so plainly',async()=>{
   assert.match(h.outputs.at(-1).content,/accepted\. The sanction was not changed; use \/unban or \/untimeout if needed/);assert.ok(!h.effects.includes('unban'));
  }finally{h.close();}
 });
+test('staff moderation results are public; the DM-failure note and member appeal forms are private',async()=>{
+ const h=harness();try{
+  for(const [name,sub,values] of [['appeals','list',{}],['appeals','show',{appeal:'appeal'}],['warnings',undefined,{}],['modlogs',undefined,{}],['case',undefined,{id:'saved'}],['mod-settings','view',{}],['emergency','status',{}]]){
+   const i=h.interaction(name,sub,values);await h.app.handle(i);assert.equal(h.outputs.at(-1).flags,undefined,`${name} ${sub||''}`);
+  }
+  h.target.send=async()=>{throw Object.assign(new Error('closed'),{code:50007,status:403});};
+  const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
+  const result=h.outputs.find(o=>o.embeds?.[0]?.title==='Member banned');assert.equal(result.flags,undefined);assert.doesNotMatch(result.content,/DM/);
+  assert.equal(h.outputs.at(-1).flags,64);assert.match(h.outputs.at(-1).content,/Could not DM the member/);
+ }finally{h.close();}
+});
