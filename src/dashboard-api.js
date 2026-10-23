@@ -74,7 +74,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       const cfg=modConfig(guild);
       const {channels,roles}=rrView(guild);
       return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false,appealContact:cfg.appealContact?text(cfg.appealContact,200):null},
-        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
+        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
         locks:store.list(guild,'mod-lock').length};
     }
     if(name==='automod'){

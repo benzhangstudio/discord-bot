@@ -48,12 +48,13 @@ function servers(){
 function table(headers,rows,empty){
   if(!rows.length)return el('p',{class:'muted',text:empty});
   const t=el('table',{},el('thead',{},el('tr',{},...headers.map(h=>el('th',{scope:'col',text:h})))));const tb=el('tbody');
-  for(const r of rows)tb.append(el('tr',{},...r.map(c=>el('td',{text:c??'—'}))));t.append(tb);return el('div',{class:'table-wrap'},t);
+  for(const r of rows)tb.append(el('tr',{},...r.map(c=>c instanceof Node?el('td',{},c):el('td',{text:c??'—'}))));t.append(tb);return el('div',{class:'table-wrap'},t);
 }
 const ref=x=>x?(x.name?(x.name+' ('+x.id+')'):x.id):'Not set';
 const commands=list=>list?.length?el('div',{class:'card'},el('h2',{text:'Slash commands'}),el('p',{class:'muted',text:'Make other changes in Discord with:'}),el('div',{class:'chips'},...list.map(c=>el('code',{text:c})))):null;
 async function renderPlugin(guild,name){
   $('pluginTitle').textContent=TITLES[name];$('pluginLead').textContent=LEADS[name]||'';const body=$('pluginBody');body.replaceChildren(el('p',{class:'muted',text:'Loading…'}));
+  const proofCell=list=>{if(!list?.length)return '—';const span=el('span',{});let n=0,l=0;list.forEach((p,k)=>{if(k)span.append(' · ');span.append(el('a',{href:p.logMessage||p.url,target:'_blank',rel:'noopener noreferrer',text:p.type==='image'?'Screenshot '+(++n):'Link '+(++l)}));});return span;};
   const base='/api/guilds/'+guild;$('pluginSwitch').hidden=true;
   if(name==='overview'){
     const o=await NO.api(base+'/overview');const s=o.stats;
@@ -81,7 +82,7 @@ async function renderPlugin(guild,name){
       el('p',{class:'muted',text:`Locked channels: ${d.locks}. Only the server owner can save changes. Each change is recorded as a moderation case.`}),el('button',{class:'primary',text:'Save'}));
     f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,logChannel:$('modLog').value||null,retentionDays:Number($('modRetention').value),dmAppeals:dm.checked,dmMembers:dmm.checked,appealContact:$('modContact').value.trim()||null},'PUT');NO.message('Moderation settings saved.');});
     parts.push(f);
-    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created)]),'No cases yet.')));
+    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created','Proof'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created),proofCell(c.proof)]),'No cases yet.')));
   }
   if(name==='automod'){
     const c=d.config;const f=el('form',{class:'card'});

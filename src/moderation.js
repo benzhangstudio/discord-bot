@@ -5,6 +5,7 @@ import {UserError} from './user-error.js';
 import {acknowledge,respond,withDeadline,updateResponse} from './responses.js';
 import {caseListPayload,caseEmbedFull,appealListPayload,appealEmbed} from './mod-format.js';
 import {publicErrorMessage,UNCERTAIN_ACTION} from './public-errors.js';
+import {readProof,addProof,proofItems,proofSummary,firstImage,PROOF} from './mod-proof.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
 const has=(m,p)=>!!m?.permissions?.has(p);
 const owner=i=>i.user.id===i.guild.ownerId;
@@ -18,9 +19,9 @@ const DM_LABELS={sent:'Sent',skipped:'Failed (DMs closed)',disabled:'Not sent (d
 const rank=m=>m.roles.highest.position;
 const COLOR=0x5865f2;
 export const appealPanelText=contact=>`**Moderation appeals**\nFor members currently in this server: use **Appeal a case** to ask staff to review a warning, timeout or other case. Only staff can see appeals.\n\nBanned or kicked members receive an **Appeal** button by DM when the action is taken. If that DM did not arrive: ${contact?`${clean(contact)}`:'contact the server staff through the server’s published appeal contact.'}`;
-export const ACTION_TITLES={ban:'Member banned',unban:'Member unbanned',kick:'Member kicked',warn:'Member warned',timeout:'Member timed out',untimeout:'Timeout removed',purge:'Messages deleted','emergency-on':'Channel locked','emergency-off':'Channel unlocked',configure:'Moderation settings updated','automod-delete':'Message deleted by automod','appeal-panel':'Appeal panel posted',note:'Case note added',void:'Warning removed'};
+export const ACTION_TITLES={ban:'Member banned',unban:'Member unbanned',kick:'Member kicked',warn:'Member warned',timeout:'Member timed out',untimeout:'Timeout removed',purge:'Messages deleted','emergency-on':'Channel locked','emergency-off':'Channel unlocked',configure:'Moderation settings updated','automod-delete':'Message deleted by automod','appeal-panel':'Appeal panel posted',note:'Case note added',void:'Warning removed',proof:'Proof added'};
 const mention=id=>/^\d{15,25}$/.test(String(id))?`<@${id}>`:clean(String(id));
-const caseEmbed=(c,{title,actor,reason}={})=>{
+const caseEmbed=(c,{title,actor,reason,image}={})=>{
  const fields=[];
  if(['ban','unban','kick','warn','timeout','untimeout','automod-delete'].includes(c.action))fields.push({name:'User',value:mention(c.target),inline:true});
  fields.push({name:'Moderator',value:mention(actor||c.actor),inline:true});
@@ -28,7 +29,9 @@ const caseEmbed=(c,{title,actor,reason}={})=>{
  if(c.action==='purge')fields.push({name:'Messages',value:String(c.details?.deleted??0),inline:true});
  fields.push({name:'Reason',value:clean(reason||c.reason||'No reason provided').slice(0,1000)},{name:'Case',value:c.number?`#${c.number}`:'—',inline:true});
  if(DM_LABELS[c.details?.dm])fields.push({name:'DM',value:DM_LABELS[c.details.dm],inline:true});
- return {title:title||ACTION_TITLES[c.action]||'Case updated',color:COLOR,fields,timestamp:new Date(c.updatedAt||c.createdAt||Date.now()).toISOString()};
+ const proof=proofSummary(c);if(proof)fields.push({name:'Proof',value:proof});
+ const img=image===undefined?firstImage(c):image;
+ return {title:title||ACTION_TITLES[c.action]||'Case updated',color:COLOR,fields,...(img?{image:{url:img}}:{}),timestamp:new Date(c.updatedAt||c.createdAt||Date.now()).toISOString()};
 };
 // Bounded DM to the affected member, sent BEFORE ban/kick/timeout because Discord
 // will not open a DM with a user who shares no server. Never blocks the action.
@@ -94,8 +97,20 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    must(ch&&![10,11,12].includes(ch.type)&&!ch.permissionsFor(guild.roles.everyone)?.has(P.ViewChannel),'Log channel must remain hidden from everyone.');
    // A claimed log is never blindly retried after an ambiguous send.
    store.put(guild.id,'mod-log',{...row,state:'sending'});
-   await read(ch.send({embeds:[caseEmbed(c,row.event?{title:ACTION_TITLES[row.event.action]||ACTION_TITLES[c.action],actor:row.event.actor,reason:row.event.reason}:{})],allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
+   // Screenshots not yet stored are re-uploaded here: Discord CDN links from the original
+   // interaction expire, the copy in the log message is the durable record.
+   // Without Attach Files the log still posts, listing the original (expiring) screenshot links.
+   const canAttach=ch.permissionsFor?.(guild.members?.me)?.has?.(P.AttachFiles)!==false;
+   const fresh=canAttach?proofItems(c).filter(p=>p.type==='image'&&!p.stored):[];
+   const files=fresh.map(p=>({attachment:p.url,name:p.name}));
+   const base=row.event?{title:ACTION_TITLES[row.event.action]||ACTION_TITLES[c.action],actor:row.event.actor,reason:row.event.reason}:{};
+   const sent=await read(ch.send({embeds:[caseEmbed(c,{...base,...(files.length?{image:`attachment://${files[0].name}`}:{})})],...(files.length?{files}:{}),allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
    store.put(guild.id,'mod-log',{...row,state:'sent'});
+   if(fresh.length&&sent){
+    const latest=store.get(guild.id,'mod-case',c.id)||c,byName=new Map([...(sent.attachments?.values?.()||[])].map(a=>[a.name,a]));
+    for(const p of proofItems(latest))if(p.type==='image'&&!p.stored&&fresh.some(f=>f.url===p.url)){const a=byName.get(p.name);p.stored=true;if(a?.url)p.storedUrl=a.url;if(sent.url)p.logMessage=sent.url;}
+    store.put(guild.id,'mod-case',latest);
+   }
   }catch{const current=store.get(guild.id,'mod-log',row.id);store.put(guild.id,'mod-log',{...row,state:current?.state==='sending'?'uncertain':'queued'});}
  }
  function caseOf(g,id){try{return core.get(g,id);}catch{return null;}}
@@ -111,6 +126,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const rows=core.cases(i.guildId).filter(c=>c.target===target&&(kind!=='warnings'||c.action==='warn'&&c.state==='succeeded'&&!c.voided));
   return caseListPayload({kind,user:info,rows,page,invoker});
  }
+ function withProof(i){return i.proof?.length?{proof:i.proof}:{};}
  function dmWanted(i){const v=i.options.getBoolean?.('dm');return v??(core.config(i.guildId).dmMembers!==false);}
  function dmArgs(i,c,action,reason){const cfg=core.config(i.guildId);return {action,guild:i.guildId,guildName:i.guild.name,caseId:c.id,caseNumber:c.number,reason,contact:cfg.appealContact,appealButton:cfg.dmAppeals!==false};}
  function recordDm(g,c,state){c.details={...c.details,dm:state==='skipped'?'failed':state};return store.put(g,'mod-case',c);}
@@ -119,10 +135,11 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const member=i.guild.members.cache?.get(c.target);
   const name=clean(member?.displayName||member?.user?.username||c.details?.memberName||c.target);
   const lastAction=c.events.at(-1)?.action;
-  const result=lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+ts(c.details.until):''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
+  const result=lastAction==='proof'?'Proof added.':lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+ts(c.details.until):''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
   const last=c.events.at(-1);
   const dmNote=c.details?.dm==='failed'&&c.state==='succeeded'?'\nCould not DM the member. If they contact staff another way, use /appeals record.':'';
-  await respond(i,{content:result+dmNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
+  const proofNote=i.proof?.some(p=>p.type==='image')&&!core.config(i.guildId).logChannel?'\nNo moderation log channel is set, so screenshots are kept only as the original upload link, which Discord expires. Set a log channel on the dashboard to store them.':'';
+  await respond(i,{content:result+dmNote+proofNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
  }
  // Read-only summary for /settings view. Moderation settings are edited on the dashboard.
  function settingsSummary(guildId){
@@ -147,7 +164,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     if(!overwrites.some(o=>o.id===i.guildId))overwrites.push({id:i.guildId,type:0,allow:'0',deny:'0',added:true});
     lock={id:channel.id,state:'applying',entries:overwrites,created:Date.now()};store.put(i.guildId,'mod-lock',lock);
    }else must(lock,'No saved lockdown exists for this channel.');
-   const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'channel:'+channel.id,action:'emergency-'+sub,reason:i.options.getString('reason'),effect:async({assertActive})=>{
+   const c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:'channel:'+channel.id,action:'emergency-'+sub,reason:i.options.getString('reason'),details:withProof(i),effect:async({assertActive})=>{
     if(sub==='on'){
      for(const o of lock.entries){
       assertActive();
@@ -232,8 +249,10 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    await updateResponse(i,kind==='appeals'?appealsPayload(i,Number(page)):await listPayload(i,kind,target,Number(page),invoker));return true;
   }
   needStaff(i);
+  // Validate proof before any preflight or mutation so bad uploads fail immediately and publicly.
+  i.proof=readProof(i);
   const routeAction=moderationAction(i.commandName,i.options.getSubcommand(false));
-  const local=['warn','case','history','warnings','note','void','reconcile'].includes(routeAction)||
+  const local=['warn','case','history','warnings','note','void','reconcile','proof'].includes(routeAction)||
    i.commandName==='lockdown'&&routeAction==='status'||i.commandName==='appeals'&&['list','show'].includes(routeAction);
   // These targets can be rejected from signed interaction data, before network
   // preflight can trigger a deferred reply. Full fresh checks still follow.
@@ -258,7 +277,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    const reason=i.options.getString('reason');must(reason?.trim(),'Enter a reason for the warning.');
    // Warn stays a single initial response (no deferral), so its DM gets a short bound.
    const send=dmWanted(i);
-   let c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:target.id,action:'warn',reason,details:{memberName:clean(target.displayName||target.user.username||target.id),dm:send?undefined:'disabled'}});
+   let c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target:target.id,action:'warn',reason,details:{...withProof(i),memberName:clean(target.displayName||target.user.username||target.id),dm:send?undefined:'disabled'}});
    if(c.state==='succeeded'&&send&&!c.details.dm)c=recordDm(i.guildId,c,await notifyMember(target,{...dmArgs(i,c,'warn',reason),deadline:1500}));
    await finish(i,c);return true;
   }
@@ -282,10 +301,14 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    const u=i.options.getUser('user');
    await respond(i,await listPayload(i,sub,u.id,i.options.getInteger('page')||1,i.user.id,u));return true;
   }
+  if(sub==='proof'){
+   must(i.proof.length,PROOF.none);const c=core.get(i.guildId,i.options.getString('case'));addProof(c,i.proof);
+   core.append(i.guildId,c,'proof',i.user.id,`Added ${i.proof.length} proof item${i.proof.length===1?'':'s'}`);await finish(i,c);return true;
+  }
   if(['note','void','reconcile'].includes(sub)){
    let c=core.get(i.guildId,i.options.getString('case'));const reason=i.options.getString('reason')||'Removed by moderator';
    if(sub==='reconcile'){must(owner(i),'Only the current owner can reconcile uncertain actions after checking Discord.');c=core.reconcile(i.guildId,c.id,i.user.id,i.options.getString('outcome'),reason);}
-   else{if(sub==='void'){must(c.action==='warn'&&c.state==='succeeded'&&!c.voided,'Only active successful warnings can be voided.');c.voided=true;}core.append(i.guildId,c,sub,i.user.id,reason);}
+   else{if(sub==='void'){must(c.action==='warn'&&c.state==='succeeded'&&!c.voided,'Only active successful warnings can be voided.');c.voided=true;}if(i.proof.length)addProof(c,i.proof);core.append(i.guildId,c,sub,i.user.id,reason);}
    await finish(i,c);return true;
   }
   let target,action=sub,effect,details={},selectedMember;const reason=i.options.getString('reason')||'No reason provided';
@@ -330,6 +353,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const caseNumber=core.reserveNumber(i.guildId,i.id);
   const args={...dmArgs(i,{id:i.id,number:caseNumber},sub,reason),until:details.until};
   if(send&&['ban','kick','timeout'].includes(sub)&&selectedMember&&!core.store.get(i.guildId,'mod-case',i.id))details.dm=await notifyMember(selectedMember,args);
+  Object.assign(details,withProof(i));
   let c=await core.run({guild:i.guildId,id:i.id,actor:i.user.id,target,action,reason,effect,details});
   // Unban and timeout removal DM afterwards; an unbanned user is reachable only if they still share a server with the bot.
   if(send&&c.state==='succeeded'&&['untimeout','unban'].includes(sub)&&!c.details.dm){

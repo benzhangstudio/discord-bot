@@ -18,6 +18,7 @@ const scenarios={
  'case view':{id:'saved'},'case history':{},'case reason':{},'case resolve':{case:'uncertain',outcome:'failed'},'warnings list':{},'warnings remove':{},
  'appeals panel':{},'appeals list':{},'appeals show':{appeal:'appeal'},'appeals review':{appeal:'appeal',decision:'accepted'},
  'appeals record':{statement:'Externally received appeal'},
+ 'case proof':{case:'saved',proof:{url:'https://cdn.discordapp.com/attachments/1/2/shot.png',name:'shot.png',contentType:'image/png',size:2048}},
  'lockdown on':{},'lockdown off':{},'lockdown status':{},
 };
 function harness({authorized=true}={}){
@@ -41,7 +42,7 @@ function harness({authorized=true}={}){
   const v={user:name==='purge'?null:'target',id:'saved',case:'saved',duration:'10m',reason:'Test reason',...values};return {
   id:String(++seq),guildId:'guild',guild,channelId:'channel',user:actor.user,member:actor,memberPermissions:actor.permissions,commandName:name,
   inGuild:()=>true,isChatInputCommand:()=>true,isButton:()=>false,isModalSubmit:()=>false,
-  options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getMember:()=>v.user==='target'?target:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
+  options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getMember:()=>v.user==='target'?target:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getAttachment:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
   reply:async function(p){this.replied=true;outputs.push(p);},deferReply:async function(){this.deferred=true;},editReply:async p=>outputs.push(p),followUp:async p=>outputs.push(p),showModal:async p=>outputs.push(p.toJSON()),
  };}
  return {app,store,core,client,actor,bot,target,channel,outputs,effects,interaction,close(){app.stop();store.close();}};
@@ -323,4 +324,61 @@ test('warnings list paginates with public Previous/Next buttons limited to the i
   const b=h.interaction('component','');Object.assign(b,{commandName:undefined,customId:next.custom_id,isChatInputCommand:()=>false,isButton:()=>true,update:async p=>h.outputs.push(p)});
   await h.app.handle(b);assert.equal(h.outputs.at(-1).embeds[0].fields.length,3);assert.equal(h.outputs.at(-1).flags,undefined);
  }finally{h.close();}
+});
+
+const shot=(n=1,extra={})=>({url:`https://cdn.discordapp.com/attachments/1/2/shot${n}.png?ex=1`,name:`shot${n}.png`,contentType:'image/png',size:4096,...extra});
+for(const name of ['ban','unban','kick','warn','timeout','untimeout','purge'])test(`/${name} stores screenshot proof and shows it in the public confirmation`,async()=>{
+ const h=harness();try{
+  h.target.send=async()=>{};h.client.users={fetch:async()=>h.target,cache:new Map()};
+  const i=h.interaction(name,{reason:'Spam',proof:shot(1),proof2:shot(2),...(name==='purge'?{count:10,user:null}:{})});await h.app.handle(i);
+  const out=h.outputs.at(-1),e=out.embeds[0];assert.equal(out.flags,undefined);
+  const field=e.fields.find(f=>f.name==='Proof');assert.match(field.value,/\[Screenshot 1\]\(https:\/\/cdn\.discordapp\.com\/attachments\/1\/2\/shot1\.png\?ex=1\)\n\[Screenshot 2\]/);
+  assert.equal(e.image.url,shot(1).url);
+  const c=h.core.get('guild',i.id);assert.equal(c.details.proof.length,2);assert.equal(c.details.proof[0].stored,false);
+ }finally{h.close();}
+});
+test('proof rejects non-images, oversized files and foreign or malformed links with public errors before any action',async()=>{
+ for(const [values,pattern]of [[{proof:shot(1,{contentType:'application/pdf',name:'a.pdf'})},/PNG, JPEG, GIF or WebP/],[{proof:shot(1,{size:11*1024*1024})},/10 MB/],[{proof_link:'https://example.com/x'},/Discord message links/],[{proof_link:'https://discord.com/channels/111111111111111111/222222222222222222/333333333333333333'},/Discord message links from this server/]]){
+  const h=harness();try{await assert.rejects(h.app.handle(h.interaction('ban',{reason:'x',...values})),pattern);assert.deepEqual(h.effects,[]);assert.equal(h.core.cases('guild').filter(c=>c.action==='ban').length,0);}finally{h.close();}
+ }
+});
+test('readProof accepts this server’s message links (including ptb/canary) and normalises them',async()=>{
+ const {readProof}=await import('../src/mod-proof.js');
+ const g='123456789012345678',link=(host)=>`https://${host}/channels/${g}/223456789012345678/323456789012345678`;
+ const items=readProof({guildId:g,user:{id:'1'},options:{getAttachment:()=>null,getString:()=>`${link('discord.com')} ${link('ptb.discord.com')}, ${link('canary.discordapp.com')}`}});
+ assert.deepEqual(items.map(p=>p.url),[link('discord.com')]);assert.equal(items[0].type,'link');
+ assert.throws(()=>readProof({guildId:g,options:{getAttachment:()=>null,getString:()=>Array.from({length:6},(_,n)=>link('discord.com')+n).join(' ')}}),/up to 5/);
+});
+test('screenshots are re-uploaded to the private log channel and the durable copy is stored on the case',async()=>{
+ const h=harness();try{
+  h.core.saveConfig('guild',{logChannel:'channel'});const sends=[];
+  h.channel.send=async p=>{sends.push(p);return {url:'https://discord.com/channels/1/2/3',attachments:new Map((p.files||[]).map(f=>[f.name,{name:f.name,url:'https://cdn.discordapp.com/attachments/9/9/'+f.name+'?stored'}]))};};
+  const i=h.interaction('warn',{reason:'Spam',proof:shot(1),dm:false});await h.app.handle(i);
+  await h.app.moderation.tick();
+  const logged=sends.find(p=>p.files);assert.equal(logged.files[0].attachment,shot(1).url);assert.equal(logged.files[0].name,'proof-1.png');
+  assert.equal(logged.embeds[0].image.url,'attachment://proof-1.png');assert.ok(logged.embeds[0].fields.some(f=>f.name==='Proof'));
+  const p=h.core.get('guild',i.id).details.proof[0];assert.equal(p.stored,true);assert.match(p.storedUrl,/\?stored$/);assert.equal(p.logMessage,'https://discord.com/channels/1/2/3');
+  // /case view and history show the stored copy.
+  await h.app.handle(h.interaction('case','view',{id:String(h.core.get('guild',i.id).number)}));const view=h.outputs.at(-1).embeds[0];
+  assert.match(view.fields.find(f=>f.name==='Proof').value,/\?stored\).*\[log copy\]\(https:\/\/discord\.com\/channels\/1\/2\/3\)/);assert.match(view.image.url,/\?stored$/);
+  await h.app.handle(h.interaction('case','history'));assert.match(h.outputs.at(-1).embeds[0].fields.find(f=>/Warn/.test(f.name)&&/Proof/.test(f.value)).value,/\*\*Proof:\*\* \[Screenshot 1\]/);
+ }finally{h.close();}
+});
+test('proof can be added later with /case proof and /case reason, and is never put in member DMs',async()=>{
+ const h=harness();try{
+  let dm;h.target.send=async p=>{dm=p;};
+  const i=h.interaction('warn',{reason:'Spam',proof:shot(1)});await h.app.handle(i);assert.ok(dm);assert.doesNotMatch(JSON.stringify(dm),/cdn\.discordapp|Proof|Screenshot/);
+  await h.app.handle(h.interaction('case','proof',{case:i.id,proof:shot(2)}));assert.match(h.outputs.at(-1).content,/^Proof added\./);
+  await h.app.handle(h.interaction('case','reason',{case:i.id,reason:'More context',proof:shot(3)}));
+  assert.equal(h.core.get('guild',i.id).details.proof.length,3);
+  await assert.rejects(h.app.handle(h.interaction('case','proof',{case:i.id})),/Attach a screenshot or add a message link/);
+ }finally{h.close();}
+});
+test('without a log channel the confirmation explains that screenshots are not stored durably',async()=>{
+ const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',proof:shot(1),dm:false}));assert.match(h.outputs.at(-1).content,/No moderation log channel is set/);}finally{h.close();}
+});
+test('every moderation action command offers proof, proof2, proof3 and proof_link',()=>{
+ const want=['ban','unban','kick','warn','timeout','untimeout','purge','warnings remove','case reason','case proof','lockdown on','lockdown off'];
+ for(const key of want){const [n,sub]=key.split(' ');const c=moderationCommands.find(c=>c.name===n);const opts=sub?c.options.find(o=>o.name===sub).options:c.options;
+  assert.deepEqual(opts.filter(o=>o.name.startsWith('proof')).map(o=>[o.name,o.type]),[['proof',11],['proof2',11],['proof3',11],['proof_link',3]],key);}
 });

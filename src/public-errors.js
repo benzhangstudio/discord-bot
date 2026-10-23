@@ -1,11 +1,13 @@
 import {UserError} from './user-error.js';
 import {RR} from './reaction-role-messages.js';
+import {PROOF} from './mod-proof.js';
 
 // Reviewed public copy only. Unknown exceptions never pass through to Discord.
 export const GENERIC_ERROR='Something went wrong. Try again later.';
 export const UNCERTAIN_ACTION='Could not confirm that action. Check the result before trying again.';
 export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   ...Object.fromEntries(Object.values(RR).map(m=>[m,m])),
+  ...Object.fromEntries(Object.values(PROOF).map(m=>[m,m])),
   "This feature is turned off for this server. A server manager can turn it on in the dashboard.": "This feature is turned off here. A server manager can turn it on in the dashboard.",
   "Enter a short appeal contact such as a link or email address.": "Enter a short appeal contact, such as a link or email address.",
   "This appeal link is not valid.": "This appeal link is not valid.",

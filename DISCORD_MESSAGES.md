@@ -50,3 +50,5 @@ The `/appeals panel` message is for members still in the server and says that re
 Every reply in a server channel is public, including errors, permission denials, access lists, embed editors and previews, Instagram setup, schedules, help and settings. No reply is removed: each command still confirms its result and each failure still gets a short public error. Moderator notes such as "Could not DM the member…" are part of the public action reply.
 
 Private by nature only: the appeal DM (notice, **Appeal** button, modal and its confirmation) and Discord modals. Verification cases and evidence are dashboard-only; no slash command, button or message shows them.
+
+Moderation proof (screenshots and message links) is staff evidence. It appears in public confirmations, the private log channel, case views and the dashboard, but never in member DMs. Proof validation errors use reviewed public copy (`PROOF` in src/mod-proof.js).

@@ -44,6 +44,23 @@ Member actions protect the owner, bot accounts, administrators, configured moder
 - Unban DMs only arrive if the user still shares another server with the bot. Otherwise the DM is recorded as failed and the unban still completes.
 - The public confirmation embed has a **DM** field: `Sent`, `Not sent (disabled)` or `Failed (DMs closed)`.
 
+### Proof (screenshots and message links)
+
+These commands take optional proof options: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/warnings remove`, `/case reason`, `/case proof` (adds proof to an existing case later), and `/lockdown on` / `/lockdown off`.
+- `proof`, `proof2`, `proof3`: image attachments, PNG, JPEG, GIF or WebP, up to 10 MB each.
+- `proof_link`: up to 5 Discord message links from this server (`https://discord.com/channels/<server>/<channel>/<message>`, ptb/canary accepted), separated by spaces.
+
+Invalid uploads or links are rejected with a public error before any action runs. A case holds up to 10 proof items.
+
+Where proof appears:
+- **Public confirmation embed**: a **Proof** field listing `Screenshot N` and `Message link N`, with the first screenshot as the embed image.
+- **Moderation log channel**: screenshots not yet stored are **re-uploaded as files** to the log message, with the first one as the embed image. Discord's original attachment links expire, so the case then stores the log copy's URL and the log message permalink (`log copy`).
+- **`/case view`**: a Proof field plus the image. **`/case history`** and **`/warnings list`** entries show a short `Proof:` line.
+- **Dashboard → Moderation → Recent cases**: a Proof column with links.
+- Proof is staff evidence and is **never included in member DMs**.
+
+Without a log channel, screenshots are kept only as the original upload link, which expires; the confirmation says so. If the bot lacks **Attach Files** in the log channel, the log is still posted with the original links. The bot needs View Channel, Send Messages, Embed Links and Attach Files in the log channel.
+
 ### Output and case numbers
 
 Lists (`/warnings list`, `/case history`, `/appeals list`) and details (`/case view`, `/appeals show`) are blurple embeds:

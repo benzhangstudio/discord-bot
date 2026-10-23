@@ -1,6 +1,6 @@
 # Number One
 
-Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
+Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (including screenshot and message-link proof on every moderation action) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
 

@@ -1,5 +1,6 @@
 // Dyno-style embeds for moderation lists and case details. Mentions and Discord
 // timestamps only: no raw snowflakes or ISO strings in member-facing output.
+import {proofItems,proofSummary,firstImage,imageUrl} from './mod-proof.js';
 export const BLURPLE=0x5865F2;
 export const PAGE_SIZE=10;
 const NAMES={ban:'Ban',unban:'Unban',kick:'Kick',warn:'Warn',timeout:'Timeout',untimeout:'Timeout removed',purge:'Purge','emergency-on':'Lockdown','emergency-off':'Unlock',configure:'Settings change','automod-delete':'Automod','appeal-panel':'Appeal panel'};
@@ -14,6 +15,7 @@ export const statusOf=c=>c.voided?'Removed':STATE[c.state]||cut(c.state,40);
 export function entryField(c){
  const lines=[`**Reason:** ${cut(c.reason||'No reason provided',200)}`,`**Moderator:** ${mention(c.actor)}`,`**Date:** ${ts(c.created)} (${ts(c.created,'R')})`];
  if(c.details?.until)lines.push(`**Until:** ${ts(c.details.until)}`);
+ const proof=proofItems(c);if(proof.length){let n=0,l=0;lines.push(`**Proof:** ${proof.slice(0,4).map(p=>p.type==='image'?`[Screenshot ${++n}](${imageUrl(p)})`:`[Link ${++l}](${p.url})`).join(' · ')}${proof.length>4?` +${proof.length-4} more`:''}`);}
  if(c.voided||c.state!=='succeeded')lines.push(`**Status:** ${statusOf(c)}`);
  return {name:`${caseRef(c)} · ${actionName(c.action)}`,value:lines.join('\n').slice(0,1024)};
 }
@@ -44,9 +46,11 @@ export function caseEmbedFull(c,appeal){
   f('Reason',cut(c.reason||'No reason provided',1000),false),f('Status',statusOf(c)),f('Date',ts(c.created))];
  if(c.details?.until)fields.push(f('Until',ts(c.details.until)));
  fields.push(f('Appeal',appeal?APPEAL_STATE[appeal.state]||appeal.state:'None'));
+ const proof=proofSummary(c);if(proof)fields.push(f('Proof',proof,false));
  const recent=(c.events||[]).slice(1).slice(-5);
  if(recent.length)fields.push(f('Updates',recent.map(e=>`${ts(e.at,'R')} ${cut(e.action,30)}: ${cut(e.reason,120)}`).join('\n'),false));
- return {color:BLURPLE,title:`${caseRef(c)} · ${actionName(c.action)}`,fields};
+ const img=firstImage(c);
+ return {color:BLURPLE,title:`${caseRef(c)} · ${actionName(c.action)}`,fields,...(img?{image:{url:img}}:{})};
 }
 export function appealListPayload({rows,page=1,invoker,caseOf}){
  if(!rows.length)return {embeds:[{color:BLURPLE,description:'There are no open appeals.'}],components:[],allowedMentions:{parse:[]}};

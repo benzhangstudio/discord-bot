@@ -5,7 +5,7 @@ import {UserError} from './user-error.js';
 // Every registered command belongs to exactly one category (enforced by tests).
 // Command lines are generated from the registered definitions so help stays in sync.
 export const categories=[
-  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','untimeout','kick','ban','unban','purge','warnings','case']},
+  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','untimeout','kick','ban','unban','purge','warnings','case'],note:'**Proof:** actions, `/case reason` and `/case proof` take optional `proof`, `proof2`, `proof3` (screenshots: PNG, JPEG, GIF or WebP, up to 10 MB) and `proof_link` (message links from this server). Proof shows in the confirmation, the log channel and `/case view`. It is never sent to members.\n**DMs:** set `dm:false` to skip the member DM.'},
   {value:'appeals',label:'Appeals',description:'Appeal panel and staff review',commands:['appeals']},
   {value:'lockdown',label:'Lockdown',description:'Lock and unlock channels',commands:['lockdown']},
   {value:'roles',label:'Reaction roles',description:'Let members pick roles by reacting',commands:['reaction-roles']},
@@ -29,7 +29,7 @@ export function helpMenu({page='home'}={}) {
   if(page!=='home'&&!topic)throw new UserError('Open /help for the current command menu.');
   const embed=new EmbedBuilder().setColor(0x5865f2).setFooter({text:FOOTER});
   if(!topic)embed.setTitle('Help').setDescription(['Select a category to see its commands.','',...categories.map(c=>`**${c.label}** – ${c.description}`)].join('\n'));
-  else embed.setTitle(topic.label).setDescription(commandLines(topic.commands).join('\n').slice(0,4000));
+  else embed.setTitle(topic.label).setDescription([...commandLines(topic.commands),...(topic.note?['',topic.note]:[])].join('\n').slice(0,4000));
   return {content:'',embeds:[embed],components:[
     {type:1,components:[{type:3,custom_id:'help:topic',placeholder:'Select a category',min_values:1,max_values:1,
       options:[{value:'home',label:'Overview',description:'All categories',default:page==='home'},...categories.map(c=>({value:c.value,label:c.label,description:c.description.slice(0,100),default:c.value===page}))]}]}

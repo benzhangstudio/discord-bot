@@ -19,6 +19,8 @@ Official reference: https://wispbyte.com/kb/github-integration and https://wispb
 
 Reaction roles use the Guild Message Reactions and Guild Messages gateway intents. Neither is privileged, so nothing needs to change in the Developer Portal. Servers that invited the bot before this feature need to give it **Manage Roles**, **Add Reactions** and **Read Message History**, and move its role above the roles it gives. New invite links include these permissions.
 
+Moderation proof re-uploads screenshots to the moderation log channel. Give the bot **Attach Files** and **Embed Links** there, along with View Channel and Send Messages. New invites include Attach Files (permissions value 268553280). No new intents are needed.
+
 ## Routine updates
 
 1. Edit and test in the same local Rose folder. Publish the reviewed code to GitHub main through the connected GitHub account; no pull request is required for routine updates.
