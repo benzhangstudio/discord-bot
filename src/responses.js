@@ -33,7 +33,7 @@ export function step(i,promise,{uncertain=false}={}) {
   i.operationDeadline??=Date.now()+(i.operationTimeoutMs??15000);
   const remaining=i.operationDeadline-Date.now();
   if(remaining<=0)throw new UserError('This request took too long. Please try again.');
-  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'The service took too long to respond. Please try again later.');
+  return withDeadline(typeof promise==='function'?promise():promise,remaining,uncertain?'Discord did not confirm whether the message was sent. Check the destination before retrying to avoid a duplicate.':'This request took too long. Please try again.');
 }
 export async function acknowledge(i,update=false) {
   if (i.deferred || i.replied || acknowledgements.has(i)) return;
@@ -67,7 +67,8 @@ export async function respond(i,payload,{editTimeoutMs=8000,fallbackTimeoutMs=80
       const fallbackFlags=flags??(i.ephemeral===true||i.privateResponse?MessageFlags.Ephemeral:undefined);
       const fallback={...body,...(fallbackFlags===undefined?{}:{flags:fallbackFlags})};
       if(!transport&&!i.followUp)throw preserve(error);
-      try{const result=await withDeadline(transport?transport(i,'POST',fallback,{timeoutMs:fallbackTimeoutMs}):i.followUp(fallback),fallbackTimeoutMs,'Discord could not deliver the result. Check the destination before repeating the action.');cancelReplyRecovery(i);return result;}
+      try{const result=await withDeadline(transport?transport(i,'POST',fallback,{timeoutMs:fallbackTimeoutMs}):i.followUp(fallback),fallbackTimeoutMs,'Discord could not deliver the result. Check the destination before repeating the action.');
+      cancelReplyRecovery(i);return result;}
       catch(failure){throw preserve(failure);}
     }
   }
@@ -80,18 +81,34 @@ export function safeError(error) {
   for(const key of ['DISCORD_TOKEN','OPENAI_API_KEY'])if(process.env[key])message=message.split(process.env[key]).join('[secret removed]');
   return message.replace(/https?:\/\/\S+/g,'[URL omitted]').replace(/(?:github_pat_|ghp_|sk-)[\w-]+/g,'[secret removed]').slice(0,800);
 }
+async function resolveFailureLogChannel(i) {
+  if (!i || (!i.guildId && !i.guild)) return null;
+  const guild=i.guild || i.client?.guilds?.cache?.get(i.guildId);
+  const channelId=i.logChannelId || (guild && guild.client?.guilds?.cache ? null : null);
+  if (!guild || !channelId) return null;
+  const channel=guild.channels.cache?.get(channelId) || await guild.channels.fetch(channelId).catch(()=>null);
+  if (!channel || ![0,5].includes(channel.type)) return null;
+  return channel;
+}
 export async function reportFailure(i,error,log=console.error) {
   const reference=randomUUID().slice(0,8),code=String(error.code || error.name || 'Error');
   if(error.replyDeliveryFailed){
-    log(`[${reference}] Action result is ready; ${error.replyRecoveryScheduled?'reply queued for delivery after cooldown':'its confirmation is unavailable'} (${code}). The action was not repeated.`);return;
+    log(`[${reference}] Action result is ready; ${error.replyRecoveryScheduled?'reply queued for delivery after cooldown':'its confirmation is unavailable'} (${code}). The action was not repeated.`);
   }
   log(`[${reference}] /${i.commandName || 'component'} failed (${code}): ${safeError(error)}`);
   const message=publicErrorMessage(error);
   try {
-    const payload={content:message,...(i.privateResponse||i.ephemeral||i.instagramSetupUpdate?{flags:MessageFlags.Ephemeral}:{}),allowedMentions:{parse:[]},embeds:[],components:[]};
-    // Keep the setup controls available so a failed validation can be corrected.
-    if(i.instagramSetupUpdate&&i.deferred){const transport=i.confirmationTransport || (i.applicationId&&i.token?sendInteractionResponse:null);try{await withDeadline(transport?transport(i,'POST',payload):i.followUp(payload),8000,'Discord could not deliver the error.');}catch(failure){if(failure.code==='HTTP_429'&&queueReplyRecovery(i,'POST',payload,transport,failure)){failure.replyRecoveryScheduled=true;}throw failure;}}
-    else await respond(i,payload);
+    const payload={content:message,allowedMentions:{parse:[]},embeds:[],components:[]};
+    await respond(i,payload);
   }
-  catch(replyError) {log(`[${reference}] ${replyError.replyRecoveryScheduled?'Error reply queued for delivery after cooldown':'Error reply could not be delivered'} (${String(replyError.code || replyError.name)}). The action was not repeated.`);}
+  catch(replyError) {log(`[${reference}] ${replyError.replyRecoveryScheduled?'Error reply queued for delivery after cooldown':'Error reply could not be delivered'} (${String(replyError.code || replyError.name || 'Error')}).`);}
+  try {
+    const channel=await resolveFailureLogChannel(i);
+    if(!channel) return;
+    const summary=[`Number One staff log • ref ${reference}` ,`Command: /${i.commandName || 'component'}` ,`Guild: ${i.guildId || 'unknown'}` ,`User: ${i.user?.tag || i.user?.id || 'unknown'}` ,`Failure: ${code}` ,`Details: ${safeError(error)}`].join('\n');
+    await channel.send({content:summary.slice(0,2000),allowedMentions:{parse:[]}});
+  } catch(channelError) {
+    log(`[${reference}] staff log channel unavailable (${safeError(channelError)}).`);
+  }
 }
+
