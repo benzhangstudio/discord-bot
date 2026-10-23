@@ -72,7 +72,10 @@ async function renderPlugin(guild,name){
   const parts=[];
   if(name==='moderation'){
     parts.push(el('div',{class:'card'},el('h2',{text:'Configuration'}),el('dl',{class:'facts'},el('dt',{text:'Moderator role'}),el('dd',{text:ref(d.config.modRole)}),el('dt',{text:'Privacy role'}),el('dd',{text:ref(d.config.privacyRole)}),el('dt',{text:'Log channel'}),el('dd',{text:ref(d.config.logChannel)}),el('dt',{text:'Case retention'}),el('dd',{text:d.config.retentionDays+' days'}),el('dt',{text:'Locked channels'}),el('dd',{text:String(d.locks)})),el('p',{class:'muted',text:'The server owner changes these with /mod-settings.'})));
-    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created'],d.recentCases.map(c=>[c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created)]),'No cases yet.')));
+    {const f=el('form',{class:'card'}),dmm=el('input',{type:'checkbox',id:'modDmMembers'}),dma=el('input',{type:'checkbox',id:'modDmAppeals'});dmm.checked=d.config.dmMembers;dma.checked=d.config.dmAppeals;
+     f.append(el('h2',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),el('label',{class:'check'},dma,'Include an Appeal button in ban, kick, timeout and warning DMs'),el('p',{class:'muted',text:'Only the server owner can save changes.'}),el('button',{class:'primary',text:'Save'}));
+     f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{dmMembers:dmm.checked,dmAppeals:dma.checked},'PUT');NO.message('Moderation settings saved.');});parts.push(f);}
+    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created)]),'No cases yet.')));
   }
   if(name==='automod'){
     const c=d.config;const f=el('form',{class:'card'});

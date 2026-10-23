@@ -17,7 +17,7 @@ Use one or two short sentences: what the user needs to know and their next usefu
 
 Add a reviewed catalogue entry when introducing a validation error. Keep public copy under 160 characters, without hosting details, codes, secrets or technical paths. Preserve useful commands and input examples. The source-coverage regression test checks current validation messages; the unknown-error tests verify that future unmapped failures remain safe.
 
-Saved moderation failures use short public outcome copy, not an exception or full case dump. Explicit case-history screens may show legitimate case IDs and staff notes, but no raw stored backend errors. Settings/status screens use readable labels and summaries rather than JSON or internal delivery states. Keep uncertain outcomes honest; never promise failure merely because confirmation timed out, and never repeat the mutation to send its result.
+Saved moderation failures use short public outcome copy, not an exception or full case dump. Case-history screens are embeds that show `Case #N` numbers, mentions and Discord timestamps (never raw snowflake IDs or ISO dates), but no raw stored backend errors. Settings/status screens use readable labels and summaries rather than JSON or internal delivery states. Keep uncertain outcomes honest; never promise failure merely because confirmation timed out, and never repeat the mutation to send its result.
 
 This requirement is permanent in `AGENTS.md`. Regression tests cover validation, unknown exceptions, forged UserErrors, credentials/URLs/paths, deferred and fallback replies, privacy and stalled delivery. Offline tests do not establish live Discord delivery.
 

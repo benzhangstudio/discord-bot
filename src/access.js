@@ -23,12 +23,8 @@ export function createAccessCommands(store) {
       const records=store.list(i.guildId,'access');
       const total=Math.max(1,Math.ceil(records.length/20));
       const page=Math.min(i.options.getInteger('page')||1,total);
-      let content='No additional members have command access.';
-      if (records.length>0) {
-        content=`**Owner-approved command access · ${page}/${total}**\n`;
-        content+=records.slice((page-1)*20,page*20).map(record=>`• <@${record.id}>`).join('\n');
-      }
-      await reply(content+'\n\nAdministrators and members with Manage Server already have access.');
+      const description=records.length?records.slice((page-1)*20,page*20).map(record=>`• <@${record.id}>${record.grantedAt?` · added <t:${Math.floor(record.grantedAt/1000)}:R>`:''}`).join('\n'):'No additional members have command access.';
+      await respond(i,{embeds:[{color:0x5865F2,title:'Owner-approved command access',description,footer:{text:`Total: ${records.length} member${records.length===1?'':'s'}${total>1?` · Page ${page} of ${total}`:''} · Administrators and Manage Server members already have access`}}],allowedMentions:{parse:[]}});
     } else if (sub==='add' || sub==='remove') {
       const user=i.options.getUser('user');
       if (!user || user.bot) {

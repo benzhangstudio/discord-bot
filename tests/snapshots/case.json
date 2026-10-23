@@ -1,0 +1,51 @@
+{
+ "color": 5793266,
+ "title": "Case #9 · Timeout",
+ "fields": [
+  {
+   "name": "User",
+   "value": "<@444444444444444444>",
+   "inline": true
+  },
+  {
+   "name": "Moderator",
+   "value": "<@222222222222222222>",
+   "inline": true
+  },
+  {
+   "name": "Action",
+   "value": "Timeout",
+   "inline": true
+  },
+  {
+   "name": "Reason",
+   "value": "Repeated insults",
+   "inline": false
+  },
+  {
+   "name": "Status",
+   "value": "Needs checking",
+   "inline": true
+  },
+  {
+   "name": "Date",
+   "value": "<t:1767225600:f>",
+   "inline": true
+  },
+  {
+   "name": "Until",
+   "value": "<t:1767226200:f>",
+   "inline": true
+  },
+  {
+   "name": "Appeal",
+   "value": "Open",
+   "inline": true
+  },
+  {
+   "name": "Updates",
+   "value": "<t:1767225660:R> note: Checked audit log",
+   "inline": false
+  }
+ ]
+}

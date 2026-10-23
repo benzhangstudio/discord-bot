@@ -72,8 +72,8 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     const base={plugin:name,enabled,toggleable:TOGGLEABLE_PLUGINS.includes(name),commands:commandsFor[name]||[]};
     if(name==='moderation'){
       const cfg=modConfig(guild);
-      return {...base,editable:false,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays},
-        recentCases:store.list(guild,'mod-case').sort((a,b)=>b.created-a.created).slice(0,15).map(c=>({id:text(c.id,40),action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
+      return {...base,editable:false,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false},
+        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
         locks:store.list(guild,'mod-lock').length};
     }
     if(name==='automod'){
@@ -105,7 +105,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
       return plugin(guild,name);
     }
-    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='settings'?['timezone']:['enabled']);
+    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','dmMembers','dmAppeals']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
       assert(TOGGLEABLE_PLUGINS.includes(name),400,'This section cannot be turned off.');assert(typeof data.enabled==='boolean',400,'Choose on or off.');
       setPluginEnabled(store,guild,name,data.enabled,identity.id);
@@ -113,6 +113,13 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     if(name==='settings'&&'timezone' in data){
       assert(typeof data.timezone==='string'&&data.timezone.length<=64&&IANAZone.isValidZone(data.timezone),400,'Choose a valid IANA timezone, such as America/New_York.');
       store.put(guild,'settings',{...settings(guild),id:'main',zone:data.timezone});
+    }
+    if(name==='moderation'&&('dmMembers' in data||'dmAppeals' in data)){
+      assert(identity.owner,403,'Only the current server owner can change moderation settings.');
+      const patch={};for(const k of ['dmMembers','dmAppeals'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
+      const core=new Moderation(store);
+      const result=await core.run({guild,id:'dash-'+randomUUID().slice(0,12),actor:identity.id,target:'configuration',action:'configure',reason:'Updated member DM settings on the dashboard',details:{before:modConfig(guild),patch},effect:()=>core.saveConfig(guild,patch)});
+      assert(result.state==='succeeded',500,'Moderation settings could not be saved.');
     }
     if(name==='automod'){
       // Mirrors /mod-settings: only the current owner configures moderation policy.

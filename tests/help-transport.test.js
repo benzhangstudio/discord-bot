@@ -46,7 +46,7 @@ test('real Discord SDK sends an empty schedule as one immediate public callback'
       data:{id:'567890123456789012',name:'schedule',type:1,options:[{type:1,name:'list'}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     await app.handle(i);assert.equal(requests.length,1);assert.equal(requests[0].body.type,4);assert.equal((requests[0].body.data.flags||0)&64,0);
-    assert.match(requests[0].body.data.content,/No upcoming events/);assert.equal(i.replied,true);assert.equal(i.deferred,false);
+    assert.match(requests[0].body.data.embeds[0].description,/No upcoming events/);assert.equal(i.replied,true);assert.equal(i.deferred,false);
   } finally {client.destroy();store.close();}
 });
 

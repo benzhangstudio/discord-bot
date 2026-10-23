@@ -17,6 +17,8 @@ import {portalMessage} from './portal.js';
 import {commandPluginEnabled} from './plugins.js';
 import {createReactionRoles} from './reaction-roles.js';
 import {createReactionRoleCommands} from './reaction-role-commands.js';
+import {BLURPLE} from './mod-format.js';
+const listEmbed=(title,fields,footer,description)=>({embeds:[{color:BLURPLE,title,...(description?{description}:{}),...(fields?.length?{fields:fields.slice(0,25)}:{}),...(footer?{footer:{text:footer}}:{})}],allowedMentions:{parse:[]}});
 
 export function createApp(client,store,{feedLoader=loadFeed,replyEditTimeoutMs=8000,confirmationTransport,operationTimeoutMs=15000,acknowledgementDelayMs}={}) {
 const reply=content=>({content,allowedMentions:{parse:[]}});
@@ -175,11 +177,11 @@ async function handle(i) {
     }).sort((a,b)=>a.start-b.start);
     const total=Math.max(1,Math.ceil(events.length/5)),page=Math.min(i.options.getInteger('page')||1,total);
     const clean=value=>String(value).replace(/[\\*_~`|<>@\[\]]/g,'');
-    const content=events.length?
-      `**Upcoming events · page ${page}/${total}**\n`+events.slice((page-1)*5,page*5).map(e=>`**${clean(e.title).slice(0,150)}** · <t:${Math.floor(e.start/1000)}:F> · <#${e.channel}>`).join('\n')+'\n\nUse /schedule show and choose an event by name for details and replies.':
-      'No upcoming events.'+(staff(i)?'\n\nUse /schedule add to plan an event.':'');
+    const payload=events.length?
+      listEmbed('Upcoming events',events.slice((page-1)*5,page*5).map(e=>({name:clean(e.title).slice(0,150)||'Event',value:`<t:${Math.floor(e.start/1000)}:F> (<t:${Math.floor(e.start/1000)}:R>)\n<#${e.channel}>`})),`Total: ${events.length} event${events.length===1?'':'s'}${total>1?` · Page ${page} of ${total}`:''} · Use /schedule show for details`):
+      listEmbed(undefined,null,null,'No upcoming events.'+(staff(i)?' Use /schedule add to plan an event.':''));
     console.log(`Sending /schedule list directly (${events.length} visible events).`);
-    await respond(i,reply(content));
+    await respond(i,payload);
     console.log('Discord accepted /schedule list.');
     return;
   }
@@ -266,9 +268,9 @@ async function handle(i) {
       const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A roundup could not be confirmed. Check its channel before sending another copy.');
       for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check that the bot can view and send messages in its channel.');
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and the bot’s channel permissions.`);
-      return respond(i,reply(issues.length?[...new Set(issues)].join('\n').slice(0,1900):'No recent reminder or Instagram delivery problems.'));
+      return respond(i,listEmbed('Delivery status',null,null,issues.length?[...new Set(issues)].join('\n').slice(0,4000):'No recent reminder or Instagram delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,reply(`**Server settings**\nNew events use **${timezoneLabel(s.zone)}**.\nSlash commands require **Administrator**, **Manage Server**, or approval from this server’s owner. Existing events keep their original timezone.`));
+    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'}]));
   }
   if(name==='embed') {
     needStaff(i);
@@ -277,7 +279,7 @@ async function handle(i) {
       const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your message text goes here.',color:0x5865f2},content:''});
       return showForm(i,editModal(d,'form'));
     }
-    if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,reply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
+    if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,saved.length?listEmbed('Saved messages',null,`Total: ${saved.length} saved message${saved.length===1?'':'s'} · Use /embed edit or /embed send`,saved.slice(0,100).map(d=>`• **${String(d.name).replace(/[*_`~|]/g,'')}**${d.embed?.title?' · '+String(d.embed.title).replace(/[*_`~|@<>]/g,'').slice(0,60):''}`).join('\n').slice(0,4000)):listEmbed(undefined,null,null,'No saved messages yet. Start your first one with /embed create.'));}
     const d=item(i,'embed',selected(i));
     if(sub==='edit')return respond(i,editor(d,i));
     if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,reply('Saved message deleted. Any copies already posted in channels are unchanged.'));}
@@ -323,7 +325,7 @@ async function handle(i) {
   }
   if(name==='instagram') {
     needStaff(i);
-    if(sub==='list') {const sources=store.list(i.guildId,'feed');return respond(i,{...reply(''),content:sources.length?sources.map(f=>`**${f.name}** → <#${f.channel}>\n${f.paused?'Paused':deliveryLabel(f)} · ${f.pending?.length||0} new posts waiting${f.error?' · Needs attention—check the source and channel':''}`).join('\n\n').slice(0,1700)+'\n\nUse /instagram preview, pause, resume, or remove and choose a source by name.':'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.',allowedMentions:{parse:[]}});}
+    if(sub==='list') {const sources=store.list(i.guildId,'feed');return respond(i,sources.length?listEmbed('Instagram sources',sources.slice(0,25).map(f=>({name:String(f.name).slice(0,100),value:[`**Channel:** <#${f.channel}>`,`**Delivery:** ${f.paused?'Paused':deliveryLabel(f)}`,`**Waiting:** ${f.pending?.length||0} new post${(f.pending?.length||0)===1?'':'s'}`,...(f.error?['**Status:** Needs attention. Check the source and channel.']:[])].join('\n')})),`Total: ${sources.length} source${sources.length===1?'':'s'} · Use /instagram preview, pause, resume or remove`):listEmbed(undefined,null,null,'No sources yet. Use /instagram setup to choose your sources, channels, and delivery schedule.'));}
     let f=item(i,'feed',selected(i));
     if(sub==='remove') {store.remove(i.guildId,'feed',f.id);return respond(i,reply('Source removed. No more roundups will be sent from it. Messages already in the channel are unchanged.'));}
     if(sub==='preview') {await acknowledge(i);await destination(i,f.channel);const items=await step(i,feedLoader(f.url));if(!items.length)throw new UserError('There are no posts to preview yet. Check again later.');return respond(i,{...feedMessage(f,items[0]),allowedMentions:{parse:[]}});}

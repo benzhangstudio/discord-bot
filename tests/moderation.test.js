@@ -61,10 +61,10 @@ test('human-readable durations accept common units and reject invalid or excessi
  for(const value of ['',0,'forever','-1h','1.5h','29d','0m','99999999999999999999w'])assert.throws(()=>durationMinutes(value),/duration/);
 });
 test('simple ban records an omitted reason and replies with a clear result',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case']);assert.ok(e.fields.at(-1).value.includes(c.id));}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(h.outputs.at(-1).content,/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','Case','DM']);assert.equal(e.fields[3].value,'#'+c.number);}finally{h.close();}
 });
 test('warning list hides voided warnings while modlogs retains them',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('delwarn'));await h.app.handle(h.interaction('warnings'));assert.match(h.outputs.at(-1).content,/No active warnings/);await h.app.handle(h.interaction('modlogs'));assert.match(h.outputs.at(-1).content,/voided/);}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('delwarn'));await h.app.handle(h.interaction('warnings'));assert.match(h.outputs.at(-1).embeds[0].description,/has no warnings\./);await h.app.handle(h.interaction('modlogs'));assert.match(h.outputs.at(-1).embeds[0].fields[0].value,/Status:\*\* Removed/);}finally{h.close();}
 });
 test('case suggestions search by member name, scope servers, and deny unprivileged members',()=>{
  const h=harness();try{const c=h.core.get('guild','saved');c.details={memberName:'Alex'};h.store.put('guild','mod-case',c);const i=h.interaction('case');i.options.getFocused=()=>({name:'id',value:'Alex'});assert.deepEqual(suggestions(h.store,i,{canManage:true}).map(v=>v.value),['saved']);i.guildId='other';assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);i.guildId='guild';i.memberPermissions=perm([P.ManageGuild]);i.user={id:'manager'};assert.deepEqual(suggestions(h.store,i,{canManage:true}),[]);}finally{h.close();}
@@ -200,7 +200,7 @@ test('restart preserves cases, configuration and unresolved operation barriers',
 });
 test('in-server appeal status replies publicly and cannot reveal another member’s appeal',async()=>{
  const h=harness();try{
-  const i=h.interaction('component','');i.commandName=undefined;i.customId='mod-appeal-status-submit';i.isChatInputCommand=()=>false;i.user={id:'target'};i.fields={getTextInputValue:()=> 'saved'};await h.app.handle(i);assert.match(h.outputs.at(-1).content,/open/);assert.equal(h.outputs.at(-1).flags,undefined);
+  const i=h.interaction('component','');i.commandName=undefined;i.customId='mod-appeal-status-submit';i.isChatInputCommand=()=>false;i.user={id:'target'};i.fields={getTextInputValue:()=> 'saved'};await h.app.handle(i);assert.equal(h.outputs.at(-1).embeds[0].fields.find(f=>f.name==='Status').value,'Open');assert.equal(h.outputs.at(-1).flags,undefined);
   i.user={id:'stranger'};await assert.rejects(h.app.handle(i),/No appeal found/);
  }finally{h.close();}
 });
@@ -240,7 +240,7 @@ test('ban sends the DM with an Appeal button before the ban, and the member can 
   const button=dm.components[0].components[0];assert.equal(button.label,'Appeal');assert.equal(button.custom_id,`mod-appeal-dm:guild:${i.id}`);
   await h.app.handle(dmInteraction(h,button.custom_id));assert.equal(h.outputs.at(-1).custom_id,`mod-appeal-dm-submit:guild:${i.id}`);
   await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'I was hacked'}));
-  assert.match(h.outputs.at(-1).content,/submitted for case/);
+  assert.match(h.outputs.at(-1).content,/^Appeal for Case #\d+ submitted/);
   const appeal=h.store.list('guild','mod-appeal').find(a=>a.caseId===i.id);assert.equal(appeal.actor,'target');assert.equal(appeal.body,'I was hacked');
   // Duplicate submission is blocked.
   await h.app.handle(dmInteraction(h,`mod-appeal-dm-submit:guild:${i.id}`,{body:'Again'})).catch(()=>{});
@@ -279,5 +279,49 @@ test('staff moderation results, including the DM-failure note, are public',async
   h.target.send=async()=>{throw Object.assign(new Error('closed'),{code:50007,status:403});};
   const i=h.interaction('ban',{reason:'Spam'});await h.app.handle(i);
   const result=h.outputs.at(-1);assert.equal(result.embeds[0].title,'Member banned');assert.equal(result.flags,undefined);assert.match(result.content,/Could not DM the member/);
+ }finally{h.close();}
+});
+const DM_ACTIONS=['ban','kick','warn','timeout','mute','untimeout','unmute','unban'];
+for(const name of DM_ACTIONS)for(const mode of ['true','false','failed','default-off']){
+ test(`/${name} dm=${mode} records the DM result and shows it in the public confirmation`,async()=>{
+  const h=harness();try{
+   let sent=null;h.target.send=async p=>{if(mode==='failed')throw Error('Cannot send messages to this user');sent=p;};
+   h.client.users={fetch:async()=>h.target,cache:new Map()};
+   if(mode==='default-off')h.core.saveConfig('guild',{dmMembers:false});
+   const i=h.interaction(name,{reason:'Spam',...(mode==='true'||mode==='failed'?{dm:true}:mode==='false'?{dm:false}:{})});await h.app.handle(i);
+   const out=h.outputs.at(-1);assert.equal(out.flags,undefined);
+   const field=out.embeds[0].fields.find(f=>f.name==='DM');
+   const expected={true:'Sent',failed:'Failed (DMs closed)',false:'Not sent (disabled)','default-off':'Not sent (disabled)'}[mode];
+   assert.equal(field?.value,expected);
+   const c=h.core.get('guild',i.id);
+   if(mode==='true'){
+    assert.match(sent.content,new RegExp(`Case: #${c.number}`));assert.match(sent.content,/Reason: Spam/);
+    const appealable=['ban','kick','timeout','mute','warn'].includes(name);
+    assert.equal(!!sent.components,appealable,`${name} appeal button`);
+   }else assert.equal(sent,null);
+  }finally{h.close();}
+ });
+}
+test('dm=false sends no Appeal button even when dm-appeals is on, and every action exposes the dm option',()=>{
+ for(const name of DM_ACTIONS){const o=moderationCommands.find(c=>c.name===name).options.find(o=>o.name==='dm');assert.equal(o?.type,5,name);assert.equal(o.description,'Send the member a DM (default: on)');assert.ok(!o.required);}
+});
+test('cases get sequential per-server numbers, backfilled by creation order, and lookups accept the number or the old id',()=>{
+ const store=new Store(':memory:'),core=new Moderation(store);try{
+  store.put('g','mod-case',{id:'b',actor:'1',target:'2',action:'warn',reason:'r',created:2,state:'succeeded',events:[]});
+  store.put('g','mod-case',{id:'a',actor:'1',target:'2',action:'warn',reason:'r',created:1,state:'succeeded',events:[]});
+  store.put('h','mod-case',{id:'z',actor:'1',target:'2',action:'warn',reason:'r',created:1,state:'succeeded',events:[]});
+  assert.deepEqual(core.cases('g').map(c=>[c.id,c.number]),[['b',2],['a',1]]);assert.equal(core.cases('h')[0].number,1);
+  for(const ref of ['1','#1','case 1','Case #1','a'])assert.equal(core.get('g',ref).id,'a');
+  assert.equal(core.reserveNumber('g','new'),3);assert.equal(core.reserveNumber('g','new'),3);
+ }finally{store.close();}
+});
+test('warnings list paginates with public Previous/Next buttons limited to the invoker or staff',async()=>{
+ const h=harness();try{
+  for(let n=0;n<12;n++)h.store.put('guild','mod-case',{id:'w'+n,guild:'guild',actor:'mod',target:'target',action:'warn',reason:'R'+n,created:1000+n,state:'succeeded',events:[]});
+  await h.app.handle(h.interaction('warnings'));const out=h.outputs.at(-1);
+  assert.equal(out.embeds[0].fields.length,10);assert.match(out.embeds[0].footer.text,/^Total: 13 warnings · Page 1 of 2$/);
+  const next=out.components[0].components[1];assert.equal(next.label,'Next');assert.equal(out.components[0].components[0].disabled,true);
+  const b=h.interaction('component','');Object.assign(b,{commandName:undefined,customId:next.custom_id,isChatInputCommand:()=>false,isButton:()=>true,update:async p=>h.outputs.push(p)});
+  await h.app.handle(b);assert.equal(h.outputs.at(-1).embeds[0].fields.length,3);assert.equal(h.outputs.at(-1).flags,undefined);
  }finally{h.close();}
 });

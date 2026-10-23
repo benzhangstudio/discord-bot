@@ -37,6 +37,7 @@ const scenarios={
   'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
   'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
 };
+const textOf=p=>[p?.content,...(p?.embeds||[]).flatMap(e=>[e.title,e.description,...(e.fields||[]).flatMap(f=>[f.name,f.value]),e.footer?.text])].filter(Boolean).join('\n');
 test('every registered subcommand has a complete reply or modal scenario',()=>{
   // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
   const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','mute','untimeout','unmute','purge','warnings','modlogs','case','reason','delwarn','mod-reconcile','mod-settings','appeals','emergency','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
@@ -59,14 +60,14 @@ for(const [name,values] of Object.entries(scenarios)) {
 test('only the server owner can grant, revoke or list added access',async()=>{
   for(const sub of ['add','remove','list']) {
     const h=harness(),i=h.interaction('access',sub,{user:'345678901234567890'});
-    await h.app.dispatch(i);assert.match(h.outputs[0].content,/Only the server owner/);assert.deepEqual(h.store.list('server-a','access'),[]);h.store.close();
+    await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/Only the server owner/);assert.deepEqual(h.store.list('server-a','access'),[]);h.store.close();
   }
   const h=harness(),target='345678901234567890';
   const owner=(sub,values)=>{const i=h.interaction('access',sub,values);i.user={id:i.guild.ownerId};return i;};
   await h.app.handle(owner('add',{user:target}));assert.ok(h.store.get('server-a','access',target));
   const approved=h.interaction('help');approved.user={id:target};approved.memberPermissions=new PermissionsBitField([]);await h.app.handle(approved);assert.match(h.outputs.at(-1).embeds[0].toJSON().title,/^Help$/);
-  const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(h.outputs.at(-1).content,/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
-  await h.app.handle(owner('list',{}));assert.match(h.outputs.at(-1).content,new RegExp(target));
+  const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(textOf(h.outputs.at(-1)),/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
+  await h.app.handle(owner('list',{}));assert.match(textOf(h.outputs.at(-1)),new RegExp(`<@${target}>`));
   await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);
   const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(h.outputs.at(-1).content,/You don’t have permission/);h.store.close();
 });
@@ -327,10 +328,10 @@ test('every message-edit form opens with readable labels and valid Discord lengt
   h.store.close();
 });
 test('empty saved lists offer a next step and delivery status omits internal failure details',async()=>{
-  const h=harness();await h.app.handle(h.interaction('embed','list'));assert.match(h.outputs.at(-1).content,/No saved messages yet/);
-  await h.app.handle(h.interaction('instagram','list'));assert.match(h.outputs.at(-1).content,/No sources yet/);
+  const h=harness();await h.app.handle(h.interaction('embed','list'));assert.match(textOf(h.outputs.at(-1)),/No saved messages yet/);
+  await h.app.handle(h.interaction('instagram','list'));assert.match(textOf(h.outputs.at(-1)),/No sources yet/);
   h.store.put('server-a','feed',{id:'feed',name:'Updates',error:'XML parser schema stacktrace'});await h.app.handle(h.interaction('settings','status'));
-  assert.match(h.outputs.at(-1).content,/Updates needs attention/);assert.doesNotMatch(h.outputs.at(-1).content,/XML|schema|stacktrace/);h.store.close();
+  assert.match(textOf(h.outputs.at(-1)),/Updates needs attention/);assert.doesNotMatch(textOf(h.outputs.at(-1)),/XML|schema|stacktrace/);h.store.close();
 });
 test('/help sends its menu immediately without deferring or editing a webhook reply',async()=>{
   const h=harness();const i=h.interaction('help',null);
@@ -342,7 +343,7 @@ test('empty schedule replies immediately without a thinking response or channel 
   const h=harness();const i=h.interaction('schedule','list');
   i.deferReply=async()=>{throw Error('Must reply directly');};i.editReply=async()=>{throw Error('Must not edit a webhook');};
   i.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
-  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.match(h.outputs[0].content,/No upcoming events/);assert.match(h.outputs[0].content,/schedule add/);h.store.close();
+  await h.app.handle(i);assert.equal(i.replied,true);assert.equal(h.outputs[0].flags,undefined);assert.match(textOf(h.outputs[0]),/No upcoming events/);assert.match(textOf(h.outputs[0]),/schedule add/);h.store.close();
 });
 
 test('schedule list hides inaccessible, uncached, cancelled, completed and expired events without fetching',async()=>{
@@ -350,13 +351,13 @@ test('schedule list hides inaccessible, uncached, cancelled, completed and expir
   for(const [id,extra] of [['visible',{}],['hidden',{channel:'hidden'}],['uncached',{channel:'missing'}],['cancelled',{cancelled:true}],['complete',{complete:true}],['expired',{start:Date.now()-7200000}]])h.store.put('server-a','event',{id,title:id,channel:h.channel.id,start,duration:60,...extra});
   h.channel.guild.channels.cache.set('hidden',{type:0,permissionsFor:()=>new PermissionsBitField([])});
   h.channel.guild.channels.fetch=async()=>{throw Error('Must not fetch channels');};
-  await h.app.handle(h.interaction('schedule','list',{page:999}));const text=h.outputs[0].content;
-  assert.match(text,/visible/);assert.match(text,/page 1\/1/);assert.doesNotMatch(text,/hidden|uncached|cancelled|complete|expired/);h.store.close();
+  await h.app.handle(h.interaction('schedule','list',{page:999}));const text=textOf(h.outputs[0]);
+  assert.match(text,/visible/);assert.match(text,/Total: 1 event/);assert.doesNotMatch(text,/hidden|uncached|cancelled|complete|expired/);h.store.close();
 });
 
 test('schedule empty state also covers servers containing only inaccessible or inactive events',async()=>{
   const h=harness({visible:false});h.store.put('server-a','event',{id:'private',title:'Secret meeting',channel:h.channel.id,start:Date.now()+600000,duration:60});
-  await h.app.handle(h.interaction('schedule','list'));assert.match(h.outputs[0].content,/No upcoming events/);assert.doesNotMatch(h.outputs[0].content,/Secret/);h.store.close();
+  await h.app.handle(h.interaction('schedule','list'));assert.match(textOf(h.outputs[0]),/No upcoming events/);assert.doesNotMatch(textOf(h.outputs[0]),/Secret/);h.store.close();
 });
 
 test('production dispatcher routes Instagram setup and channel/role pickers to their saved draft',async()=>{

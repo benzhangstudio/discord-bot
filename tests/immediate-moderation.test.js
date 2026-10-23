@@ -23,11 +23,11 @@ test('real SDK: admin-target warn error is the initial public response, with zer
  const h=harness({admin:true});try{const i=h.interaction('warn');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests.length,1);assert.equal(h.requests[0].body.type,4);assert.equal(h.requests[0].body.data.flags,undefined);assert.match(h.requests[0].body.data.content,/can’t moderate server admins/);assert.equal(i.deferred,false);assert.equal(h.store.list(gid,'mod-case').length,0);}finally{h.close();}
 });
 test('real SDK: a valid warning is recorded and confirmed through one initial response with no network preflight',async()=>{
- const h=harness();try{const i=h.interaction('warn');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests.length,1);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.content,/Warning recorded for Alex/);assert.equal(i.deferred,false);assert.equal(h.store.list(gid,'mod-case').length,1);assert.equal(h.store.list(gid,'mod-case')[0].state,'succeeded');}finally{h.close();}
+ const h=harness();try{const i=h.interaction('warn');await h.app.dispatch(i);assert.equal(h.lookups,0);const replies=h.requests.filter(r=>String(r.route).includes('/interactions/'));assert.equal(replies.length,1);assert.equal(replies[0].body.type,4);assert.match(replies[0].body.data.content,/Warning recorded for Alex/);assert.equal(i.deferred,false);assert.equal(h.store.list(gid,'mod-case').length,1);assert.equal(h.store.list(gid,'mod-case')[0].state,'succeeded');}finally{h.close();}
 });
 test('real SDK: incomplete signed role data fails closed immediately instead of guessing rank or opening thinking',async()=>{
  const h=harness({missingRole:true});try{const i=h.interaction('warn');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.content,/Could not check this member/);assert.equal(i.deferred,false);assert.equal(h.store.list(gid,'mod-case').length,0);}finally{h.close();}
 });
 test('real SDK: local warnings history returns its final response without a REST preflight or deferral',async()=>{
- const h=harness();try{const i=h.interaction('warnings');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.content,/No active warnings/);assert.equal(i.deferred,false);}finally{h.close();}
+ const h=harness();try{const i=h.interaction('warnings');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.embeds[0].description,/Alex has no warnings\./);assert.equal(i.deferred,false);}finally{h.close();}
 });

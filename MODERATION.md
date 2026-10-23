@@ -34,7 +34,26 @@ Startup registers familiar standalone moderation commands including `/ban`, `/ki
 
 Member actions protect the owner, bot accounts, administrators, configured moderators, the invoking moderator, and members at or above Number One's role. Non-owner moderators also cannot act on peers or higher roles. Actual Discord mutations refresh permissions, owner and role hierarchy during preflight. Local warnings, notes and case-history operations use signed interaction and complete guild-role data, finishing through one initial reply without unnecessary REST lookups or deferral. Missing role data fails closed. Warnings and case notes require a reason; common sanctions accept an optional reason and record “No reason provided” if omitted. `/unmute` aliases `/untimeout`. Stored/rendered text cannot trigger mentions. Moderation and appeal replies are public in the channel where staff run the command (use staff channels); the appeal panel is intentionally posted publicly to its selected channel.
 
-Cases use interaction/message IDs, scoped to each server. A reservation is stored before a Discord mutation. Repeated interaction IDs cannot repeat that mutation. Confirmed outcomes and their log-outbox events are committed together. The underlying SQLite database remains editable by its operator; this is an operational audit history, not tamper-proof forensic storage.
+### Member DMs (`dm` option)
+
+`/ban`, `/kick`, `/warn`, `/timeout`/`/mute`, `/untimeout`/`/unmute` and `/unban` take an optional `dm` boolean ("Send the member a DM (default: on)"). The default comes from the server's **Member DMs** setting on the dashboard Moderation page (or `/mod-settings set dm-members`).
+
+- `dm:false`: no DM and no Appeal button.
+- `dm:true`: the DM states the action, reason and `Case #N`. Ban, kick, timeout and warning DMs include an Appeal button when the dm-appeals setting is on. Ban and kick DMs are sent **before** the action, because the member can no longer be reached afterwards.
+- Unban DMs only arrive if the user still shares another server with the bot. Otherwise the DM is recorded as failed and the unban still completes.
+- The public confirmation embed has a **DM** field: `Sent`, `Not sent (disabled)` or `Failed (DMs closed)`.
+
+### Output and case numbers
+
+Lists (`/warnings`, `/modlogs`, `/appeals list`) and details (`/case`, `/appeals show`) are blurple embeds:
+- One field per case, headed `Case #12 · Warn`, with the reason, the moderator as a mention, and a Discord timestamp.
+- A `Total: N` footer.
+- Public Previous/Next buttons above 10 entries. Only the invoker or staff can press them.
+- An empty state such as “Alex has no warnings.”
+
+Cases are numbered sequentially per server (`Case #12`). Existing cases are backfilled in creation order the first time a server's cases are read. `/case`, `/reason`, `/delwarn` and appeals accept the number (`12`, `#12`) or the old ID. Audit-log reasons, DMs, appeals and the dashboard use the number.
+
+Internally, cases use interaction/message IDs, scoped to each server. A reservation is stored before a Discord mutation. Repeated interaction IDs cannot repeat that mutation. Confirmed outcomes and their log-outbox events are committed together. The underlying SQLite database remains editable by its operator; this is an operational audit history, not tamper-proof forensic storage.
 
 ## Automod
 
@@ -48,7 +67,7 @@ Moderation appeals are separate from age verification: `mod-appeal` records live
 
 There are two appeal paths:
 
-- **Members still in the server** use the `/appeals panel` message: **Appeal a case** (case ID + statement) and **Check appeal status**.
+- **Members still in the server** use the `/appeals panel` message: **Appeal a case** (case number + statement) and **Check appeal status**.
 - **Banned, kicked or timed-out members** receive a DM *before* the action is applied (Discord does not let a bot open a DM with someone who shares no server). The DM states the server, action, reason and case number and has an **Appeal** button. The button's custom ID carries the server and case; on click and on submit the bot checks that the clicking user is the case's target, the case completed, and no appeal exists for it. The modal only asks for the statement. Buttons are handled statelessly, so they keep working after restarts and after the member has left the server. `dm-appeals:false` in `/mod-settings set` removes the button (the notice is still sent).
 - If the DM fails (closed DMs, error 50007, timeout), the sanction still proceeds, the case records `dm: failed`, and the moderator sees: "Could not DM the member. If they contact staff another way, use /appeals record." Staff then enter the appeal with `/appeals record`.
 
