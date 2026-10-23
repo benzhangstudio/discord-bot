@@ -24,7 +24,7 @@ async function start(t,env={}){
 
 test('dashboard pages: /, /dashboard deep links and legacy /verify?guild= links serve the app shell',async t=>{
   const {c}=await start(t);
-  for(const path of ['/','/dashboard','/dashboard/'+A,'/dashboard/'+A+'/moderation','/verify','/verify?guild='+A]){const r=await fetch(c.origin+path);assert.equal(r.status,200,path);}
+  for(const path of ['/','/dashboard','/dashboard/'+A,'/dashboard/'+A+'/moderation','/verify','/verify?guild='+A]){const r=await fetch(c.origin+path);assert.equal(r.status,200,path);assert.match(await r.text(),/id="app"/);}
   assert.equal((await fetch(c.origin+'/dashboard/not-a-guild')).status,401);
   for(const file of ['/dashboard.js','/app.js','/style.css'])assert.equal((await fetch(c.origin+file)).status,200);
 });

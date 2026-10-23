@@ -19,7 +19,7 @@ async function freePort(){const s=createServer();await new Promise(r=>s.listen(0
 test('hosted listener serves public pages; missing application secret keeps APIs closed',async t=>{
   const dir=mkdtempSync(join(tmpdir(),'number-one-web-')),port=await freePort();const service=await startHostedDashboard({AGE_PORT:String(port),AGE_DB:join(dir,'age.sqlite')});t.after(async()=>{await service.stop();rmSync(dir,{recursive:true});});
   const call=(path,options={})=>new Promise((done,reject)=>{const req=request({host:'127.0.0.1',port,path,method:options.method||'GET',headers:{Host:'number-one.wispbyte.app','X-Forwarded-Proto':'https',...options.headers}},res=>{let body='';res.on('data',c=>body+=c);res.on('end',()=>done({status:res.statusCode,text:async()=>body}));});req.on('error',reject);req.end(options.body);});
-  const home=await call('/');assert.equal(home.status,200);assert.match(await home.text(),/href="\/verify"/);assert.equal((await call('/verify')).status,200);assert.equal((await call('/style.css')).status,200);
+  const home=await call('/');assert.equal(home.status,200);assert.match(await home.text(),/id="app"/);assert.equal((await call('/verify')).status,200);assert.equal((await call('/style.css')).status,200);
   for(const path of ['/api/session','/api/guilds/111111111111111111/queue','/auth/login'])assert.equal((await call(path)).status,503);
   assert.equal((await call('/api/demo-login',{method:'POST',body:'{"identity":"owner"}'})).status,503);assert.equal((await call('/',{headers:{'X-Forwarded-Proto':'http'}})).status,426);assert.equal((await call('/',{headers:{Host:'attacker.example'}})).status,400);
 });
