@@ -1,6 +1,6 @@
 # Number One Verification: public multi-server Beta
 
-Members, server owners, managers and reviewers use the same public site: **https://number-one.wispbyte.app/verify**. They need a Discord account, not GitHub, Wispbyte, environment variables or developer access. The bot operator maintains the application credentials once. Every community configures its own roles through the website.
+Members, server owners, managers and reviewers use the same public site: **https://number-one.wispbyte.app/verify** (now the Verification plugin of the dashboard at `/dashboard/SERVER_ID/verification`; the old URLs still work). They need a Discord account, not GitHub, Wispbyte, environment variables or developer access. The bot operator maintains the application credentials once. Every community configures its own roles through the website.
 
 Staff can use `/portal open` for the current server's shareable member link, or `/portal setup` for its website settings. These global slash commands require the existing bot staff permissions and do not require the operator to enable each community. Website authorization is checked separately.
 

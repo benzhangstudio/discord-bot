@@ -46,7 +46,7 @@ With a nonempty client secret present, hosted startup automatically chooses Disc
 
 1. Wait for checks on main to pass, then manually restart/refresh Wispbyte using the established auto-update-on-start workflow. Publishing GitHub code does not itself restart Wispbyte.
 2. Leave startup at `src/index.js`. Look for `Number One dashboard listening on 0.0.0.0:16243; public verification synthetic-only with Discord sign-in.` and the normal successful bot startup. A locked message means the application secret is missing or maintenance mode is enabled. A different port means check `SERVER_PORT` or privately set `AGE_PORT=16243` to match the subdomain allocation.
-3. Open `https://number-one.wispbyte.app/verify`. Sign in with Discord, approve access to your server list, and choose a community. If Number One is absent, a manager can use Add Number One to install it there.
+3. Open `https://number-one.wispbyte.app/dashboard` (or `/verify`). No new environment variables are needed for the dashboard. Sign in with Discord, approve access to your server list, and choose a community. If Number One is absent, a manager can use Add Number One to install it there.
 4. On that website, choose the community's reviewer and test verified roles, acknowledge synthetic-only testing, and enable its Beta. The bot needs Manage Roles and a role above the test verified role. Use a test role that does not unlock age-restricted content; synthetic cases cannot prove real age.
 5. Share the generated member link. Use a second member/reviewer account to test claims, decisions, role grant, closed-DM behavior and privacy requests. Repeat in another community and confirm data/settings remain separate. Removing membership/reviewer rights must revoke subsequent access.
 
