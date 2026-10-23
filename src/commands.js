@@ -2,7 +2,7 @@ import {moderationCommands} from './moderation-commands.js';
 // Discord application command JSON.
 const str = (name, description, required = false, extra = {}) => ({type:3,name,description,required,...extra});
 const integer = (name, description, min, max) => ({type:4,name,description,min_value:min,max_value:max});
-const channel = (required = false) => ({type:7,name:'channel',description:'Choose where Number One should post',required,channel_types:[0,5]});
+const channel = (required = false) => ({type:7,name:'channel',description:'Channel to post in',required,channel_types:[0,5]});
 const id = () => str('id','Start typing a name, then choose from the suggestions',true,{autocomplete:true});
 const sub = (name,description,options=[]) => ({type:1,name,description,options});
 const labels={event:'Community event','staff-meeting':'Staff meeting',rotation:'Staff rotation',none:'One time only',daily:'Every day',weekly:'Every week'};
@@ -15,16 +15,16 @@ export const commands = [
     sub('remove','Server owner: remove a member’s added access',[{type:6,name:'user',description:'Choose the person to remove',required:true}]),
     sub('list','Server owner: list approved members',[integer('page','Page number',1,100)])
   ]},
-  {name:'help',description:'Open the help menu and find a quick walkthrough'},
-  {name:'portal',description:'Open this server’s public verification portal',options:[
-    sub('open','Get this server’s portal link to open or share with members'),
-    sub('setup','Open website setup for this server’s reviewer and Beta test roles')
+  {name:'help',description:'Show available commands'},
+  {name:'portal',description:'Open this server’s web dashboard',options:[
+    sub('open','Get the dashboard link for this server'),
+    sub('setup','Open dashboard setup for this server')
   ]},
-  {name:'settings',description:'Choose your server’s timezone and check delivery status',default_member_permissions:'32',options:[
+  {name:'settings',description:'Server timezone and delivery status',default_member_permissions:'32',options:[
     sub('view','See your server’s current settings'),sub('timezone','Choose the timezone for new events',[str('zone','Type a city or choose a timezone, such as New York or Seoul',true,{autocomplete:true})]),
     sub('status','Check whether reminders and weekly posts need attention')
   ]},
-  {name:'embed',description:'Create and share announcements with pictures, links, and colors',options:[
+  {name:'embed',description:'Create and send embed messages',options:[
     sub('create','Start a new styled message',[str('name','Give your saved message a name, such as Welcome',true,{max_length:80})]),
     sub('edit','Keep working on a saved message',[id()]),sub('list','See your saved messages'),sub('delete','Delete a saved message; posted copies stay in their channels',[id()]),
     sub('remove-section','Remove a section from your message',[id(),{...integer('number','Which section? Count from the top, starting at 1',1,25),required:true}]),

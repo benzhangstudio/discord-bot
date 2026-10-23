@@ -103,8 +103,8 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  async function emergency(i,sub,actor,bot){
   allowed(i,actor,P.ManageChannels);
-  if(sub==='status')return respond(i,payload(store.list(i.guildId,'mod-lock').map(l=>`${l.id}: ${l.state==='active'?'Locked':'Needs review'}`).join('\n')||'Critical Emergency Mode is inactive.'));
-  must(owner(i)||has(actor,P.Administrator),'Only the owner or an administrator can change Critical Emergency Mode.');
+  if(sub==='status')return respond(i,payload(store.list(i.guildId,'mod-lock').map(l=>`${l.id}: ${l.state==='active'?'Locked':'Needs review'}`).join('\n')||'Emergency lockdown is off.'));
+  must(owner(i)||has(actor,P.Administrator),'Only the owner or an administrator can change emergency lockdown.');
   const channel=await read(i.guild.channels.fetch(i.options.getChannel('channel').id));
   must(channel&&[0,5].includes(channel.type),'Choose a text or announcement channel.');
   must(channel.permissionsFor(bot).has([P.ManageRoles,P.ViewChannel]),'Number One needs Manage Roles and View Channel here.');
@@ -140,7 +140,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
       const originalA=BigInt(o.allow)&writing,originalD=BigInt(o.deny)&writing;
       must(a===0n&&d===writing||a===originalA&&d===originalD,'Writing permissions changed during lockdown. Resolve the conflict manually before retrying.');
       const permissions={};for(const name of ['SendMessages','SendMessagesInThreads','CreatePublicThreads','CreatePrivateThreads','AddReactions'])permissions[name]=(BigInt(o.allow)&P[name])!==0n?true:(BigInt(o.deny)&P[name])!==0n?false:null;
-      await read(fresh.permissionOverwrites.edit(o.id,permissions,{type:o.type,reason:'Restore Critical Emergency Mode snapshot'}));
+      await read(fresh.permissionOverwrites.edit(o.id,permissions,{type:o.type,reason:'Restore emergency lockdown snapshot'}));
       assertActive();
       o.restored=true;store.put(i.guildId,'mod-lock',lock);
      }

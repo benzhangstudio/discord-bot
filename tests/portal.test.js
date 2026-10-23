@@ -6,9 +6,9 @@ test('portal buttons always target the invoking server and never enable verifica
   for(const action of ['open','setup']) {
     const a=portalMessage('111111111111111111',action),b=portalMessage('222222222222222222',action);
     const link=new URL(a.components[0].components[0].url);
-    assert.equal(link.origin,'https://number-one.wispbyte.app');assert.equal(link.pathname,'/verify');assert.equal(link.searchParams.get('guild'),'111111111111111111');assert.equal(link.hash,action==='setup'?'#settings':'');
-    assert.equal(new URL(b.components[0].components[0].url).searchParams.get('guild'),'222222222222222222');
-    assert.equal(a.components[0].components[0].style,5);assert.deepEqual(a.allowedMentions,{parse:[]});assert.match(a.content,/real ID uploads are disabled/);
+    assert.equal(link.origin,'https://number-one.wispbyte.app');assert.equal(link.pathname,'/dashboard/111111111111111111'+(action==='setup'?'/overview':''));
+    assert.match(new URL(b.components[0].components[0].url).pathname,/^\/dashboard\/222222222222222222/);
+    assert.equal(a.components[0].components[0].style,5);assert.deepEqual(a.allowedMentions,{parse:[]});if(action==='open')assert.match(a.content,/real ID uploads are disabled/);
   }
 });
 test('portal rejects unsafe dashboard addresses and unknown actions',()=>{

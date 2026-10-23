@@ -41,7 +41,7 @@ export const moderationCommands=[
   sub('list','List open appeals',[number('page','Page number',1,10000,false)]),sub('show','Read an appeal and its decision',[text('appeal','Appeal ID')]),
   sub('review','Decide an appeal; Discord sanctions are reversed separately',[text('appeal','Appeal ID'),choice('decision','Decision',['accepted','denied']),reason]),
  ]},
- {name:'emergency',description:'Critical Emergency Mode: reversible channel lockdown',options:[
+ {name:'emergency',description:'Emergency lockdown: lock and restore channels',options:[
   sub('on','Lock writing in one channel; repeat for additional channels',[channel,reason]),
   sub('off','Restore saved writing permissions in one channel',[channel,reason]),
   sub('status','Show active locks and uncertain operations'),

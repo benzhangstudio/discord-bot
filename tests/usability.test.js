@@ -28,7 +28,7 @@ test('timezone suggestions accept city names and keep timezone changes staff-onl
 });
 test('dates with ordinary spaces and named colors work without special codes',()=>{
   assert.equal(parseTime('2027-01-15 19:00','America/New_York'),parseTime('2027-01-15T19:00','America/New_York'));
-  assert.equal(parseColor('pink'),0xe5a1b3);assert.equal(parseColor('BLUE'),0x3498db);assert.equal(parseColor('#E5A1B3'),0xe5a1b3);assert.equal(parseColor('black'),0);
+  assert.equal(parseColor('pink'),0xe5a1b3);assert.equal(parseColor('BLUE'),0x3498db);assert.equal(parseColor('blurple'),0x5865f2);assert.equal(parseColor('#E5A1B3'),0xe5a1b3);assert.equal(parseColor('black'),0);
   assert.throws(()=>parseColor('unknown'),/Choose a color/);
 });
 test('saved-item options use meaningful names and descriptions avoid backend terminology',()=>{

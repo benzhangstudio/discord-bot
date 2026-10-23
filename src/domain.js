@@ -27,11 +27,11 @@ export function rollForward(event, now = Date.now()) {
 }
 export function webUrl(value) {let u;try{u=new URL(value);}catch{throw new UserError('Paste a full web link starting with https://.');}if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password) throw new UserError('Use a web link starting with https://, without a username or password in it.'); return u.href;}
 export function parseColor(value) {
-  const colors={pink:0xe5a1b3,purple:0x9b59b6,blue:0x3498db,green:0x2ecc71,gold:0xf1c40f,red:0xe74c3c,orange:0xe67e22,white:0xffffff,black:0x000000};
+  const colors={blurple:0x5865f2,pink:0xe5a1b3,purple:0x9b59b6,blue:0x3498db,green:0x2ecc71,gold:0xf1c40f,red:0xe74c3c,orange:0xe67e22,white:0xffffff,black:0x000000};
   const input=value.toLowerCase().replace(/^#/,'');
   if(Object.hasOwn(colors,input))return colors[input];
   if(/^[\da-f]{6}$/i.test(input))return parseInt(input,16);
-  throw new UserError('Choose a color such as pink, blue, or purple, or enter a six-character color code such as E5A1B3.');
+  throw new UserError('Choose a color name such as blue or green, or a six-character hex code such as 5865F2.');
 }
 export function validateEmbed(draft) {
   const e = draft.embed;

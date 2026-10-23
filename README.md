@@ -32,7 +32,7 @@ Normal successes and actionable errors appear publicly in the channel. Error ref
 
 `/portal open` replies publicly with a button for the current server's member portal, ready to share. `/portal setup` opens that server's website setup. Both are global commands, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an owner-approved command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied privately before options or data access.
 
-Each community's owner/manager signs in with Discord and chooses reviewer and Beta test roles on the website. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Website reviewer/configuration rights are checked independently; an owner-granted slash-command permission does not grant website management. Members use the shared link without needing slash-command access. Real-ID uploads remain disabled.
+Each community's owner/manager signs in with Discord and opens the web dashboard (`/portal open` or `/dashboard`) and configures plugins and verification roles. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Website reviewer/configuration rights are checked independently; an owner-granted slash-command permission does not grant website management. Members use the shared link without needing slash-command access. Real-ID uploads remain disabled.
 
 ## Embed builder
 

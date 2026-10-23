@@ -69,7 +69,7 @@ function editor(d,i) {
   const buttons=[['form','Edit form'],['media','Pictures & links'],['field','Add or edit a section'],['branding','Author & small print'],['clearfields','Clear sections']];
   const row=(...components)=>({type:1,components});
   const select=(type,action,placeholder,value,extra={})=>({type,custom_id:`embed:${d.id}:${action}`,placeholder,min_values:action==='channel'?1:0,max_values:1,...extra,...(value?{default_values:[{id:value,type:{8:'channel',6:'role',5:'user'}[type]}]}:{})});
-  return {content:`**${d.name}** · Saved automatically${d.updatedAt?` <t:${Math.floor(d.updatedAt/1000)}:R>`:''}\nUse **Edit form** for the main details. Choose a channel and optional notifications below, then **Publish**. **Save & close** keeps your draft; reopen it anytime with /embed edit. Publishing keeps the saved copy.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the controls below to create your announcement.',color:0xe5a1b3})],components:[
+  return {content:`**${d.name}** · Saved automatically${d.updatedAt?` <t:${Math.floor(d.updatedAt/1000)}:R>`:''}\nUse **Edit form** for the main details. Choose a channel and optional notifications below, then **Publish**. **Save & close** keeps your draft; reopen it anytime with /embed edit. Publishing keeps the saved copy.`,embeds:[new EmbedBuilder(Object.keys(d.embed).length?d.embed:{description:'Use the controls below to create your announcement.',color:0x5865f2})],components:[
     row(...buttons.map(([action,label])=>({type:2,style:2,label,custom_id:`embed:${d.id}:${action}`}))),
     row(select(8,'channel','Choose where to publish',d.sendChannel,{channel_types:[0,5]})),
     row(select(6,'role','Optional: notify a role (clear to disable)',d.sendRole)),
@@ -80,21 +80,21 @@ function editor(d,i) {
 function editModal(d,action) {
   const e=d.embed;
   const fields={
-    form:[['name','Saved draft name',d.name,80,true],['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color, e.g. pink or E5A1B3',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
-    text:[['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color name or code, e.g. pink or E5A1B3',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
+    form:[['name','Saved draft name',d.name,80,true],['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color, e.g. blue or 5865F2',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
+    text:[['title','Title',e.title,256],['description','Main text (you can mention channels)',e.description,4000],['color','Color name or code, e.g. blue or 5865F2',e.color?.toString(16).padStart(6,'0'),20],['content','Optional message above your announcement',d.content,1800]],
     media:[['url','Title link',e.url,500],['image','Main picture link',e.image?.url,500],['thumbnail','Small picture link',e.thumbnail?.url,500]],
     field:[['name','Section heading','',256,true],['value','Section text','',1024,true],['inline','Place beside other sections? yes or no','no',3],['number','Section to replace (leave blank to add one)','',2]],
     branding:[['author','Author name',e.author?.name,256],['authorurl','Author link',e.author?.url,500],['icon','Author picture link',e.author?.icon_url,500],['footer','Small text at the bottom',e.footer?.text,2048]]
   };
-  return modal(`embedform:${d.id}:${action}`,'Number One · Edit message',fields[action]);
+  return modal(`embedform:${d.id}:${action}`,'Edit message',fields[action]);
 }
 function eventView(e) {
   const counts=Object.values(e.rsvps || {}).reduce((a,v)=>(a[v]=(a[v]||0)+1,a),{});
-  return {embeds:[new EmbedBuilder().setColor(0xe5a1b3).setTitle(e.title).setDescription((e.description || 'No description.').slice(0,4096)).addFields(
+  return {embeds:[new EmbedBuilder().setColor(0x5865f2).setTitle(e.title).setDescription((e.description || 'No description.').slice(0,4096)).addFields(
     {name:'When',value:`<t:${Math.floor(e.start/1000)}:F>\n${timezoneLabel(e.zone)} · ${e.duration} minutes`},
     {name:'Details',value:`${{event:'Community event','staff-meeting':'Staff meeting',rotation:'Staff rotation'}[e.kind]||'Event'} · ${{none:'One time only',daily:'Every day',weekly:'Every week'}[e.repeat]||'One time only'}\n<#${e.channel}>${e.location?'\n'+e.location:''}${rotationMember(e)?'\nOn duty: <@'+rotationMember(e)+'>':''}`},
     {name:'Who’s coming?',value:`Going: ${counts.going||0} · Maybe: ${counts.maybe||0} · Can’t make it: ${counts.declined||0}`}
-  ).setFooter({text:`Number One · ${e.cancelled?'Cancelled':e.complete?'Finished':'Open /schedule show to see the latest replies'}`})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
+  ).setFooter({text:e.cancelled?'Cancelled':e.complete?'Finished':'Use /schedule show for the latest replies'})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
 const accessCommands=createAccessCommands(store);
@@ -285,7 +285,7 @@ async function handle(i) {
     needStaff(i);
     if(sub==='create') {
       if(store.list(i.guildId,'embed').length>=100)throw new UserError('You already have 100 saved messages. Delete one you no longer need before making another.');
-      const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0xe5a1b3},content:''});
+      const d=saveDraft(i,{name:opt.getString('name'),owner:i.user.id,embed:{description:'Your announcement goes here. Use the controls below to make it yours.',color:0x5865f2},content:''});
       return showForm(i,editModal(d,'form'));
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,reply(saved.length?(saved.map(d=>`• **${d.name}**`).join('\n')+'\n\nUse /embed edit or /embed send and choose a message by name.').slice(0,1900):'No saved messages yet. Start your first one with /embed create.'));}
@@ -328,7 +328,7 @@ async function handle(i) {
       store.put(i.guildId,'event',e);return respond(i,eventView(e));
     }
     if(sub==='cancel') {e.cancelled=true;store.put(i.guildId,'event',e);return respond(i,reply('Event cancelled. Future repeats and reminders have stopped.'));}
-    if(sub==='edit') {const local=DateTime.fromMillis(e.start,{zone:e.zone});const startText=local.toFormat('yyyy-MM-dd HH:mm')+(local.getPossibleOffsets().length>1?local.toFormat('ZZ'):'');return showForm(i,modal(`eventform:${e.id}:edit`,'Number One · Edit event',[
+    if(sub==='edit') {const local=DateTime.fromMillis(e.start,{zone:e.zone});const startText=local.toFormat('yyyy-MM-dd HH:mm')+(local.getPossibleOffsets().length>1?local.toFormat('ZZ'):'');return showForm(i,modal(`eventform:${e.id}:edit`,'Edit event',[
       ['title','Title',e.title,150,true],['start',`Start · ${timezoneLabel(e.zone)}`.slice(0,45),startText,40,true],['description','Description',e.description,2000],['location','Location',e.location,300]
     ]));}
   }

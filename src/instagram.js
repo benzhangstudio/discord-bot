@@ -27,7 +27,7 @@ export function scheduleFields(values) {
 }
 export function instagramPanel(d,sources,notice='') {
   const prefix=`instagram:${d.id}:`;
-  return {content:notice,embeds:[{color:0xe5a1b3,title:'Instagram · Set up posts',description:'Choose a source, channel, and delivery schedule below. Changes take effect when you choose **Save**. Each server manages its own setup—no bot-owner approval is needed.',fields:[
+  return {content:notice,embeds:[{color:0x5865f2,title:'Instagram setup',description:'Choose a source, channel, and delivery schedule below. Changes take effect when you choose **Save**.',fields:[
     {name:'Source',value:clean(d.name||'Not added yet')},
     {name:'Post in',value:d.channel?`<#${d.channel}>`:'Choose a channel below',inline:true},
     {name:'Notify',value:d.role?`<@&${d.role}>`:'No role notification',inline:true},
