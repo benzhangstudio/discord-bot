@@ -1,4 +1,4 @@
-import {MessageFlags,PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
+import {AuditLogEvent,MessageFlags,PermissionFlagsBits as P,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder} from 'discord.js';
 import {Moderation,clean} from './moderation-core.js';
 import {moderationCommands,moderationAction} from './moderation-commands.js';
 import {UserError} from './user-error.js';
@@ -6,6 +6,7 @@ import {acknowledge,respond,withDeadline,updateResponse} from './responses.js';
 import {caseListPayload,caseEmbedFull,appealListPayload,appealEmbed} from './mod-format.js';
 import {publicErrorMessage,UNCERTAIN_ACTION} from './public-errors.js';
 import {errorPayload} from './error-embed.js';
+import {modlogConfig,modlogEmbed,eventKey,missingPermissions,enabledList} from './modlog.js';
 import {readProof,addProof,proofItems,proofSummary,firstImage,PROOF} from './mod-proof.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
 const has=(m,p)=>!!m?.permissions?.has(p);
@@ -90,30 +91,49 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   must(completeMember(i,actor),'Member role details are unavailable.');
   return {actor,bot};
  }
+ // Mod Log delivery. The row is claimed synchronously ('sending') before any await, so the
+ // immediate flush and the maintenance tick never post the same entry twice, and an
+ // ambiguous send is never blindly retried.
  async function log(guild,c,row){
-  const cfg=core.config(guild.id);
-  if(!cfg.logChannel||row?.state!=='queued')return;
+  if(row?.state!=='queued')return;
+  const cfg=modlogConfig(store,guild.id),key=row.v===2?eventKey(c,row.event?.action):null;
+  if(!key||!cfg.enabled||cfg.events[key]===false){store.put(guild.id,'mod-log',{...row,state:'skipped'});return;}
+  store.put(guild.id,'mod-log',{...row,state:'sending'});
+  let sending=false;
   try{
-   const ch=await read(guild.channels.fetch(cfg.logChannel));
-   must(ch&&![10,11,12].includes(ch.type)&&!ch.permissionsFor(guild.roles.everyone)?.has(P.ViewChannel),'Log channel must remain hidden from everyone.');
-   // A claimed log is never blindly retried after an ambiguous send.
-   store.put(guild.id,'mod-log',{...row,state:'sending'});
-   // Screenshots not yet stored are re-uploaded here: Discord CDN links from the original
-   // interaction expire, the copy in the log message is the durable record.
-   // Without Attach Files the log still posts, listing the original (expiring) screenshot links.
-   const canAttach=ch.permissionsFor?.(guild.members?.me)?.has?.(P.AttachFiles)!==false;
+   const ch=await read(guild.channels.fetch(cfg.channel));
+   const me=guild.members?.me;
+   const missing=ch&&[0,5].includes(ch.type)?missingPermissions(ch,me).filter(n=>n!=='Attach Files'):['View Channel'];
+   if(missing.length){store.put(guild.id,'mod-log',{...row,state:'failed',missing});return;}
+   // Screenshots not yet stored are re-uploaded: the original interaction's CDN links expire,
+   // the copy in the mod log message is the durable record. Without Attach Files the entry
+   // still posts, listing the original (expiring) links.
+   const canAttach=!missingPermissions(ch,me).includes('Attach Files');
    const fresh=canAttach?proofItems(c).filter(p=>p.type==='image'&&!p.stored):[];
    const files=fresh.map(p=>({attachment:p.url,name:p.name}));
-   const base=row.event?{title:ACTION_TITLES[row.event.action]||ACTION_TITLES[c.action],actor:row.event.actor,reason:row.event.reason}:{};
-   const sent=await read(ch.send({embeds:[caseEmbed(c,{...base,...(files.length?{image:`attachment://${files[0].name}`}:{})})],...(files.length?{files}:{}),allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
-   store.put(guild.id,'mod-log',{...row,state:'sent'});
+   const tag=client.users?.cache?.get?.(c.target)?.username,actorTag=client.users?.cache?.get?.(row.event?.action==='succeeded'?c.actor:row.event?.actor)?.username;
+   sending=true;
+   const sent=await read(ch.send({embeds:[modlogEmbed(c,row.event,{tag,actorTag,...(files.length?{image:`attachment://${files[0].name}`}:{})})],...(files.length?{files}:{}),allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
+   store.put(guild.id,'mod-log',{...row,state:'sent',url:sent?.url||null});
+   const latest=store.get(guild.id,'mod-case',c.id)||c;let changed=false;
+   if(sent?.url&&row.event?.action==='succeeded'&&!latest.logMessage){latest.logMessage=sent.url;changed=true;}
    if(fresh.length&&sent){
-    const latest=store.get(guild.id,'mod-case',c.id)||c,byName=new Map([...(sent.attachments?.values?.()||[])].map(a=>[a.name,a]));
-    for(const p of proofItems(latest))if(p.type==='image'&&!p.stored&&fresh.some(f=>f.url===p.url)){const a=byName.get(p.name);p.stored=true;if(a?.url)p.storedUrl=a.url;if(sent.url)p.logMessage=sent.url;}
-    store.put(guild.id,'mod-case',latest);
+    const byName=new Map([...(sent.attachments?.values?.()||[])].map(a=>[a.name,a]));
+    for(const p of proofItems(latest))if(p.type==='image'&&!p.stored&&fresh.some(f=>f.url===p.url)){const a=byName.get(p.name);p.stored=true;if(a?.url)p.storedUrl=a.url;if(sent.url)p.logMessage=sent.url;changed=true;}
    }
-  }catch{const current=store.get(guild.id,'mod-log',row.id);store.put(guild.id,'mod-log',{...row,state:current?.state==='sending'?'uncertain':'queued'});}
+   if(changed)store.put(guild.id,'mod-case',latest);
+  }catch(error){
+   store.put(guild.id,'mod-log',{...row,state:sending?'uncertain':'queued'});
+   console.warn(`Mod log delivery ${sending?'uncertain':'deferred'} (${error.status||error.code||error.name}); no automatic resend.`);
+  }
  }
+ const flushing=new Set();
+ async function flush(guild){
+  if(!guild||flushing.has(guild.id))return;flushing.add(guild.id);
+  try{for(const row of store.list(guild.id,'mod-log').filter(r=>r.state==='queued').slice(0,10)){const c=store.get(guild.id,'mod-case',row.caseId);if(c)await log(guild,c,row);else store.put(guild.id,'mod-log',{...row,state:'skipped'});}}
+  finally{flushing.delete(guild.id);}
+ }
+ const flushSoon=guild=>void Promise.resolve().then(()=>flush(guild)).catch(()=>console.warn('Mod log flush failed.'));
  function caseOf(g,id){try{return core.get(g,id);}catch{return null;}}
  function appealFor(g,c){return store.list(g,'mod-appeal').filter(a=>a.caseId===c.id).sort((a,b)=>b.created-a.created)[0];}
  function appealsPayload(i,page){
@@ -139,15 +159,17 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   const result=lastAction==='proof'?'Proof added.':lastAction==='void'?'Warning removed.':lastAction==='note'?'Case note saved.':({ban:`Banned ${name}.`,unban:`Unbanned ${name}.`,kick:`Kicked ${name}.`,warn:`Warning recorded for ${name}.`,timeout:`Timed out ${name}${c.details?.until?' until '+ts(c.details.until):''}.`,untimeout:`Removed ${name}’s timeout.`,purge:`Deleted ${c.details?.deleted??0} messages.`,'emergency-on':'Channel locked.','emergency-off':'Channel unlocked.',configure:'Moderation settings saved.'}[c.action]||'Case updated.');
   const last=c.events.at(-1);
   const dmNote=c.details?.dm==='failed'&&c.state==='succeeded'?'\nCould not DM the member. If they contact staff another way, use /appeals record.':'';
-  const proofNote=i.proof?.some(p=>p.type==='image')&&!core.config(i.guildId).logChannel?'\nNo moderation log channel is set, so screenshots are kept only as the original upload link, which Discord expires. Set a log channel on the dashboard to store them.':'';
+  const proofNote=i.proof?.some(p=>p.type==='image')&&!modlogConfig(store,i.guildId).enabled?'\nThe mod log is off, so screenshots are kept only as the original upload link, which Discord expires. Set up the mod log on the dashboard to store them.':'';
+  flushSoon(i.guild);
   await respond(i,{content:result+dmNote+proofNote,embeds:[caseEmbed(c,{title:ACTION_TITLES[lastAction]||ACTION_TITLES[c.action],actor:last?.actor||c.actor,reason:last?.reason||c.reason})],allowedMentions:{parse:[]}});
  }
+ function modlogLine(g){const m=modlogConfig(store,g);return `Mod log: ${m.enabled?`<#${m.channel}> (${enabledList(m)})`:'Off'}`;}
  // Read-only summary for /settings view. Moderation settings are edited on the dashboard.
  function settingsSummary(guildId){
   const cfg=core.config(guildId);
-  const logIssues=store.list(guildId,'mod-log').filter(l=>l.state!=='sent').length;
+  const logIssues=store.list(guildId,'mod-log').filter(l=>l.v===2&&['failed','uncertain'].includes(l.state)).length;
   const review=core.cases(guildId).filter(c=>['pending','uncertain'].includes(c.state)).length;
-  return [`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Protected role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,`Log channel: ${cfg.logChannel?'<#'+cfg.logChannel+'>':'Not set'}`,`Automod: ${cfg.automod?'On':'Off'} · Invite filter: ${cfg.blockInvites?'On':'Off'}`,`DM members by default: ${cfg.dmMembers===false?'Off':'On'}`,`Appeal button in DMs: ${cfg.dmAppeals===false?'Off':'On'} · Appeal contact: ${cfg.appealContact?clean(cfg.appealContact):'Not set'}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some moderation logs haven’t been confirmed. Check the log channel.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n');
+  return [`Moderator role: ${cfg.modRole?'<@&'+cfg.modRole+'>':'Not set'}`,`Protected role: ${cfg.privacyRole?'<@&'+cfg.privacyRole+'>':'Not set'}`,modlogLine(guildId),`Automod: ${cfg.automod?'On':'Off'} · Invite filter: ${cfg.blockInvites?'On':'Off'}`,`DM members by default: ${cfg.dmMembers===false?'Off':'On'}`,`Appeal button in DMs: ${cfg.dmAppeals===false?'Off':'On'} · Appeal contact: ${cfg.appealContact?clean(cfg.appealContact):'Not set'}`,`Case retention: ${cfg.retentionDays} days`,...(logIssues?['Some mod log entries weren’t posted. Check the mod log channel’s permissions on the dashboard.']:[]),...(review?[`${review} moderation ${review===1?'case needs':'cases need'} review.`]:[])].join('\n');
  }
  async function emergency(i,sub,actor,bot){
   allowed(i,actor,P.ManageChannels);
@@ -294,7 +316,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    }else if(sub==='show'){
     const a=store.get(i.guildId,'mod-appeal',i.options.getString('appeal'));must(a,'Appeal not found in this server.');
     await respond(i,{embeds:[appealEmbed(a,caseOf(i.guildId,a.caseId))],allowedMentions:{parse:[]}});
-   }else{const a=core.review(i.guildId,i.options.getString('appeal'),i.user.id,i.options.getString('decision'),i.options.getString('reason'));await respond(i,payload((void notifyDecision(i,a),a.state==='accepted')?`Appeal for ${caseLabel(caseOf(i.guildId,a.caseId))} accepted. The sanction was not changed; use /unban or /untimeout if needed. Let the member know the decision.`:`Appeal for ${caseLabel(caseOf(i.guildId,a.caseId))} denied. Let the member know the decision.`));}
+   }else{const a=core.review(i.guildId,i.options.getString('appeal'),i.user.id,i.options.getString('decision'),i.options.getString('reason'));flushSoon(i.guild);await respond(i,payload((void notifyDecision(i,a),a.state==='accepted')?`Appeal for ${caseLabel(caseOf(i.guildId,a.caseId))} accepted. The sanction was not changed; use /unban or /untimeout if needed. Let the member know the decision.`:`Appeal for ${caseLabel(caseOf(i.guildId,a.caseId))} denied. Let the member know the decision.`));}
    return true;
   }
   if(sub==='case'){const c=core.get(i.guildId,i.options.getString('id'));await respond(i,{embeds:[caseEmbedFull(c,appealFor(i.guildId,c))],allowedMentions:{parse:[]}});return true;}
@@ -337,7 +359,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     if(sub==='kick')effect=()=>member.kick(audit);
     if(sub==='ban')effect=()=>member.ban({reason:audit,deleteMessageSeconds:0});
     if(sub==='timeout'){
-     const minutes=durationMinutes(i.options.getString('duration'));details.until=Date.now()+minutes*60000;effect=()=>member.timeout(minutes*60000,audit);
+     const minutes=durationMinutes(i.options.getString('duration'));details.until=Date.now()+minutes*60000;details.duration=minutes*60000;effect=()=>member.timeout(minutes*60000,audit);
     }
     if(sub==='untimeout')effect=()=>member.timeout(null,audit);
    }
@@ -377,11 +399,36 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  async function tick(){
   if(stopped||ticking)return;ticking=true;
-  try{core.sweep();for(const guild of client.guilds?.cache?.values()||[]){for(const row of store.list(guild.id,'mod-log').filter(r=>r.state==='queued').slice(0,10)){const c=store.get(guild.id,'mod-case',row.caseId);if(c)await log(guild,c,row);}}}finally{ticking=false;}
+  try{core.sweep();for(const guild of client.guilds?.cache?.values()||[])await flush(guild);}finally{ticking=false;}
  }
+ // Actions taken outside the bot (Discord's own ban/kick/timeout UI or another bot) arrive as
+ // audit log entries. Discord sends these only when the bot has View Audit Log; without it
+ // nothing arrives and nothing is logged (the dashboard shows the missing permission).
+ // The bot's own actions are skipped: they already have cases.
+ async function onAuditEntry(entry,guild){
+  try{
+   if(!guild||!entry||!entry.executorId||entry.executorId===client.user?.id)return;
+   const m=modlogConfig(store,guild.id);if(!m.enabled||m.events.external===false)return;
+   let action,details={external:true};
+   if(entry.action===AuditLogEvent.MemberBanAdd)action='ban';
+   else if(entry.action===AuditLogEvent.MemberBanRemove)action='unban';
+   else if(entry.action===AuditLogEvent.MemberKick)action='kick';
+   else if(entry.action===AuditLogEvent.MemberUpdate){
+    const ch=(entry.changes||[]).find(x=>x.key==='communication_disabled_until');if(!ch)return;
+    const until=ch.new?Date.parse(ch.new):NaN;
+    if(Number.isFinite(until)&&until>Date.now()){action='timeout';details.until=until;details.duration=Math.max(60000,Math.round((until-Date.now())/60000)*60000);}else action='untimeout';
+   }else return;
+   if(!entry.targetId||store.get(guild.id,'mod-case','audit-'+entry.id))return;
+   const user=entry.target?.username?entry.target:client.users?.cache?.get?.(entry.targetId);
+   if(user?.username)details.memberName=clean(user.globalName||user.username);
+   await core.run({guild:guild.id,id:'audit-'+entry.id,actor:entry.executorId,target:entry.targetId,action,reason:entry.reason||'No reason provided',details});
+   await flush(guild);
+  }catch(error){console.warn(`Audit log capture skipped (${error.code||error.name}).`);}
+ }
+ client.on('guildAuditLogEntryCreate',onAuditEntry);
  client.on('messageCreate',onMessage);
  const onUpdate=(_old,m)=>{if(!m.partial)void onMessage(m);};
  client.on('messageUpdate',onUpdate);
  const timer=setInterval(()=>void tick().catch(()=>console.warn('Moderation maintenance failed. Check private storage.')),30000);timer.unref();
- return {handle,core,settingsSummary,onMessage,tick,stop(){stopped=true;clearInterval(timer);client.off?.('messageCreate',onMessage);client.off?.('messageUpdate',onUpdate);}};
+ return {handle,core,settingsSummary,onMessage,onAuditEntry,flush,tick,stop(){stopped=true;clearInterval(timer);client.off?.('messageCreate',onMessage);client.off?.('messageUpdate',onUpdate);client.off?.('guildAuditLogEntryCreate',onAuditEntry);}};
 }

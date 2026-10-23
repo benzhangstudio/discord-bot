@@ -76,12 +76,22 @@ async function renderPlugin(guild,name){
     const pick=(id,list,value,blank)=>{const s=el('select',{id});s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name,x.id));if(value&&!list.some(x=>x.id===value.id))s.append(new Option(value.id,value.id));s.value=value?.id||'';return s;};
     const lab=(t,n)=>el('label',{},t,n);
     const dm=el('input',{type:'checkbox',id:'modDm'}),dmm=el('input',{type:'checkbox',id:'modDmMembers'});dm.checked=c.dmAppeals;dmm.checked=c.dmMembers;
-    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (members with it cannot be moderated)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),lab('Staff log channel (hidden from @everyone)',pick('modLog',d.channels,c.logChannel,'Not set')),
+    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (members with it cannot be moderated)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),
       lab('Case retention in days (30–3650)',Object.assign(el('input',{type:'number',id:'modRetention',min:30,max:3650,required:''}),{value:c.retentionDays})),
       el('h3',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),el('h3',{text:'Appeals'}),el('label',{class:'check'},dm,'Include an Appeal button in ban, kick, timeout and warning DMs'),lab('Appeal contact for banned or kicked members (link or email)',Object.assign(el('input',{id:'modContact',maxlength:200}),{value:c.appealContact||''})),
       el('p',{class:'muted',text:`Locked channels: ${d.locks}. Only the server owner can save changes. Each change is recorded as a moderation case.`}),el('button',{class:'primary',text:'Save'}));
-    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,logChannel:$('modLog').value||null,retentionDays:Number($('modRetention').value),dmAppeals:dm.checked,dmMembers:dmm.checked,appealContact:$('modContact').value.trim()||null},'PUT');NO.message('Moderation settings saved.');});
+    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,retentionDays:Number($('modRetention').value),dmAppeals:dm.checked,dmMembers:dmm.checked,appealContact:$('modContact').value.trim()||null},'PUT');NO.message('Moderation settings saved.');});
     parts.push(f);
+    {const m=d.modlog,ml=el('form',{class:'card'}),on=el('input',{type:'checkbox',id:'mlOn'});on.checked=m.enabled;
+     const boxes=m.eventList.map(e=>{const b=el('input',{type:'checkbox','data-event':e.key});b.checked=m.events[e.key]!==false;return el('label',{class:'check'},b,e.label);});
+     const test=el('button',{type:'button',text:'Send test message'});
+     const notes=[m.missingPermissions.length?el('p',{class:'muted',text:`The bot is missing ${m.missingPermissions.join(', ')} in the mod log channel.`}):null,m.auditLog===false?el('p',{class:'muted',text:'Give the bot View Audit Log to also record bans, kicks and timeouts done outside the bot.'}):null];
+     ml.append(el('h2',{text:'Mod log'}),el('p',{class:'muted',text:'Posts a record of every moderation action to a channel. The bot needs View Channel, Send Messages, Embed Links and Attach Files there.'}),
+       el('label',{class:'check'},on,'Enable mod log'),lab('Mod log channel',pick('mlChannel',d.channels,m.channel,'Not set')),el('h3',{text:'Actions to log'}),...boxes,...notes.filter(Boolean),el('button',{class:'primary',text:'Save'}),test);
+     const events=()=>Object.fromEntries([...ml.querySelectorAll('[data-event]')].map(b=>[b.dataset.event,b.checked]));
+     ml.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,enabled:on.checked,events:events()}},'PUT');NO.message('Mod log settings saved.');});
+     test.onclick=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,test:true}},'PUT');NO.message('Test message sent. Check the mod log channel.');});
+     parts.push(ml);}
     parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created','Proof'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created),proofCell(c.proof)]),'No cases yet.')));
   }
   if(name==='automod'){

@@ -281,10 +281,11 @@ test('legacy /events returns a useful reply without fetching a member',async()=>
   await h.app.handle(i);assert.equal(i.replied,true);assert.match(textOf(h.outputs[0]),/renamed/);assert.match(textOf(h.outputs[0]),/schedule list/);h.store.close();
 });
 test('retired commands still cached by Discord point to their replacement',async()=>{
-  for(const [old,replacement] of [['delwarn','/warnings remove'],['modlogs','/case history'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
+  for(const [old,replacement] of [['delwarn','/warnings remove'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
     const h=harness();const i=h.interaction(old,null);await h.app.dispatch(i);
     assert.equal(h.outputs.length,1,old);assert.ok(messageOf(h.outputs[0]).includes(replacement),old);assert.equal(h.outputs[0].embeds[0].title,'Command renamed');assert.ok(!((h.outputs[0].flags||0)&64));h.store.close();
   }
+  {const h=harness();await h.app.dispatch(h.interaction('modlogs',null));const o=h.outputs[0];assert.equal(o.embeds[0].title,'Moved to the dashboard');assert.match(messageOf(o),/dashboard under Moderation › Mod log/);assert.equal(o.embeds[0].color,0x4F545C);h.store.close();}
 });
 test('slow channel work is acknowledged before the REST request',async()=>{
   const h=harness();const e={id:'event',title:'Test',channel:h.channel.id,start:Date.now()+600000,duration:60,zone:'America/New_York',kind:'event',repeat:'none'};

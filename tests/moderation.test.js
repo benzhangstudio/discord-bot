@@ -12,6 +12,7 @@ import {createApp} from '../src/app.js';
 import {moderationCommands} from '../src/moderation-commands.js';
 import {durationMinutes} from '../src/moderation.js';
 import {suggestions} from '../src/suggestions.js';
+import {saveModlog,modlogEmbed} from '../src/modlog.js';
 const never=()=>new Promise(()=>{});
 const perm=bits=>new PermissionsBitField(bits);
 const scenarios={
@@ -190,7 +191,7 @@ test('retention preserves unresolved operations and open appeals but deletes com
  }finally{h.close();}
 });
 test('maintenance does not retry an uncertain log send',async()=>{
- const h=harness();try{h.core.saveConfig('guild',{logChannel:'channel'});for(const row of h.store.list('guild','mod-log'))h.store.remove('guild','mod-log',row.id);h.store.put('guild','mod-log',{id:'saved',caseId:'saved',state:'queued'});let sends=0;h.channel.send=()=>{sends++;return never();};await h.app.moderation.tick();assert.equal(h.store.get('guild','mod-log','saved').state,'uncertain');await h.app.moderation.tick();assert.equal(sends,1);}finally{h.close();}
+ const h=harness();try{saveModlog(h.store,'guild',{channel:'channel',enabled:true});for(const row of h.store.list('guild','mod-log'))h.store.remove('guild','mod-log',row.id);h.store.put('guild','mod-log',{id:'saved',caseId:'saved',state:'queued',v:2,event:{action:'note',actor:'owner',reason:'x',at:Date.now()}});let sends=0;h.channel.send=()=>{sends++;return never();};await h.app.moderation.tick();assert.equal(h.store.get('guild','mod-log','saved').state,'uncertain');await h.app.moderation.tick();assert.equal(sends,1);}finally{h.close();}
 });
 test('case and outbox rollback together when storage fails',()=>{
  const h=harness();try{const put=h.store.put.bind(h.store);h.store.put=(g,kind,v)=>{if(kind==='mod-log')throw Error('disk failure');return put(g,kind,v);};const c=h.core.get('guild','saved');assert.throws(()=>h.core.append('guild',c,'note','owner','new note'),/disk failure/);assert.equal(h.core.get('guild','saved').events.length,1);}finally{h.close();}
@@ -352,7 +353,7 @@ test('readProof accepts this server’s message links (including ptb/canary) and
 });
 test('screenshots are re-uploaded to the private log channel and the durable copy is stored on the case',async()=>{
  const h=harness();try{
-  h.core.saveConfig('guild',{logChannel:'channel'});const sends=[];
+  saveModlog(h.store,'guild',{channel:'channel',enabled:true});const sends=[];
   h.channel.send=async p=>{sends.push(p);return {url:'https://discord.com/channels/1/2/3',attachments:new Map((p.files||[]).map(f=>[f.name,{name:f.name,url:'https://cdn.discordapp.com/attachments/9/9/'+f.name+'?stored'}]))};};
   const i=h.interaction('warn',{reason:'Spam',proof:shot(1),dm:false});await h.app.handle(i);
   await h.app.moderation.tick();
@@ -376,7 +377,7 @@ test('proof can be added later with /case proof and /case reason, and is never p
  }finally{h.close();}
 });
 test('without a log channel the confirmation explains that screenshots are not stored durably',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',proof:shot(1),dm:false}));assert.match(textOf(h.outputs.at(-1)),/No moderation log channel is set/);}finally{h.close();}
+ const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',proof:shot(1),dm:false}));assert.match(textOf(h.outputs.at(-1)),/The mod log is off/);}finally{h.close();}
 });
 test('every moderation action command offers proof, proof2, proof3 and proof_link',()=>{
  const want=['ban','unban','kick','warn','timeout','untimeout','purge','warnings remove','case reason','case proof','lockdown on','lockdown off'];

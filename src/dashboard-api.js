@@ -8,6 +8,7 @@ import {Moderation,defaults as modDefaults} from './moderation-core.js';
 import {DEFAULT_ZONE} from './domain.js';
 import {deliveryLabel} from './weekly-feeds.js';
 import {TOGGLEABLE_PLUGINS,pluginStates,setPluginEnabled} from './plugins.js';
+import {modlogConfig,saveModlog,missingPermissions,enabledEmbed,MODLOG_EVENTS,EVENT_KEYS} from './modlog.js';
 import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
 
 export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
@@ -67,15 +68,51 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       timezone:settings(guild).zone||DEFAULT_ZONE,verification:verification||null
     };
   }
+  // Mod Log settings (Moderation › Mod log). Managers may edit; shared with the bot via the 'modlog' record.
+  function modlogView(guild){
+    const m=modlogConfig(store,guild),g=cached(guild),ch=m.channel&&g?.channels?.cache?.get(m.channel);
+    return {channel:label(guild,'channel',m.channel),enabled:m.enabled,events:m.events,eventList:MODLOG_EVENTS.map(([key,label])=>({key,label})),
+      missingPermissions:ch?missingPermissions(ch,g.members?.me):[],
+      auditLog:g?.members?.me?.permissions?.has?.(128n)??null};
+  }
+  function modlogChannel(guild,id){
+    const g=cached(guild);assert(g,409,'The bot is not in this server.');
+    const ch=g.channels.cache.get(id);assert(ch&&[0,5].includes(ch.type),400,'Choose a text or announcement channel.');
+    const missing=missingPermissions(ch,g.members?.me);
+    assert(!missing.length,400,`The bot needs ${missing.join(', ')} in #${text(ch.name,100)}.`);
+    return ch;
+  }
+  async function modlogUpdate(guild,data,identity){
+    const m=data.modlog;assert(m&&typeof m==='object'&&!Array.isArray(m),400,'Invalid mod log settings.');
+    only(m,['channel','enabled','events','test']);
+    if(m.test){
+      const cfg=modlogConfig(store,guild),id=m.channel??cfg.channel;assert(typeof id==='string'&&/^\d{17,20}$/.test(id),400,'Choose a mod log channel first.');
+      const ch=modlogChannel(guild,id);
+      try{await Promise.race([ch.send({embeds:[{...enabledEmbed(cfg,identity.id),title:'Mod log test message',description:'The bot can post moderation records in this channel.'}],allowedMentions:{parse:[]}}),new Promise((_,r)=>setTimeout(()=>r(Object.assign(new Error('timeout'),{name:'TimeoutError'})),8000).unref?.())]);}
+      catch(error){console.warn(`Mod log test message failed (${error.status||error.name}).`);throw new Fault(502,'Discord did not confirm the test message. Check the channel before trying again.');}
+      return;
+    }
+    const patch={};
+    if('channel' in m){assert(m.channel===null||typeof m.channel==='string'&&/^\d{17,20}$/.test(m.channel),400,'Choose a channel.');if(m.channel)modlogChannel(guild,m.channel);patch.channel=m.channel;}
+    if('enabled' in m){assert(typeof m.enabled==='boolean',400,'Choose on or off.');patch.enabled=m.enabled;}
+    if('events' in m){assert(m.events&&typeof m.events==='object'&&Object.entries(m.events).every(([k,v])=>EVENT_KEYS.includes(k)&&typeof v==='boolean'),400,'Invalid mod log actions.');patch.events=m.events;}
+    const next={...modlogConfig(store,guild),...patch};
+    assert(!next.enabled||next.channel,400,'Choose a mod log channel before turning it on.');
+    if(next.enabled&&!('channel' in patch))modlogChannel(guild,next.channel);
+    const cur=modlogConfig(store,guild);
+    // Entries for actions taken while the log was off are never posted later.
+    if(next.enabled&&!cur.enabled)for(const row of store.list(guild,'mod-log'))if(row.state==='queued')store.put(guild,'mod-log',{...row,state:'skipped'});
+    saveModlog(store,guild,patch,identity.id);
+  }
   function plugin(guild,name){
     const enabled=TOGGLEABLE_PLUGINS.includes(name)?pluginStates(store,guild)[name]:null;
     const base={plugin:name,enabled,toggleable:TOGGLEABLE_PLUGINS.includes(name),commands:commandsFor[name]||[]};
     if(name==='moderation'){
       const cfg=modConfig(guild);
       const {channels,roles}=rrView(guild);
-      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),logChannel:label(guild,'channel',cfg.logChannel),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false,appealContact:cfg.appealContact?text(cfg.appealContact,200):null},
+      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false,appealContact:cfg.appealContact?text(cfg.appealContact,200):null},
         recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
-        locks:store.list(guild,'mod-lock').length};
+        locks:store.list(guild,'mod-lock').length,modlog:modlogView(guild)};
     }
     if(name==='automod'){
       const cfg=modConfig(guild);
@@ -106,7 +143,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
       return plugin(guild,name);
     }
-    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','logChannel','retentionDays','dmAppeals','dmMembers','appealContact']:name==='settings'?['timezone']:['enabled']);
+    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','retentionDays','dmAppeals','dmMembers','appealContact','modlog']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
       assert(TOGGLEABLE_PLUGINS.includes(name),400,'This section cannot be turned off.');assert(typeof data.enabled==='boolean',400,'Choose on or off.');
       setPluginEnabled(store,guild,name,data.enabled,identity.id);
@@ -115,6 +152,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       assert(typeof data.timezone==='string'&&data.timezone.length<=64&&IANAZone.isValidZone(data.timezone),400,'Choose a valid IANA timezone, such as America/New_York.');
       store.put(guild,'settings',{...settings(guild),id:'main',zone:data.timezone});
     }
+    if(name==='moderation'&&'modlog' in data){assert(Object.keys(data).length===1,400,'Save mod log settings separately.');await modlogUpdate(guild,data,identity);return plugin(guild,name);}
     if(name==='moderation'&&Object.keys(data).some(k=>k!=='enabled')){
       // Moderation policy (formerly /mod-settings): only the current owner configures it; each change is a case.
       assert(identity.owner,403,'Only the current server owner can change moderation settings.');
@@ -125,11 +163,6 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         patch[key]=data[key];
       }
       assert((patch.modRole??cfg.modRole)===null||(patch.modRole??cfg.modRole)!==(patch.privacyRole??cfg.privacyRole),400,'Protected and moderator roles must differ.');
-      if('logChannel' in data){
-        assert(snow(data.logChannel),400,'Choose a channel.');
-        if(data.logChannel&&g){const ch=g.channels.cache.get(data.logChannel);assert(ch&&[0,5].includes(ch.type)&&!ch.permissionsFor(g.roles.everyone)?.has?.(1024n),400,'Choose a staff-only text log channel.');}
-        patch.logChannel=data.logChannel;
-      }
       if('retentionDays' in data){assert(Number.isInteger(data.retentionDays)&&data.retentionDays>=30&&data.retentionDays<=3650,400,'Case retention must be 30 to 3650 days.');patch.retentionDays=data.retentionDays;}
       for(const k of ['dmAppeals','dmMembers'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
       if('appealContact' in data){const v=data.appealContact==null?'':String(data.appealContact).trim();assert(v.length<=200&&!/@(everyone|here)|<[@#]|[*_~`|]/.test(v),400,'Enter a short appeal contact, such as a link or email address.');patch.appealContact=v||null;}

@@ -156,7 +156,7 @@ async function handle(i) {
     if(action==='channel')checkDestination(i,i.guild.channels.cache?.get(i.values[0]));
     d[key]=i.values[0]||null;saveDraft(i,d);return updateResponse(i,editor(d,i));
   }
-  const helpOptions=()=>({canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
+  const helpOptions=()=>({guildId:i.guildId,canManage:staff(i),canConfigure:staff(i),timezone:settings(i.guildId).zone});
   if(i.isChatInputCommand()&&i.commandName==='dashboard') {
     return respond(i,portalMessage(i.guildId));
   }
@@ -196,7 +196,7 @@ async function handle(i) {
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
     const definition=commands.find(command=>command.name===i.commandName);
-    if(!definition)return respond(i,errorPayload(RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.',{title:RETIRED_COMMANDS[i.commandName]?'Command renamed':'Command unavailable'}));
+    if(!definition)return respond(i,errorPayload(i.commandName==='modlogs'?'The mod log is set up on the dashboard under Moderation › Mod log. Use /dashboard for the link.':RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.',{title:i.commandName==='modlogs'?'Moved to the dashboard':RETIRED_COMMANDS[i.commandName]?'Command renamed':'Command unavailable'}));
     if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current options, or use /help.');
   }
   if(i.isButton()) {

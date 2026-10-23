@@ -19,7 +19,9 @@ Official reference: https://wispbyte.com/kb/github-integration and https://wispb
 
 Reaction roles use the Guild Message Reactions and Guild Messages gateway intents. Neither is privileged, so nothing needs to change in the Developer Portal. Servers that invited the bot before this feature need to give it **Manage Roles**, **Add Reactions** and **Read Message History**, and move its role above the roles it gives. New invite links include these permissions.
 
-Moderation proof re-uploads screenshots to the moderation log channel. Give the bot **Attach Files** and **Embed Links** there, along with View Channel and Send Messages. New invites include Attach Files (permissions value 268553280). No new intents are needed.
+## Mod log: intents and permissions
+
+The mod log (dashboard → Moderation → Mod log) posts case embeds and re-uploads proof screenshots. Give the bot **View Channel, Send Messages, Embed Links and Attach Files** in the mod log channel. To record bans, unbans, kicks and timeouts done outside the bot, give it **View Audit Log** (server-wide). The bot now uses the Guild Moderation gateway intent; it is not privileged, so nothing changes in the Developer Portal. New invites include View Audit Log (permissions value 268553408; previously 268553280). The mod log starts off in every server; the old moderation log channel setting is not migrated.
 
 ## Routine updates
 

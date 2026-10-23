@@ -47,6 +47,7 @@ export function caseEmbedFull(c,appeal){
  if(c.details?.until)fields.push(f('Until',ts(c.details.until)));
  fields.push(f('Appeal',appeal?APPEAL_STATE[appeal.state]||appeal.state:'None'));
  const proof=proofSummary(c);if(proof)fields.push(f('Proof',proof,false));
+ if(/^https:\/\/discord\.com\/channels\//.test(String(c.logMessage||'')))fields.push(f('Mod log',`[Jump to log entry](${c.logMessage})`));
  const recent=(c.events||[]).slice(1).slice(-5);
  if(recent.length)fields.push(f('Updates',recent.map(e=>`${ts(e.at,'R')} ${cut(e.action,30)}: ${cut(e.reason,120)}`).join('\n'),false));
  const img=firstImage(c);

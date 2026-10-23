@@ -55,4 +55,8 @@ Every reply in a server channel is public, including errors, permission denials,
 
 Private by nature only: the appeal DM (notice, **Appeal** button, modal and its confirmation) and Discord modals. Verification cases and evidence are dashboard-only; no slash command, button or message shows them.
 
-Moderation proof (screenshots and message links) is staff evidence. It appears in public confirmations, the private log channel, case views and the dashboard, but never in member DMs. Proof validation errors use reviewed public copy (`PROOF` in src/mod-proof.js).
+Moderation proof (screenshots and message links) is staff evidence. It appears in public confirmations, the mod log channel, case views and the dashboard, but never in member DMs. Proof validation errors use reviewed public copy (`PROOF` in src/mod-proof.js).
+
+## Mod log entries
+
+Mod log entries are blurple record embeds (`Case #N | Ban`, `Case #N updated`, `Case #N | Warning removed`) with User, Moderator, Reason, DM, Duration and Proof fields, a `User ID:` footer and a timestamp. They never ping (`allowedMentions: {parse: []}`) and never contain diagnostics. Delivery failures are logged by status code only and are not resent. Mod log setup errors appear on the dashboard (for example `The bot needs Embed Links, Attach Files in #mod-log.`). An old cached `/modlogs` command gets a grey error embed titled **Moved to the dashboard**: `The mod log is set up on the dashboard under Moderation › Mod log. Use /dashboard for the link.`

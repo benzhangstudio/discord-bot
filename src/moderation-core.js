@@ -1,10 +1,11 @@
 import {UserError} from './user-error.js';
 import {withDeadline,safeError} from './responses.js';
-export const defaults={id:'main',modRole:null,privacyRole:null,logChannel:null,retentionDays:365,automod:false,blockedWords:[],mentionLimit:8,spamLimit:6,blockInvites:true,appealContact:null,dmAppeals:true,dmMembers:true};
+export const defaults={id:'main',modRole:null,privacyRole:null,retentionDays:365,automod:false,blockedWords:[],mentionLimit:8,spamLimit:6,blockInvites:true,appealContact:null,dmAppeals:true,dmMembers:true};
 export const clean=value=>String(value??'').replace(/@/g,'＠').replace(/[`*_~|>\\]/g,'').slice(0,1000);
 export class Moderation {
  constructor(store,{timeoutMs=12000,now=Date.now}={}) {this.store=store;this.timeoutMs=timeoutMs;this.now=now;this.busy=new Set();this.windows=new Map();}
- config(g){return {...defaults,...this.store.get(g,'mod-config','main')};}
+ // The retired `logChannel` key is dropped: the Mod Log (src/modlog.js) is configured separately.
+ config(g){const {logChannel,...cfg}={...defaults,...this.store.get(g,'mod-config','main')};return cfg;}
  saveConfig(g,patch){return this.store.put(g,'mod-config',{...this.config(g),...patch,id:'main'});}
  // Per-server sequential case numbers ("Case #12"). Existing cases without a number are
  // backfilled once in creation order; the counter never reuses numbers after retention sweeps.
@@ -40,7 +41,7 @@ export class Moderation {
   c.events.push({at:this.now(),action,actor,reason:clean(reason)});
   this.store.transaction(()=>{
    this.store.put(g,'mod-case',c);
-   this.store.put(g,'mod-log',{id:`${c.id}-${c.events.length}`,caseId:c.id,state:'queued',event:c.events.at(-1)});
+   this.store.put(g,'mod-log',{id:`${c.id}-${c.events.length}`,caseId:c.id,state:'queued',v:2,event:c.events.at(-1)});
   });
   return c;
  }

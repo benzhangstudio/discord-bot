@@ -1,6 +1,6 @@
 # Number One
 
-Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (including screenshot and message-link proof on every moderation action) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
+Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (including screenshot and message-link proof on every moderation action, and the dashboard-configured Mod log channel) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
 
@@ -20,7 +20,7 @@ Production hosting is **Wispbyte**, with GitHub supplying code updates. See [WIS
 2. Open PowerShell in this folder and run `npm install`.
 3. For temporary local testing only, create a private `.env` in this folder with DISCORD_TOKEN and DISCORD_APPLICATION_ID. Optionally set DISCORD_TEST_GUILD_ID for a test server. Never commit or share `.env`. On Wispbyte, use its Environment page to save these values to the server-local `.env`.
 4. In the Discord Developer Portal, use the intended Number One application. Enable Public Bot when ready for public invitations. Clear an old Interactions Endpoint URL if one is set. No privileged gateway intents are required (reaction roles use the non-privileged Guild Message Reactions and Guild Messages intents).
-5. Invite with `bot` and `applications.commands` scopes. Grant View Channels, Send Messages, and Embed Links in destinations. No Administrator permission is required. For non-mentionable role notifications, Number One also needs Mention Everyone; the invoking staff member must have it too.
+5. Invite with `bot` and `applications.commands` scopes. Grant View Channels, Send Messages, and Embed Links in destinations, plus Attach Files in the mod log channel and View Audit Log to log actions taken outside the bot. No Administrator permission is required. For non-mentionable role notifications, Number One also needs Mention Everyone; the invoking staff member must have it too.
 6. Keep the hosted instance stopped. Run `npm start`. Startup automatically checks and updates this application's commands, removes old server-specific command overrides, and verifies the resulting list before connecting the bot. It skips rewrites when the commands already match. Other bots are not affected. It does not edit your Discord application’s display name. `npm run register` is available for a manual command-only check, but is no longer required for ordinary startup.
 7. Leave PowerShell open. Stop with Ctrl+C; restart with `npm start` in this same folder.
 

@@ -6,7 +6,7 @@ This module runs inside the existing bot and uses its server-scoped SQLite store
 
 1. Keep the production branch at `main`, `AUTO_UPDATE=1`, startup file `src/index.js`, and Node 24.12 or newer. Back up `data/` before restarting after the GitHub checks pass. Keep the live database and private `.env` on Wispbyte.
 2. In Discord, put Number One above the members it must moderate. Give it View Channels, Send Messages, Moderate Members, Kick Members, Ban Members, Manage Messages and Read Message History as needed. Critical Emergency Mode additionally needs Manage Roles for channel overwrites. Administrator is not required. Server 2FA requirements still apply.
-3. Create a private staff log channel. Deny View Channel to @everyone, grant only trusted staff and Number One access, and audit all other role/member overwrites. As the server owner, choose it as **Staff log channel** on the dashboard Moderation page (`/dashboard`). Review channel permissions regularly; the bot checks @everyone visibility before each log send, but cannot establish your organizational confidentiality policy.
+3. Set up the **Mod log** on the dashboard (`/dashboard` → Moderation → Mod log): pick a channel, turn it on, choose which actions to record and use **Send test message**. A staff-only channel is recommended. See [Mod log](#mod-log).
 4. For staff without Administrator or Manage Server, the current owner first uses `/access add user:...`. The owner may then set **Moderator role** on the dashboard Moderation page. A role alone never bypasses Number One command authorization. A staff member also needs either the relevant native moderation permission or the configured moderation role. Manage Server alone does not confer moderation powers.
 5. Optional message filters need `MODERATION_MESSAGE_CONTENT=1` in Wispbyte and Message Content Intent enabled in the Discord Developer Portal, followed by a restart. Then turn automod on in the dashboard Automod page. Without that option, moderation slash commands work without privileged intents. No Guild Members intent is requested; individual members are fetched as needed.
 6. Set `blocked-words` (comma-separated literal phrases), `mention-limit`, `spam-limit`, `block-invites` and `retention-days` on the dashboard Automod page (retention is on the Moderation page). Defaults: filters off, mention limit 8, six messages per ten seconds, invites blocked when filters are enabled, retention 365 days. Set automod false to stop enforcement immediately.
@@ -54,12 +54,12 @@ Invalid uploads or links are rejected with a public error before any action runs
 
 Where proof appears:
 - **Public confirmation embed**: a **Proof** field listing `Screenshot N` and `Message link N`, with the first screenshot as the embed image.
-- **Moderation log channel**: screenshots not yet stored are **re-uploaded as files** to the log message, with the first one as the embed image. Discord's original attachment links expire, so the case then stores the log copy's URL and the log message permalink (`log copy`).
+- **Mod log channel**: screenshots not yet stored are **re-uploaded as files** to the log message, with the first one as the embed image. Discord's original attachment links expire, so the case then stores the log copy's URL and the log message permalink (`log copy`).
 - **`/case view`**: a Proof field plus the image. **`/case history`** and **`/warnings list`** entries show a short `Proof:` line.
 - **Dashboard → Moderation → Recent cases**: a Proof column with links.
 - Proof is staff evidence and is **never included in member DMs**.
 
-Without a log channel, screenshots are kept only as the original upload link, which expires; the confirmation says so. If the bot lacks **Attach Files** in the log channel, the log is still posted with the original links. The bot needs View Channel, Send Messages, Embed Links and Attach Files in the log channel.
+With the mod log off, screenshots are kept only as the original upload link, which expires; the confirmation says so. If the bot lacks **Attach Files** in the mod log channel, the entry is still posted with the original links.
 
 ### Output and case numbers
 
@@ -113,7 +113,7 @@ A network timeout is not proof of failure. A mutation can finish at Discord afte
 
 The current owner must inspect Discord and its audit log, allow any in-flight request to settle, then use `/case resolve case:... outcome:succeeded|failed reason:...`. This records the observed result; it does not execute the mutation again. Never reconcile speculatively just to remove the block. For a partially applied/restored emergency operation, record the verified case outcome, resolve writing conflicts manually, then run `/lockdown off` to finish restoring the saved journal.
 
-Case log sends run every 30 seconds. Queued logs are attempted only when the configured channel is private to @everyone. A claimed log whose send times out becomes `uncertain`; a crash may leave it `sending`. Those sends are never blindly retried. `/settings view` shows delivery issues; inspect the destination and use `/case` as the source of truth. Fix inaccessible channel permissions to allow queued logs to proceed. Confirmation delivery failure never repeats the moderation action.
+Mod log entries post right after the confirmation, with a 30-second maintenance pass as backup. An entry whose send times out becomes `uncertain`; a crash may leave it `sending`. Those sends are never blindly retried. If the bot lacks View Channel, Send Messages or Embed Links, the entry is marked failed. `/settings view` and the dashboard show delivery issues; use `/case` as the source of truth. Confirmation delivery failure never repeats the moderation action.
 
 This is a single-process service. Run one Number One instance per SQLite file; do not share the file among replicas. Retention removes completed cases, their appeals and delivery metadata after the configured age, checked every 30 seconds. Unresolved cases and cases with open appeals are retained for review. Channel log messages and backups need separate deletion/retention policies. Case content consists of staff-supplied reasons, member/staff IDs, timestamps, message IDs and action metadata; avoid adding sensitive evidence to reasons. Operator-assisted data access/deletion must preserve active sanctions and required incident records under the server's published policy.
 
@@ -133,14 +133,40 @@ Retired names are removed from Discord on the next startup (global bulk registra
 | `/unmute` | `/untimeout` |
 | `/warnings user` | `/warnings list user` |
 | `/delwarn` | `/warnings remove` |
-| `/modlogs` | `/case history` |
+| `/modlogs` | Dashboard: Moderation → Mod log (member history is `/case history`) |
 | `/case id` | `/case view id` |
 | `/reason` | `/case reason` |
 | `/mod-reconcile` | `/case resolve` |
 | `/mod-settings view` | `/settings view` (read-only) |
-| `/mod-settings set` / `clear-role` | Dashboard: Moderation page (roles, log channel, retention, member DMs, appeals) and Automod page (filters) |
+| `/mod-settings set` / `clear-role` | Dashboard: Moderation page (roles, mod log, retention, member DMs, appeals) and Automod page (filters) |
 | `/emergency on/off/status` | `/lockdown on/off/status` |
 | `/portal open` / `/portal setup` | `/dashboard` |
 | `/events` | `/schedule list` |
 
 Unchanged: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/appeals ...`, `/schedule ...`, `/embed ...`, `/instagram ...`, `/access ...`, `/settings ...`, `/reaction-roles ...`, `/help`.
+
+
+## Mod log
+
+A Dyno/MEE6-style record channel. It is set up **only on the dashboard** (Moderation → Mod log): channel picker, an on/off switch, per-action toggles and a **Send test message** button that checks the bot's permissions in the channel. There is no `/modlogs` command; an old cached `/modlogs` replies that the setup moved to the dashboard. Member history stays at `/case history`.
+
+Each completed action posts one blurple embed:
+
+```
+Case #12 | Ban
+User        @Member (member_name)
+Moderator   @Staff (staff_name)
+DM          Sent | Failed (DMs closed) | Not sent
+Duration    1h (ends in 59 minutes)        (timeouts only)
+Reason      Spamming invites
+Proof       Screenshot 1 · Message link 1   (screenshots re-uploaded as files)
+Footer      User ID: 4234…   · timestamp
+```
+
+Logged actions (each can be turned off): ban, unban, kick, warn, warning removed (`Case #N | Warning removed`), timeout (with Duration), timeout removed, purge (channel and message count), lockdown on/off, case updates from `/case reason`, `/case proof` and `/case resolve` (`Case #N updated`), appeal decisions, and actions taken outside the bot. The first entry's link is stored on the case and `/case view` shows **Jump to log entry**.
+
+**Actions outside the bot.** Bans, unbans, kicks and timeouts done in Discord's own menus or by another bot are read from the audit log, create a normal case (moderator and reason from the audit log entry, `No reason provided` when empty) and post an entry marked *Done outside the bot*. This needs **View Audit Log**. Without it, Discord sends no audit events and nothing is captured; the dashboard shows the missing permission. The bot's own actions are never logged twice.
+
+**Fresh start.** The mod log is a new feature and starts **off** in every server. The old moderation "log channel" setting is retired and not migrated. Existing cases, case numbers, warnings, proof and appeals carry over unchanged and keep working in `/case history`, `/case view`, `/warnings` and the dashboard. Old cases are not backfilled into the new channel, and actions taken while the mod log is off are not posted later.
+
+The bot needs **View Channel, Send Messages, Embed Links and Attach Files** in the mod log channel, and **View Audit Log** server-wide for outside actions.

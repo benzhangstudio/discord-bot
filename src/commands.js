@@ -12,7 +12,7 @@ const role = {type:8,name:'role',description:'Optional role to notify'};
 // Retired command names -> replacement. Startup sync replaces the global command set, so these
 // disappear from Discord; clients that still show a cached copy get this guidance instead.
 export const RETIRED_COMMANDS=Object.freeze({
-  mute:'/timeout',unmute:'/untimeout',delwarn:'/warnings remove',modlogs:'/case history',reason:'/case reason',
+  mute:'/timeout',unmute:'/untimeout',delwarn:'/warnings remove',modlogs:'the dashboard (Moderation › Mod log)',reason:'/case reason',
   'mod-reconcile':'/case resolve','mod-settings':'the dashboard (Moderation, Automod) or /settings view',emergency:'/lockdown',portal:'/dashboard',events:'/schedule list'
 });
 export const commands = [

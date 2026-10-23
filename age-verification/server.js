@@ -30,7 +30,7 @@ export function application(c,root,discord=new Discord(c),plugins=null){
   function keys(data,allowed){assert(Object.keys(data).every(k=>allowed.includes(k)),400,'Unsupported fields. Raw ID data is never accepted.');}
   const send=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
   const redirect=(res,location)=>{res.writeHead(302,{Location:location});res.end();};
-  const invite=guild=>'https://discord.com/oauth2/authorize?'+new URLSearchParams({client_id:c.clientId||'',scope:'bot applications.commands',permissions:'268553280',...(guild?{guild_id:guild,disable_guild_select:'true'}:{})});
+  const invite=guild=>'https://discord.com/oauth2/authorize?'+new URLSearchParams({client_id:c.clientId||'',scope:'bot applications.commands',permissions:'268553408',...(guild?{guild_id:guild,disable_guild_select:'true'}:{})});
   async function deliver(store,id){
     const item=store.get(id);if(!item)return;inFlight.add(id);
     try{

@@ -11,7 +11,7 @@ try{const {execFileSync}=await import('node:child_process');console.log(`Running
 requireConfig(['DISCORD_TOKEN','DISCORD_APPLICATION_ID']);
 const store=new Store();
 // GuildMessageReactions and GuildMessages are not privileged. Partials let reaction roles work on uncached messages.
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessageReactions,GatewayIntentBits.GuildMessages,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.MessageContent]:[])],partials:[Partials.Message,Partials.Reaction,Partials.User,Partials.Channel]});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildModeration,GatewayIntentBits.GuildMessageReactions,GatewayIntentBits.GuildMessages,...(process.env.MODERATION_MESSAGE_CONTENT==='1'?[GatewayIntentBits.MessageContent]:[])],partials:[Partials.Message,Partials.Reaction,Partials.User,Partials.Channel]});
 const app=createApp(client,store);
 let dashboard;
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{app.stop();client.destroy();await dashboard?.stop();store.close();process.exit(0);});
