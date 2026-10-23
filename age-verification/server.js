@@ -53,7 +53,7 @@ export function application(c,root,discord=new Discord(c)){
       const cookies=Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=')));const session=sessions.get(cookies[cookieName]);
       // Per-session limits prevent the shared Wispbyte proxy IP from throttling all signed-in users together.
       const rateKey=session?cookies[cookieName]:req.socket.remoteAddress;const rate=rates.get(rateKey)||{n:0,until:now+60000};rates.set(rateKey,rate);assert(++rate.n<=180,429,'Too many requests. Wait one minute.');
-      if(req.method==='GET'&&['/','/verify','/verify/','/app.js','/style.css','/portrait.svg'].includes(path)){
+      if(req.method==='GET'&&['/','/verify','/verify/','/app.js','/dashboard.js','/style.css','/portrait.svg'].includes(path)){
         const file=path==='/'?'dashboard.html':path.startsWith('/verify')?'index.html':path.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});return res.end(readFileSync(resolve(here,'public',file)));
       }
       if(req.method==='GET'&&path==='/api/config')return send(res,{mode:c.mode,version:'0.2',syntheticOnly:true,inviteUrl:c.mode==='discord'?invite():null});
