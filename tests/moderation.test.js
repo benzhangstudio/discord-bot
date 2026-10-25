@@ -65,8 +65,8 @@ test('human-readable durations accept common units and reject invalid or excessi
 test('simple ban records an omitted reason and replies with a clear result',async()=>{
  const h=harness();try{await h.app.handle(h.interaction('ban',{reason:null}));const c=h.core.cases('guild').find(c=>c.action==='ban');assert.equal(c.reason,'No reason provided');assert.match(textOf(h.outputs.at(-1)),/^Banned /);const e=h.outputs.at(-1).embeds[0];assert.equal(e.title,'Member banned');assert.equal(e.color,0x5865f2);assert.deepEqual(e.fields.map(f=>f.name),['User','Moderator','Reason','DM']);}finally{h.close();}
 });
-test('case history retains removed warnings without a separate warnings list',async()=>{
- const h=harness();try{await h.app.handle(h.interaction('warnings','remove'));await h.app.handle(h.interaction('case','history'));assert.match(h.outputs.at(-1).embeds[0].fields[0].value,/Status:\*\* Removed/);}finally{h.close();}
+test('case history excludes permanently deleted warnings',async()=>{
+ const h=harness();try{await h.app.handle(h.interaction('warnings','remove'));await h.app.handle(h.interaction('case','history'));assert.match(h.outputs.at(-1).embeds[0].description,/has no moderation history/);}finally{h.close();}
 });
 test('moderation rejections and uncertain outcomes show concise public errors, not case or server dumps',async()=>{
  for(const uncertain of [false,true]){
@@ -99,11 +99,11 @@ for(const [name,values]of Object.entries(scenarios)){
   const h=harness({authorized:false});try{const i=h.interaction(...name.split(' '),values);i.options=new Proxy({}, {get(){throw Error('Options accessed before authorization');}});await assert.rejects(h.app.handle(i),/permission/);assert.equal(h.effects.length,0);assert.ok(!i.privateResponse);}finally{h.close();}
  });
 }
-test('persistent cases deduplicate interactions, scope tenants, and keep append-only warning history',async()=>{
+test('persistent cases deduplicate interactions, scope tenants, and permanently remove warnings',async()=>{
  const h=harness();try{
   const i=h.interaction('mod','warn');await h.app.handle(i);await h.app.handle({...i,replied:false});
   assert.equal(h.core.cases('guild').filter(c=>c.id===i.id).length,1);assert.throws(()=>h.core.get('other',i.id),/not found/);
-  await h.app.handle(h.interaction('mod','void'));assert.equal(h.core.get('guild','saved').voided,true);assert.equal(h.core.get('guild','saved').reason,'Original reason');
+  await h.app.handle(h.interaction('mod','void'));assert.throws(()=>h.core.get('guild','saved'),/not found/);
  }finally{h.close();}
 });
 for(const step of ['guild','actor','bot','roles','target','mutation'])test(`never-settling ${step} request is bounded and cannot repeat a mutation`,async()=>{
@@ -331,7 +331,7 @@ test('without a log channel the confirmation explains that screenshots are not s
  const h=harness();try{await h.app.handle(h.interaction('kick',{reason:'x',image:shot(1),dm:false}));assert.match(textOf(h.outputs.at(-1)),/The mod log is off/);}finally{h.close();}
 });
 test('every moderation action offers optional image inputs in the same command',()=>{
- const want=['ban','unban','kick','warn','timeout','untimeout','purge','unwarn','case','lockdown'];
+ const want=['ban','unban','kick','warn','timeout','untimeout','purge','case','lockdown'];
  for(const key of want){const [n,sub]=key.split(' ');const c=moderationCommands.find(c=>c.name===n);const opts=sub?c.options.find(o=>o.name===sub).options:c.options;
   assert.deepEqual(opts.filter(o=>['image','image2','image3','message-link'].includes(o.name)).map(o=>[o.name,o.type]),[['image',11],['image2',11],['image3',11],['message-link',3]],key);}
 });
@@ -350,15 +350,15 @@ test('one case history handles 50 warnings; no warning list or internal-ID dropd
  }finally{h.close();}
 });
 
-test('unwarn uses a short number, verifies the selected member, and keeps the audit record',async()=>{
+test('unwarn uses a short number, verifies the selected member, and permanently deletes the case',async()=>{
  const h=harness();try{
   const n=h.core.get('guild','saved').number;
   await assert.rejects(h.app.handle(h.interaction('unwarn',{user:'other',warning:n})),/does not belong/);
   assert(!h.core.get('guild','saved').voided);
   await h.app.handle(h.interaction('unwarn',{user:'target',warning:n,reason:'Warning issued by mistake'}));
-  const saved=h.core.get('guild','saved');assert.equal(saved.voided,true);assert.equal(saved.reason,'Original reason');assert.equal(saved.events.at(-1).action,'void');
+  assert.equal(h.store.get('guild','mod-case','saved'),undefined);assert(!h.store.list('guild','mod-log').some(row=>row.caseId==='saved'));
   assert.match(textOf(h.outputs.at(-1)),/^Warning removed/);assert(!h.outputs.at(-1).embeds[0].fields.some(f=>f.name==='Case'));
-  await assert.rejects(h.app.handle(h.interaction('unwarn',{user:'target',warning:n})),/active successful warnings/);
+  await assert.rejects(h.app.handle(h.interaction('unwarn',{user:'target',warning:n})),/not found/);
  }finally{h.close();}
 });
 
@@ -381,5 +381,16 @@ test('old moderation appeal buttons are disabled and cannot create new appeal re
    await h.app.handle(dmInteraction(h,id));assert.match(textOf(h.outputs.at(-1)),/Moderation appeals are no longer available/);
   }
   assert.deepEqual(h.store.list('guild','mod-appeal'),[]);
+ }finally{h.close();}
+});
+
+
+test('a late warning DM completion cannot restore a warning deleted during the send',async()=>{
+ const h=harness();try{
+  let release;h.target.send=()=>new Promise(resolve=>{release=resolve;});
+  const i=h.interaction('warn',{reason:'Pending notice'}),pending=h.app.handle(i);await new Promise(setImmediate);
+  const n=h.core.get('guild',i.id).number;
+  await h.app.handle(h.interaction('unwarn',{user:'target',warning:n}));release();await pending;
+  assert.equal(h.store.get('guild','mod-case',i.id),undefined);assert(!h.store.list('guild','mod-log').some(row=>row.caseId===i.id));
  }finally{h.close();}
 });

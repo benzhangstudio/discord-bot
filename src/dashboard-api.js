@@ -54,7 +54,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   const automodAvailable=()=>env.MODERATION_MESSAGE_CONTENT==='1';
 
   function overview(guild,{verification}={}){
-    const now=Date.now(),cases=store.list(guild,'mod-case'),events=store.list(guild,'event');
+    const now=Date.now(),cases=new Moderation(store).cases(guild),events=store.list(guild,'event');
     return {
       plugins:pluginStates(store,guild),toggleable:TOGGLEABLE_PLUGINS,botPresent:hasBot(guild),
       stats:{

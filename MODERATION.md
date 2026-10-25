@@ -7,7 +7,7 @@ Number One uses familiar member actions with required inputs first and optional 
 | Command | Required inputs | Optional inputs and behavior |
 | --- | --- | --- |
 | `/warn` | `user`, `reason` | `dm`, images, message links. Records one warning. |
-| `/unwarn` | `user`, `warning` | `reason`, images, message links. Removes one active warning while retaining its history. |
+| `/unwarn` | `user`, `warning` | `reason`, images, message links. Permanently deletes the warning and its related database records. |
 | `/ban` | `user` | `reason`, `dm`, images, message links. Does not erase past messages. |
 | `/unban` | `user` | `reason`, `dm`, images, message links. Does not automatically rejoin the member. |
 | `/kick` | `user` | `reason`, `dm`, images, message links. |
@@ -19,9 +19,9 @@ Number One uses familiar member actions with required inputs first and optional 
 
 ### One moderation history
 
-Use `/case user:@Alex` to see all of Alex’s moderation records, including warnings and removed warnings. Each page contains 10 records. Use `page:2` for older records; Previous/Next navigation is also available. There is no separate warnings list or removal-button collection.
+Use `/case user:@Alex` to see all of Alex’s moderation records, including active warnings. Removed warnings are permanently deleted and are not listed. Each page contains 10 records. Use `page:2` for older records; Previous/Next navigation is also available. There is no separate warnings list or removal-button collection.
 
-The short number in `Case #12` identifies that exact record in this server. It is not a Discord user ID or a long internal interaction ID. It never changes when another warning is removed. To remove that warning, use `/unwarn user:@Alex warning:12 reason:Issued by mistake`. The bot verifies both the member and the warning. Bans, timeouts and other records cannot be removed with `/unwarn`.
+The short number in `Case #12` identifies that exact record in this server. It is not a Discord user ID or a long internal interaction ID. It never changes when another warning is removed. To remove that warning, use `/unwarn user:@Alex warning:12 reason:Issued by mistake`. The bot verifies both the member and the warning, then deletes its case, stored images/links, notes, reserved-number record and related log/appeal records in one transaction. The case-number counter remains so numbers are never reused. Bans, timeouts and other records cannot be removed with `/unwarn`.
 
 Use `/case number:12` to view details, or `/case number:12 reason:Additional context image:...` to add a note and an optional image. Supplying an image without a note also adds it to that case; there is no separate image command. Adding context requires an explicit case number, so the bot never silently chooses the latest case. If both member and number are supplied, they must match.
 
@@ -29,7 +29,7 @@ Only the current owner can set `outcome:Completed` or `outcome:Not completed`, w
 
 ### Images and links
 
-`image`, `image2` and `image3` are optional image attachments. Discord controls its native attachment input; the bot does not provide a custom clipboard box. PNG, JPEG, GIF and WebP images are supported up to 10 MB each. `message-link` accepts up to five Discord message links from the same server. A case can retain up to 10 attachments and links in total.
+`image`, `image2` and `image3` are optional image attachments on actions and case updates. `/unwarn` accepts only the member, warning number and optional confirmation reason because its case is deleted. Discord controls its native attachment input; the bot does not provide a custom clipboard box. PNG, JPEG, GIF and WebP images are supported up to 10 MB each. `message-link` accepts up to five Discord message links from the same server. A case can retain up to 10 attachments and links in total.
 
 Images appear under **Attachments** in confirmations, history and logs, and are never included in member DMs. Existing stored images remain compatible. With the mod log enabled and Attach Files allowed, images are copied to the log channel; otherwise original Discord upload links can expire.
 
@@ -59,3 +59,5 @@ Use one bot process per SQLite file. Retention keeps pending/uncertain cases and
 Before release, run `npm run check` and `npm test`. Tests cover registered command paths, ordinary-member denial before input access, real discord.js interactions, hierarchy, persistence, 50-warning history, attachment validation, uncertain mutations, stalled requests, fallback replies and recovery. Offline tests do not establish live Discord delivery.
 
 After GitHub checks pass, restart Wispbyte with auto-update enabled. Confirm the deployed commit and successful command verification. Old commands and subcommands are removed on registration; cached copies return guidance. Do not replace production files or upload a development database.
+
+Previously voided or removed cases are automatically deleted on startup, maintenance, or a case-history/dashboard read. They are not moved to an archive. The deletion is server-scoped and rolls back completely on a storage failure. Pending DM and log completions cannot recreate the deleted case. Run `/case user` again to see the updated history; earlier Discord messages are not live database views.

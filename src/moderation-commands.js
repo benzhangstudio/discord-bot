@@ -15,7 +15,7 @@ export const moderationCommands=[
  {name:'timeout',description:'Time out a member',options:[user,text('duration','Duration, e.g. 10m, 1h, 1d (max 28d)'),optionalReason,dm,...proof]},
  {name:'untimeout',description:'Remove a member’s timeout',options:[user,optionalReason,dm,...proof]},
  {name:'purge',description:'Delete recent messages from this channel',options:[number('count','Number of messages (1–100); pinned messages are skipped',1,100),{...user,required:false,description:'Only delete messages from this member'},optionalReason,...proof]},
- {name:'unwarn',description:'Remove one warning from a member; find its number in /case',options:[user,number('warning','Warning number shown in this member’s case history, e.g. 12',1,999999999),optionalReason,...proof]},
+ {name:'unwarn',description:'Permanently delete one warning; find its number in /case',options:[user,number('warning','Warning number shown in this member’s case history, e.g. 12',1,999999999),{...optionalReason,description:'Optional explanation shown in the confirmation'}]},
  {name:'case',description:'View a member’s history, or view and update a numbered case',options:[
   {...user,required:false,description:'Member whose moderation history you want to view'},
   number('number','Case number shown in history, e.g. 12; leave blank to list history',1,999999999,false),

@@ -27,11 +27,27 @@ export class Moderation {
    this.store.put(g,'mod-counter',{id:'main',last});this.store.put(g,'mod-number',{id,number:last,created:this.now()});return last;
   });
  }
- cases(g){return this.numbered(g).sort((a,b)=>b.created-a.created);}
+ cases(g){this.purgeRemoved(g);return this.numbered(g).sort((a,b)=>b.created-a.created);}
+ // Delete the case and its related records atomically. Keep only the server's
+ // number counter so a removed warning number can never target a later case.
+ erase(g,id){
+  return this.store.transaction(()=>{
+   const rows=this.numbered(g);
+   const last=Math.max(0,this.store.get(g,'mod-counter','main')?.last||0,...rows.map(c=>c.number||0));
+   this.store.put(g,'mod-counter',{id:'main',last});
+   this.store.remove(g,'mod-case',id);this.store.remove(g,'mod-number',id);
+   for(const kind of ['mod-log','mod-appeal'])for(const row of this.store.list(g,kind))if(row.caseId===id)this.store.remove(g,kind,row.id);
+  });
+ }
+ purgeRemoved(g){
+  const rows=g?this.store.list(g,'mod-case').map(c=>({...c,guild:g})):this.store.all('mod-case');
+  for(const c of rows)if(c.voided||c.state==='removed')this.erase(c.guild,c.id);
+ }
  /** User-facing numbers are never interpreted as Discord interaction IDs. */
- getNumber(g,number){const c=Number.isSafeInteger(number)&&number>0&&this.numbered(g).find(row=>row.number===number);if(!c)throw new UserError('Case not found in this server.');return c;}
+ getNumber(g,number){this.purgeRemoved(g);const c=Number.isSafeInteger(number)&&number>0&&this.numbered(g).find(row=>row.number===number);if(!c)throw new UserError('Case not found in this server.');return c;}
  /** Accepts a case number ("12" or "#12") or the original case ID. */
  get(g,ref){
+  this.purgeRemoved(g);
   const key=String(ref??'').trim().replace(/^case\s*/i,'').replace(/^#/,'');
   let c=this.store.get(g,'mod-case',key);
   if(!c&&/^\d{1,9}$/.test(key))c=this.numbered(g).find(x=>x.number===Number(key));
@@ -80,7 +96,7 @@ export class Moderation {
   if(cfg.blockedWords.some(w=>content.toLowerCase().includes(w.toLowerCase())))return 'Blocked phrase';
   return null;
  }
- sweep(){for(const {guild,...c}of this.store.all('mod-case')){
+ sweep(){this.purgeRemoved();for(const {guild,...c}of this.store.all('mod-case')){
   if(c.created>this.now()-this.config(guild).retentionDays*86400000||['pending','uncertain'].includes(c.state))continue;
   if(this.store.list(guild,'mod-appeal').some(a=>a.caseId===c.id&&a.state==='open'))continue;
   this.store.remove(guild,'mod-case',c.id);for(const row of this.store.list(guild,'mod-log'))if(row.caseId===c.id)this.store.remove(guild,'mod-log',row.id);

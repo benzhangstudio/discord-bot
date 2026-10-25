@@ -19,7 +19,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS deliveries (key TEXT PRIMARY KEY, state TEXT NOT NULL, detail TEXT, created INTEGER NOT NULL);`);
   }
   list(guild, kind) { return this.db.prepare('SELECT value FROM records WHERE guild=? AND kind=? ORDER BY rowid').all(guild, kind).map(r => JSON.parse(r.value)); }
-  all(kind) {return this.db.prepare('SELECT guild,value FROM records WHERE kind=?').all(kind).map(r => ({guild: r.guild, ...JSON.parse(r.value)}));}
+  all(kind) {return this.db.prepare('SELECT guild,value FROM records WHERE kind=?').all(kind).map(r => ({...JSON.parse(r.value), guild: r.guild}));}
   get(guild, kind, id) {const r = this.db.prepare('SELECT value FROM records WHERE guild=? AND kind=? AND id=?').get(guild, kind, id); return r && JSON.parse(r.value);}
   put(guild, kind, value) {value.id ||= randomUUID().slice(0, 8); this.db.prepare('INSERT INTO records VALUES(?,?,?,?) ON CONFLICT(guild,kind,id) DO UPDATE SET value=excluded.value').run(guild, kind, value.id, JSON.stringify(value)); return value;}
   remove(guild, kind, id) {return this.db.prepare('DELETE FROM records WHERE guild=? AND kind=? AND id=?').run(guild, kind, id).changes;}

@@ -27,14 +27,14 @@ The baseline at commit 28a5031 had 18 root commands and 53 selectable command/su
 | Access | Dashboard only, current owner only | Existing grants and authorization remain server-scoped. |
 | Reaction roles | Dashboard only, with save/resume/copy/publish | Published controls, unique/normal modes, temporary roles and eligibility remain active. Drafts persist without a Discord send. |
 | Moderation appeals | Remove all commands, panel/DM controls and dashboard settings | No new moderation appeals; historical stored records are retained. Verification is separate and unchanged. |
-| Warnings list | Remove | Case history already contains warnings and their removal history. |
+| Warnings list | Remove | Case history already contains active warnings. |
 
 ## Integration checks
 
 - Inventory: commands, options, help, autocomplete, cached-command guidance, global/guild registration and plugin gating. Required inputs precede optional ones; recursive schema validation remains active.
 - Response paths: initial, deferred, error, permission denial, stalled lookups, stalled confirmation/fallback, rate-limit recovery and visibility. Ordinary Discord messages contain no new internal IDs or “proof” attachment labels.
 - Permission checks: ordinary members denied before input access; current-owner grants, native moderation permissions and hierarchy retained. Missing owner metadata does not grant access. History pagination rechecks current staff access and feature state.
-- Storage: existing database schema and records retained. Drafts are server-scoped, accept incomplete work, and cannot overwrite another server’s draft. Stable case numbers are not confused with numeric internal IDs. Removed warnings remain in history.
+- Storage: existing database schema and records retained. Drafts are server-scoped, accept incomplete work, and cannot overwrite another server’s draft. Stable case numbers are not confused with numeric internal IDs. Removed warnings are permanently deleted under the updated removal policy.
 - Side effects: optional images are validated before moderation. A saved-draft publish retains a durable barrier after an uncertain send; retry/restart cannot automatically post the same draft twice. Stalled preflight cannot later publish after expiry.
 - Dashboard: no moderation appeal controls, no reaction-role slash command references, explicit Save versus Send to Discord, resume after reload and copy of existing setups. Browser verification uses disposable data and simulated Discord actions.
 - Preservation: moderation, automod, lockdown restoration, event/rotation/reminder delivery, embed publishing, Instagram collection, access grants, published reaction-role handling and verification regressions run in the full suite.
@@ -191,3 +191,9 @@ Save persists new and edited configurations only in the portal. Send to Discord 
 A separate follow-up adds a Watching activity labelled BETA • Being updated by the developer. Main-branch commit notifications trigger a verified GitHub check; duplicate notifications do not reset the one-hour deadline. Requests are bounded, coalesced and honor Retry-After. A periodic fallback and an independent expiry timer keep the status accurate when notifications or GitHub fail. Clearing activity leaves the bot online. The existing dashboard server exposes only a body-free public refresh trigger, without accepting caller-controlled presence or commit values.
 
 Additional files: `src/development-presence.js`, `src/index.js`, `src/dashboard.js`, `age-verification/server.js`, `.github/workflows/development-status.yml`, `tests/development-presence.test.js`, `README.md`, `WISPBYTE.md` and this review. Verification functionality is unchanged.
+
+## Permanent case deletion follow-up
+
+The latest removal policy supersedes the earlier audit-retention behavior: `/unwarn` permanently deletes the case and related database records, without archiving or displaying a Removed row. Legacy voided/removed cases are purged before history/dashboard results and during startup/maintenance. Case numbers are not reused. Background log/DM completions check for deletion before writing, preventing resurrection. Tests cover server isolation, atomic rollback, dashboard/history cleanup, stable numbering and deletion during pending sends.
+
+Changed files: `src/moderation-core.js`, `src/moderation.js`, `src/moderation-commands.js`, `src/dashboard-api.js`, `src/store.js`, `tests/case-deletion.test.js`, `tests/moderation.test.js`, `tests/modlog.test.js`, `AGENTS.md`, `MODERATION.md` and this review.

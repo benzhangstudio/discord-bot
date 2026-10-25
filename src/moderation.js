@@ -53,6 +53,7 @@ export function durationMinutes(value){
 }
 export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  const core=new Moderation(store,{timeoutMs});
+ core.purgeRemoved();
  const read=p=>withDeadline(p,timeoutMs,'Discord did not respond. Check permissions and try again.');
  const pending=new Set();
  let stopped=false,ticking=false;
@@ -91,12 +92,15 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  // ambiguous send is never blindly retried.
  async function log(guild,c,row){
   if(row?.state!=='queued')return;
+  const exists=()=>store.get(guild.id,'mod-case',c.id)&&store.get(guild.id,'mod-log',row.id);
+  if(!exists())return;
   const cfg=modlogConfig(store,guild.id),key=row.v===2?eventKey(c,row.event?.action):null;
   if(!key||!cfg.enabled||cfg.events[key]===false){store.put(guild.id,'mod-log',{...row,state:'skipped'});return;}
   store.put(guild.id,'mod-log',{...row,state:'sending'});
   let sending=false;
   try{
    const ch=await read(guild.channels.fetch(cfg.channel));
+   if(!exists())return;
    const me=guild.members?.me;
    const missing=ch&&[0,5].includes(ch.type)?missingPermissions(ch,me).filter(n=>n!=='Attach Files'):['View Channel'];
    if(missing.length){store.put(guild.id,'mod-log',{...row,state:'failed',missing});return;}
@@ -109,8 +113,9 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    const tag=client.users?.cache?.get?.(c.target)?.username,actorTag=client.users?.cache?.get?.(row.event?.action==='succeeded'?c.actor:row.event?.actor)?.username;
    sending=true;
    const sent=await read(ch.send({embeds:[modlogEmbed(c,row.event,{tag,actorTag,...(files.length?{image:`attachment://${files[0].name}`}:{})})],...(files.length?{files}:{}),allowedMentions:{parse:[]},nonce:row.id.slice(-25),enforceNonce:true}));
+   if(!exists())return;
    store.put(guild.id,'mod-log',{...row,state:'sent',url:sent?.url||null});
-   const latest=store.get(guild.id,'mod-case',c.id)||c;let changed=false;
+   const latest=store.get(guild.id,'mod-case',c.id);let changed=false;
    if(sent?.url&&row.event?.action==='succeeded'&&!latest.logMessage){latest.logMessage=sent.url;changed=true;}
    if(fresh.length&&sent){
     const byName=new Map([...(sent.attachments?.values?.()||[])].map(a=>[a.name,a]));
@@ -118,6 +123,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    }
    if(changed)store.put(guild.id,'mod-case',latest);
   }catch(error){
+   if(!exists())return;
    store.put(guild.id,'mod-log',{...row,state:sending?'uncertain':'queued'});
    console.warn(`Mod log delivery ${sending?'uncertain':'deferred'} (${error.status||error.code||error.name}); no automatic resend.`);
   }
@@ -125,7 +131,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  const flushing=new Set();
  async function flush(guild){
   if(!guild||flushing.has(guild.id))return;flushing.add(guild.id);
-  try{for(const row of store.list(guild.id,'mod-log').filter(r=>r.state==='queued').slice(0,10)){const c=store.get(guild.id,'mod-case',row.caseId);if(c)await log(guild,c,row);else store.put(guild.id,'mod-log',{...row,state:'skipped'});}}
+  try{for(const row of store.list(guild.id,'mod-log').filter(r=>r.state==='queued').slice(0,10)){const c=store.get(guild.id,'mod-case',row.caseId);if(c)await log(guild,c,row);else store.remove(guild.id,'mod-log',row.id);}}
   finally{flushing.delete(guild.id);}
  }
  const flushSoon=guild=>void Promise.resolve().then(()=>flush(guild)).catch(()=>console.warn('Mod log flush failed.'));
@@ -140,8 +146,9 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  function withProof(i){return i.proof?.length?{proof:i.proof}:{};}
  function dmWanted(i){const v=i.options.getBoolean?.('dm');return v??(core.config(i.guildId).dmMembers!==false);}
  function dmArgs(i,c,action,reason){return {action,guildName:i.guild.name,reason};}
- function recordDm(g,c,state){c.details={...c.details,dm:state==='skipped'?'failed':state};return store.put(g,'mod-case',c);}
+ function recordDm(g,c,state){const latest=store.get(g,'mod-case',c.id);if(!latest)return c;latest.details={...latest.details,dm:state==='skipped'?'failed':state};return store.put(g,'mod-case',latest);}
  async function finish(i,c){
+  if(!store.get(i.guildId,'mod-case',c.id))return respond(i,{content:'This case has been removed.',allowedMentions:{parse:[]}});
   const lastAction=c.events.at(-1)?.action;
   if(c.state!=='succeeded'&&!['note','proof','void'].includes(lastAction)){const unsure=['uncertain','pending'].includes(c.state);return respond(i,errorPayload(unsure?UNCERTAIN_ACTION:publicErrorMessage({code:c.error}),{title:unsure?'Result not confirmed':'Action failed',fields:c.number?[{name:'Case',value:`#${c.number}`,inline:true}]:[]}));}
   const member=i.guild.members.cache?.get(c.target);
@@ -286,7 +293,14 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
     flushSoon(i.guild);
     await respond(i,{content:`Case marked as ${c.state==='succeeded'?'completed':'not completed'}. The action was not repeated.`,embeds:[caseEmbedFull(c)],allowedMentions:{parse:[]}});return true;
    }
-   else{if(sub==='void'){must(c.action==='warn'&&c.state==='succeeded'&&!c.voided,'Only active successful warnings can be voided.');c.voided=true;}if(i.proof.length)addProof(c,i.proof);core.append(i.guildId,c,sub,i.user.id,reason);}
+   else{
+    if(sub==='void'){
+     must(c.action==='warn'&&c.state==='succeeded'&&!c.voided,'Only active successful warnings can be voided.');
+     core.erase(i.guildId,c.id);
+     await respond(i,{embeds:[{color:COLOR,title:'Warning removed',description:'The warning was permanently deleted.',...(i.options.getString('reason')?{fields:[{name:'Reason',value:clean(reason)}]}:{})}],allowedMentions:{parse:[]}});return true;
+    }
+    if(i.proof.length)addProof(c,i.proof);core.append(i.guildId,c,sub,i.user.id,reason);
+   }
    await finish(i,c);return true;
   }
   let target,action=sub,effect,details={},selectedMember;const reason=i.options.getString('reason')||'No reason provided';

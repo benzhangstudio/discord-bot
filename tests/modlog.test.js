@@ -52,7 +52,7 @@ test('a ban posts a Dyno-style "Case #N | Ban" entry and the case links to it',a
   await h.app.moderation.tick();assert.equal(h.sends.length,1,'never posted twice');
  }finally{h.close();}
 });
-test('timeouts show a duration; reason updates and warning removals post as case updates',async()=>{
+test('timeouts show a duration; reason updates are logged and warning removal deletes stored case records',async()=>{
  const h=harness();try{
   saveModlog(h.store,G,{channel:CH,enabled:true});
   await h.app.handle(h.interaction('timeout'));await flush();
@@ -60,8 +60,8 @@ test('timeouts show a duration; reason updates and warning removals post as case
   const w=h.interaction('warn');await h.app.handle(w);await flush();const wc=h.app.moderation.core.get(G,w.id);assert.equal(wc.state,'succeeded',JSON.stringify(h.outputs.at(-1)));const n=wc.number;
   await h.app.handle(h.interaction('case','reason',{case:String(n),reason:'Clarified'}));await flush();
   assert.equal(h.sends.at(-1).embeds[0].title,`Case #${n} updated`);assert.equal(h.sends.at(-1).embeds[0].fields.find(x=>x.name==='Reason').value,'Clarified');
-await h.app.handle(h.interaction('warnings','remove',{case:String(n),reason:'Mistake'}));await flush();
-  assert.equal(h.sends.at(-1).embeds[0].title,`Case #${n} | Warning removed`);
+const before=h.sends.length;await h.app.handle(h.interaction('warnings','remove',{case:String(n),reason:'Mistake'}));await flush();
+  assert.equal(h.sends.length,before);assert.equal(h.store.get(G,'mod-case',w.id),undefined);assert(!h.store.list(G,'mod-log').some(row=>row.caseId===w.id));
  }finally{h.close();}
 });
 test('disabled actions, the mod log being off and pre-existing entries are never posted',async()=>{
@@ -138,5 +138,21 @@ test('a stalled mod log send never delays the confirmation and is not resent',as
   const started=Date.now();await h.app.handle(h.interaction('kick'));assert.ok(Date.now()-started<150);assert.match(JSON.stringify(h.outputs.at(-1)),/Kicked/);
   await new Promise(r=>setTimeout(r,300));const row=h.store.list(G,'mod-log').find(r=>r.v===2);assert.equal(row.state,'uncertain');
   await h.app.moderation.tick();assert.equal(calls,1);
+ }finally{h.close();}
+});
+
+
+for(const stage of ['lookup','send'])test(`case deletion during a pending log ${stage} cannot recreate database records`,async()=>{
+ const h=harness();try{
+  saveModlog(h.store,G,{channel:CH,enabled:true});
+  h.store.put(G,'mod-case',{id:'delete-me',number:1,actor:OWNER,target:TARGET,action:'warn',reason:'Test',state:'succeeded',created:Date.now(),events:[]});
+  h.store.put(G,'mod-log',{id:'delete-log',caseId:'delete-me',state:'queued',v:2,event:{action:'succeeded'}});
+  let release,sends=0;const pending=new Promise(resolve=>{release=resolve;});
+  if(stage==='lookup')h.guild.channels.fetch=()=>pending;
+  h.channel.send=()=>{sends++;return stage==='send'?pending:Promise.resolve({url:'https://discord.com/channels/1/2/3'});};
+  const flushing=h.app.moderation.flush(h.guild);await new Promise(setImmediate);
+  h.app.moderation.core.erase(G,'delete-me');release(stage==='lookup'?h.channel:{url:'https://discord.com/channels/1/2/3'});await flushing;
+  assert.equal(h.store.get(G,'mod-case','delete-me'),undefined);assert.deepEqual(h.store.list(G,'mod-log'),[]);
+  if(stage==='lookup')assert.equal(sends,0);
  }finally{h.close();}
 });

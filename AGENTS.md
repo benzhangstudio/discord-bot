@@ -37,3 +37,5 @@
 - Images are optional attachment inputs named `image`, never `proof`; retain existing stored attachment data.
 - Moderation appeals are removed, including commands, panels, DM controls and dashboard settings. Keep verification separate.
 - Reaction-role setup and access management are dashboard-only. Preserve published reaction-role behavior, saved drafts and configuration copying.
+
+- Removing a warning permanently deletes its case and related database records. Do not archive it or retain a Removed entry in history/dashboard. Clean up legacy voided/removed cases and preserve only the case-number counter; late background work must never recreate deleted records.
