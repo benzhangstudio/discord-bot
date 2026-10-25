@@ -18,7 +18,7 @@ export function config(env=process.env){
   else{assert(origin.protocol==='https:',500,'Discord mode requires HTTPS.');if(c.mode==='discord')assert(c.clientSecret&&c.botToken&&snowflake(c.clientId),500,'Configure the application OAuth credentials. Server roles are configured on the website.');}
   return c;
 }
-export function application(c,root,discord=new Discord(c),plugins=null){
+export function application(c,root,discord=new Discord(c),plugins=null,onCommit=null){
   const sessions=new Map(),states=new Map(),rates=new Map(),inFlight=new Set();
   const cookieName=c.mode==='discord'?'__Host-age':'age',secure=c.mode==='discord'?'; Secure':'';
   function setSession(res,identity){const sid=token();sessions.set(sid,{...identity,csrf:token(),expires:Date.now()+3600000});res.setHeader('Set-Cookie',`${cookieName}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${secure}`);}
@@ -61,6 +61,14 @@ export function application(c,root,discord=new Discord(c),plugins=null){
         const file=page?'dashboard.html':path.slice(1);res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});return res.end(readFileSync(resolve(here,'public',file)));
       }
       if(req.method==='GET'&&path==='/api/config')return send(res,{mode:c.mode,version:'0.2',syntheticOnly:true,inviteUrl:c.mode==='discord'?invite():null});
+      if(req.method==='POST'&&path==='/api/commit-status'){
+        assert(typeof onCommit==='function',404,'Route not found.');
+        assert(!req.headers['transfer-encoding']&&Number(req.headers['content-length']||0)===0,400,'No request body is accepted.');
+        // Public refresh only: no supplied status, SHA, time or private data.
+        // The controller verifies GitHub and limits outbound requests itself.
+        void Promise.resolve().then(onCommit).catch(()=>console.warn('Commit status refresh unavailable.'));
+        return send(res,{ok:true},202);
+      }
       assert(c.mode!=='setup',503,'Public sign-in is temporarily unavailable. The bot operator must finish the application OAuth connection.');
       if(req.method==='GET'&&path==='/auth/login'){
         assert(c.mode==='discord',400,'Use demo sign-in.');const guild=url.searchParams.get('guild');assert(!guild||snowflake(guild),400,'Invalid server link.');

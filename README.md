@@ -97,3 +97,11 @@ Delivery records prevent repeat sends across normal restarts. Number One claims 
 Run `npm test` for offline isolation, daylight saving, rotation, payload limits, feed restrictions, command shape and delivery deduplication checks. Run `npm run check` for the entry point syntax check.
 
 Live checks still required: create/edit/send an embed, test a permitted role notification, schedule an event a few minutes ahead with reminder 0, test RSVPs from two members, verify a member without staff-channel access cannot view private meetings, restart to verify saved data, then test a real Instagram RSS/Atom source and its configured delivery schedule. No live Discord or Instagram testing is performed by offline tests.
+
+## BETA development activity
+
+After a new commit to GitHub `main`, the bot shows **BETA • Being updated by the developer** in its Discord activity. Each new commit refreshes the 60-minute window. After one hour without a commit, the activity clears and the bot stays online.
+
+A GitHub Actions notification asks the running bot to check for the latest commit. Checks are coalesced to at most once per minute, with a five-minute fallback poll if a notification is missed. The deadline comes from the commit time, so repeat notifications and network failures do not extend it. The public notification endpoint accepts no supplied status, time, repository or commit data; the bot checks this repository’s public main branch itself. No new credentials are required.
+
+Deploy this build once by restarting Wispbyte with `AUTO_UPDATE=1`. After that, status updates do not require restarting the bot. The indicator means recent development activity; it does not disable any commands or automatically deploy later changes.

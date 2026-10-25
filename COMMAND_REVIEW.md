@@ -185,3 +185,9 @@ Save persists new and edited configurations only in the portal. Send to Discord 
 ## Release validation
 
 493 tests passed on local Node 25, plus all syntax checks. Browser checks with disposable data verified saving, reloading/resuming, sending, copying, and saving/sending edits without reposting. Reaction tests cover stale role caches, already-held roles, native unreacts and rapid add/remove ordering. Live Discord and Wispbyte verification requires the production restart.
+
+## Commit-driven development activity
+
+A separate follow-up adds a Watching activity labelled BETA • Being updated by the developer. Main-branch commit notifications trigger a verified GitHub check; duplicate notifications do not reset the one-hour deadline. Requests are bounded, coalesced and honor Retry-After. A periodic fallback and an independent expiry timer keep the status accurate when notifications or GitHub fail. Clearing activity leaves the bot online. The existing dashboard server exposes only a body-free public refresh trigger, without accepting caller-controlled presence or commit values.
+
+Additional files: `src/development-presence.js`, `src/index.js`, `src/dashboard.js`, `age-verification/server.js`, `.github/workflows/development-status.yml`, `tests/development-presence.test.js`, `README.md`, `WISPBYTE.md` and this review. Verification functionality is unchanged.

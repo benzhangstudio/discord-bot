@@ -20,13 +20,13 @@ export function hostedConfig(env=process.env) {
 
 // The existing bot startup owns this listener; no second process or gateway login.
 // Pass the bot's own Store/client so plugin pages reuse them (same process, no second bot DB handle).
-export async function startHostedDashboard(env=process.env,{store:botStore=null,client=null}={}) {
+export async function startHostedDashboard(env=process.env,{store:botStore=null,client=null,onCommit=null}={}) {
   const c=hostedConfig(env);if(!c)return null;
   const path=resolve(env.AGE_DB || 'data/age-verification.sqlite');
   mkdirSync(dirname(path),{recursive:true});
   const store=new Store(path);
   store.purge();
-  const server=application(c,store,undefined,botStore?createDashboardApi({store:botStore,client,env}):null);
+  const server=application(c,store,undefined,botStore?createDashboardApi({store:botStore,client,env}):null,onCommit);
   server.requestTimeout=15000;server.headersTimeout=10000;
   const purge=setInterval(()=>store.purge(),60000);purge.unref();
   try {

@@ -62,3 +62,7 @@ The old single-server tables are not exposed under any community; their syntheti
 ## Rollback
 
 Revert the problematic code change in GitHub, wait for checks, and pull the revert on Wispbyte. Keep a database backup from before updates that change storage formats; a code revert alone cannot reverse a future database migration. Avoid reinstalling the server to perform routine code updates.
+
+## Automatic BETA development activity
+
+Restart once after deploying the development-presence build. It then updates Discord activity after main-branch commits and clears that activity after 60 minutes without one, leaving the bot online. GitHub’s development-status workflow sends a best-effort notification to `/api/commit-status` at the existing dashboard address. The bot verifies public GitHub commit metadata, limits refreshes, and also checks every five minutes. No extra port, process, token, or Wispbyte setting is needed. If the dashboard is disabled or GitHub is temporarily unavailable, the periodic check/expiry still runs inside the bot. Later code deployments still use the normal restart process.

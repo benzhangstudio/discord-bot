@@ -1,0 +1,15 @@
+name: Refresh bot development activity
+on:
+  push:
+    branches: [main]
+permissions: {}
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Ask the running bot to check the latest commit
+        run: |
+          if ! curl --fail --silent --show-error --connect-timeout 5 --max-time 10 --retry 2 --retry-delay 5 --request POST https://number-one.wispbyte.app/api/commit-status; then
+            echo "The bot did not confirm this refresh. Its periodic check will catch up after the updated build is running."
+          fi
