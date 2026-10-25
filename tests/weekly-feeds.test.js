@@ -53,3 +53,15 @@ test('an uncertain Discord delivery pauses a batch rather than repeating notific
 test('removing a subscription during a fetch cannot resurrect it',async()=>{
   const h=setup();await processFeeds(h.client,h.store,h.now+86400000,{load:async()=>{h.store.remove('g','feed','f');return[post(1)];},send:deliver});assert.equal(h.store.get('g','feed','f'),undefined);assert.equal(h.sent.length,0);h.store.close();
 });
+
+for(const fail of [false,true])test(`removing a subscription during a ${fail?'failed':'successful'} send cannot recreate it`,async()=>{
+  const h=setup(),sunday=time('2026-10-25T00:00:00-04:00');
+  const send=async()=>{h.store.remove('g','feed','f');if(fail)throw Error('Send failed after removal');return true;};
+  await processFeeds(h.client,h.store,sunday,{load:async()=>[post(1)],send});assert.equal(h.store.get('g','feed','f'),undefined);h.store.close();
+});
+
+test('a failed send preserves settings changed while the request was pending',async()=>{
+  const h=setup(),sunday=time('2026-10-25T00:00:00-04:00');
+  const send=async()=>{const f=h.store.get('g','feed','f');h.store.put('g','feed',{...f,name:'Updated source',settingsVersion:7,paused:true});throw Error('Send failed after settings changed');};
+  await processFeeds(h.client,h.store,sunday,{load:async()=>[post(1)],send});const saved=h.store.get('g','feed','f');assert.equal(saved.name,'Updated source');assert.equal(saved.settingsVersion,7);assert.equal(saved.paused,true);h.store.close();
+});

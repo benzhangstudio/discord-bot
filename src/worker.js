@@ -21,7 +21,10 @@ export function startWorker(client,store) {
             if(!channel || channel.guildId!==event.guild || !channel.isTextBased()) throw Error('Event channel unavailable.');
             if(event.kind!=='event' && channel.permissionsFor(channel.guild.roles.everyone)?.has(P.ViewChannel)) throw Error('Staff event channel is no longer private; delivery withheld.');
             const current=store.get(event.guild,'event',event.id);
-            if(!current || current.cancelled || current.start!==event.start)continue;
+            // A dashboard edit may finish while Discord resolves the old destination.
+            // Skip that snapshot; the next tick uses the saved destination and content.
+            const fields=['start','channel','kind','title','description','location','role','assignees','rotationIndex','duration','reminder','repeat','zone'];
+            if(!current || current.cancelled || current.complete || fields.some(key=>JSON.stringify(current[key])!==JSON.stringify(event[key])))continue;
             const person=rotationMember(event);
             const content=[event.role?`<@&${event.role}>`:'',person?`On duty: <@${person}>`:'',`**${event.title}**`, `<t:${Math.floor(event.start/1000)}:F> (<t:${Math.floor(event.start/1000)}:R>)`,event.description || '',event.location || ''].filter(Boolean).join('\n');
             await deliver(store,`event:${event.guild}:${event.id}:${event.start}`,channel,{content:content.slice(0,2000),allowedMentions:{parse:[],roles:event.role?[event.role]:[],users:person?[person]:[]},components:[{type:1,components:[{type:2,style:1,label:'Going',custom_id:`rsvp:${event.id}:${event.start}:going`},{type:2,style:2,label:'Maybe',custom_id:`rsvp:${event.id}:${event.start}:maybe`},{type:2,style:2,label:'Can’t make it',custom_id:`rsvp:${event.id}:${event.start}:declined`}]}]});

@@ -11,6 +11,7 @@ import {TOGGLEABLE_PLUGINS,pluginStates,setPluginEnabled} from './plugins.js';
 import {modlogConfig,saveModlog,missingPermissions,enabledEmbed,MODLOG_EVENTS,EVENT_KEYS} from './modlog.js';
 import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
 import {actionName,statusOf} from './mod-format.js';
+import {createDashboardFeatures} from './dashboard-features.js';
 
 export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
 const commandsFor={
@@ -40,6 +41,25 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   const settings=guild=>store.get(guild,'settings','main')||{id:'main',zone:DEFAULT_ZONE};
   const modConfig=guild=>({...modDefaults,...store.get(guild,'mod-config','main')});
   const reactionRoles=createReactionRoles({store,client});
+  const features=createDashboardFeatures({store,client,authorize:reauthorize});
+  const delegated=(guild,id,ownerId)=>!!ownerId&&store?.get(guild,'dashboard-access',id)?.grantedBy===ownerId;
+  function dashboardIdentity(guild,identity){
+    const dashboard=!!identity.owner||delegated(guild,identity.id,identity.ownerId);
+    return {...identity,dashboard,manager:dashboard};
+  }
+  async function reauthorize(guild,identity){
+    if(identity.reauthorize)return identity.reauthorize();
+    const g=cached(guild);assert(g,503,'The bot must be online and in this server to save changes.');
+    let timer;
+    try{
+      const [fresh,member]=await Promise.race([
+        Promise.all([g.fetch(),g.members.fetch({user:identity.id,force:true})]),
+        new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Discord took too long. No changes were saved.')),accessTimeoutMs);})
+      ]);
+      assert(member?.id===identity.id&&(fresh.ownerId===identity.id||delegated(guild,identity.id,fresh.ownerId)),403,'Your dashboard access was removed.');
+    }catch(error){if(error instanceof Fault)throw error;throw new Fault(403,'Could not confirm your dashboard access. Sign in again.');}
+    finally{clearTimeout(timer);}
+  }
   // Shared validation throws UserError with reviewed copy; surface it as a 400 on the website.
   async function rr(work){try{return await work();}catch(error){if(error?.name==='UserError')throw new Fault(400,error.message);throw new Fault(502,'Discord did not accept the change. Check the bot’s permissions and try again.');}}
   function rrGuild(guild){const g=cached(guild);assert(g,503,'The bot must be online and in this server to change reaction roles.');return g;}
@@ -53,7 +73,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   }
   const automodAvailable=()=>env.MODERATION_MESSAGE_CONTENT==='1';
 
-  function overview(guild,{verification}={}){
+  function overview(guild,{verification,identity}={}){
     const now=Date.now(),cases=new Moderation(store).cases(guild),events=store.list(guild,'event');
     return {
       plugins:pluginStates(store,guild),toggleable:TOGGLEABLE_PLUGINS,botPresent:hasBot(guild),
@@ -61,7 +81,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         moderationCases:cases.length,casesNeedingReview:cases.filter(c=>['pending','uncertain'].includes(c.state)).length,
         automod:!!modConfig(guild).automod,embeds:store.list(guild,'embed').length,
         upcomingEvents:events.filter(e=>!e.cancelled&&!e.complete&&e.start+e.duration*60000>now).length,
-        instagramSources:store.list(guild,'feed').length,accessGrants:store.list(guild,'access').length,
+        instagramSources:store.list(guild,'feed').length,...(identity?.owner?{accessGrants:store.list(guild,'access').filter(a=>a.grantedBy===identity.id).length,dashboardGrants:store.list(guild,'dashboard-access').filter(a=>a.grantedBy===identity.id).length}:{}),
         deliveryProblems:store.problems(guild).length
       },
       timezone:settings(guild).zone||DEFAULT_ZONE,verification:verification||null
@@ -103,7 +123,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     if(next.enabled&&!cur.enabled)for(const row of store.list(guild,'mod-log'))if(row.state==='queued')store.put(guild,'mod-log',{...row,state:'skipped'});
     saveModlog(store,guild,patch,identity.id);
   }
-  function plugin(guild,name){
+  function plugin(guild,name,identity){
     const enabled=TOGGLEABLE_PLUGINS.includes(name)?pluginStates(store,guild)[name]:null;
     const base={plugin:name,enabled,toggleable:TOGGLEABLE_PLUGINS.includes(name),commands:commandsFor[name]||[]};
     if(name==='moderation'){
@@ -117,25 +137,23 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       const cfg=modConfig(guild);
       return {...base,editable:true,ownerOnly:true,messageContentAvailable:automodAvailable(),config:{automod:!!cfg.automod,blockInvites:!!cfg.blockInvites,mentionLimit:cfg.mentionLimit,spamLimit:cfg.spamLimit,blockedWords:(cfg.blockedWords||[]).map(w=>text(w,100))}};
     }
-    if(name==='embeds')return {...base,editable:false,items:store.list(guild,'embed').map(d=>({id:d.id,name:text(d.name,80),title:text(d.embed?.title,256),updatedAt:d.updatedAt||null}))};
-    if(name==='scheduler'){
-      const now=Date.now();
-      return {...base,editable:false,timezone:settings(guild).zone||DEFAULT_ZONE,items:store.list(guild,'event').filter(e=>!e.cancelled&&!e.complete&&e.start+e.duration*60000>now).sort((a,b)=>a.start-b.start).slice(0,50)
-        .map(e=>({id:e.id,title:text(e.title,150),start:e.start,zone:e.zone,kind:e.kind||'event',repeat:e.repeat||'none',duration:e.duration,channel:label(guild,'channel',e.channel),needsAttention:!!e.error}))};
-    }
-    if(name==='instagram')return {...base,editable:false,items:store.list(guild,'feed').map(f=>({id:f.id,name:text(f.name,100),channel:label(guild,'channel',f.channel),paused:!!f.paused,schedule:f.paused?'Paused':text(deliveryLabel(f),120),waiting:f.pending?.length||0,needsAttention:!!f.error}))};
+    if(['embeds','scheduler','instagram'].includes(name))return {...base,...features.view(guild,name)};
     if(name==='reactionroles')return {...base,editable:true,...rrView(guild)};
-    if(name==='access')return {...base,editable:true,ownerManaged:true,limit:100,items:store.list(guild,'access').map(a=>({user:a.id,grantedBy:a.grantedBy||null,grantedAt:a.grantedAt||null}))};
+    if(name==='access'){
+      const ownerId=identity?.owner?identity.id:cached(guild)?.ownerId;
+      const grants=kind=>store.list(guild,kind).filter(a=>a.grantedBy===ownerId).map(a=>({user:a.id,grantedBy:a.grantedBy,grantedAt:a.grantedAt||null}));
+      return {...base,editable:true,ownerManaged:true,limit:100,dashboardLimit:100,items:grants('access'),dashboardItems:grants('dashboard-access')};
+    }
     if(name==='settings'){const s=settings(guild);return {...base,editable:true,timezone:s.zone||DEFAULT_ZONE,logChannel:label(guild,'channel',s.logChannel)};}
     throw new Fault(404,'Unknown dashboard plugin.');
   }
   async function update(guild,name,data,identity){
     if(name==='access'){
-      assert(identity.owner,403,'Only the current server owner can manage command access.');
-      only(data,['add','remove']);assert(Object.keys(data).length===1,400,'Choose one member to add or remove.');
-      const action='add' in data?'add':'remove',id=data[action];
+      assert(identity.owner,403,'Only the current server owner can manage access.');
+      only(data,['add','remove','dashboardAdd','dashboardRemove']);assert(Object.keys(data).length===1,400,'Choose one member to add or remove.');
+      const key=Object.keys(data)[0],action=['add','dashboardAdd'].includes(key)?'add':'remove',id=data[key],kind=key.startsWith('dashboard')?'dashboard-access':'access';
       assert(typeof id==='string'&&/^\d{17,20}$/.test(id),400,'Enter a valid Discord user ID.');
-      const g=cached(guild);assert(g,503,'The bot must be online and in this server to manage command access.');
+      const g=cached(guild);assert(g,503,'The bot must be online and in this server to manage access.');
       // Bound lookups and recheck ownership after asynchronous work, before any write.
       async function lookup(work){
         let timer;
@@ -148,13 +166,18 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         assert(member?.id===id&&member.user&&!member.user.bot,400,'Choose a current human member of this server.');
       }
       const fresh=await lookup(()=>g.fetch());
-      assert(fresh.ownerId===identity.id,403,'Only the current server owner can manage command access.');
-      if(action==='remove')store.remove(guild,'access',id);
+      assert(fresh.ownerId===identity.id,403,'Only the current server owner can manage access.');
+      if(action==='remove')store.remove(guild,kind,id);
       else{
-        assert(store.get(guild,'access',id)||store.list(guild,'access').length<100,400,'This server already has 100 approved members. Remove someone before adding another.');
-        const existing=store.get(guild,'access',id);
-        if(existing?.grantedBy!==identity.id)store.put(guild,'access',{id,grantedBy:identity.id,grantedAt:Date.now()});
+        assert(store.get(guild,kind,id)||store.list(guild,kind).filter(a=>a.grantedBy===identity.id).length<100,400,'This server already has 100 approved members. Remove someone before adding another.');
+        const existing=store.get(guild,kind,id);
+        if(existing?.grantedBy!==identity.id)store.put(guild,kind,{id,grantedBy:identity.id,grantedAt:Date.now()});
       }
+      return plugin(guild,name,identity);
+    }
+    if(['embeds','scheduler','instagram'].includes(name)&&Object.keys(data||{}).some(key=>key!=='enabled')){
+      assert(!('enabled' in data),400,'Save feature settings separately from the plugin switch.');
+      await features.update(guild,name,data,identity);
       return plugin(guild,name);
     }
     if(name==='reactionroles'&&data&&!('enabled' in data)){
@@ -241,15 +264,17 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   }
   return {
     hasBot,
+    dashboardIdentity,
+    dashboardCandidate(guild,id){return cached(guild)?.ownerId===id||!!store?.get(guild,'dashboard-access',id);},
     async handle({method,endpoint,data,guild,identity,verification}){
       if(endpoint!=='overview'&&!endpoint.startsWith('plugins/'))return undefined;
-      assert(identity.manager,403,'Server owner, Administrator or Manage Server permission required to manage this server.');
+      assert(identity.owner||identity.dashboard,403,'Only the server owner or members they approve can manage this dashboard.');
       available();
-      if(endpoint==='overview'){assert(method==='GET',405,'Method not allowed.');return overview(guild,{verification});}
+      if(endpoint==='overview'){assert(method==='GET',405,'Method not allowed.');return overview(guild,{verification,identity});}
       const name=endpoint.slice('plugins/'.length);
       assert(PLUGINS.includes(name)&&!['overview','verification'].includes(name),404,'Unknown dashboard plugin.');
-      if(name==='access')assert(identity.owner,403,'Only the current server owner can manage command access.');
-      if(method==='GET')return plugin(guild,name);
+      if(name==='access')assert(identity.owner,403,'Only the current server owner can manage access.');
+      if(method==='GET')return plugin(guild,name,identity);
       assert(method==='PUT',405,'Method not allowed.');
       return update(guild,name,data,identity);
     }

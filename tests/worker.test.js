@@ -21,3 +21,12 @@ test('expired one-off events complete without sending stale reminders',async()=>
   const store=new Store(':memory:');store.put('g','event',{id:'old',channel:'c',kind:'event',title:'Old',start:Date.now()-86400000,reminder:30,duration:60,repeat:'none'});
   const stop=startWorker({channels:{fetch:async()=>{throw Error('Should not send');}}},store);await settle();stop();assert.equal(store.get('g','event','old').complete,true);store.close();
 });
+
+for(const change of [{channel:'new-channel'},{description:'New description'},{kind:'staff-meeting'}])test(`editing a due event during destination lookup withholds the stale reminder (${Object.keys(change)[0]})`,async()=>{
+  const store=new Store(':memory:');store.put('g','event',{id:'editing',channel:'old-channel',kind:'event',title:'Event',start:Date.now()+60000,reminder:5,duration:60,repeat:'none'});
+  let sent=0;const client={channels:{fetch:async()=>{
+    store.put('g','event',{...store.get('g','event','editing'),...change});
+    return {guildId:'g',isTextBased:()=>true,send:async()=>{sent++;return{id:'sent'};}};
+  }}};
+  const stop=startWorker(client,store);await settle();stop();assert.equal(sent,0);assert.equal(store.delivery('event:g:editing:'+store.get('g','event','editing').start),undefined);store.close();
+});

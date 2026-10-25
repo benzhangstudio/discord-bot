@@ -158,7 +158,7 @@ test('reaction-role setup is dashboard-only and stale slash commands give dashbo
  assert.match(textOf(outputs[0]),/dashboard.*Reaction Roles/);assert.equal(w.rr.list(G).length,0);app.stop();w.store.close();
 });
 
-test('dashboard API: managers create, edit and delete with CSRF; members are refused',async t=>{
+test('dashboard API: owners create, edit and delete with CSRF; unapproved managers and members are refused',async t=>{
   const w=world();const root=new AgeStore();
   const probe=application({mode:'demo',origin:'http://127.0.0.1:1',port:1},root);await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
   const c=config({AGE_MODE:'demo',AGE_ORIGIN:`http://127.0.0.1:${port}`,AGE_PORT:String(port)});
@@ -172,6 +172,7 @@ test('dashboard API: managers create, edit and delete with CSRF; members are ref
   const url='/api/guilds/'+G+'/plugins/reactionroles';
   const member=await login('member');assert.equal((await member(url)).status,403);
   assert.equal((await member(url,{method:'PUT',data:{create:{channel:CH}}})).status,403);
+  const unapproved=await login('manager');assert.equal((await unapproved(url)).status,403);
   const manager=await login('owner');
   const view=await (await manager(url)).json();assert.equal(view.enabled,true);assert.ok(view.channels.some(x=>x.id===CH));assert.equal(view.roles.find(x=>x.id===HIGH).assignable,false);
   assert.equal((await manager(url,{method:'PUT',data:{create:{channel:CH}},csrf:''})).status,403);assert.equal(w.store.list(G,'reaction-role').length,0);

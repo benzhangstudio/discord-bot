@@ -67,3 +67,28 @@ pre{white-space:pre-wrap;font-size:12px;color:var(--muted);max-height:300px;over
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 @media (min-width:801px){#menuToggle{display:none!important}}
+/* Conventional server settings: readable forms, compact actions and steady navigation. */
+.sidebar{position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;align-self:flex-start}
+.sidebar .back-link{font-size:13px;margin-bottom:12px}
+.nav-group{margin-bottom:12px}.nav-label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:0 12px;margin:14px 0 6px}
+main{width:100%;max-width:1280px;padding:30px clamp(18px,3vw,40px)}
+p{overflow-wrap:anywhere}h1{font-size:26px;font-weight:650}h2{font-weight:650}.page-head p{margin:6px 0 0}
+.message:empty{display:none}.message:not(:empty){padding:12px 16px;background:#252b43;border:1px solid #414b78;border-radius:6px}.message.error{background:#392529;border-color:#86424b;color:#f5c7cc}.message.success{color:#d1dcff}
+.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr))}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.stat strong{font-size:26px}
+.module-grid .card{display:flex;flex-direction:column}.module-grid .card p{margin:0 0 18px}.module-grid .actions{align-items:center;justify-content:space-between}
+.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.actions button,.actions .button{margin:0}.card>.actions{margin-top:20px}
+.server-heading{display:flex;gap:14px;align-items:center}.server-info{min-width:0}.server h2{overflow-wrap:anywhere}.server-icon{flex-shrink:0;border-radius:14px}.server .actions{padding-top:14px}
+.portal-link{font-size:14px;margin-bottom:26px}.tag{white-space:nowrap}
+.settings-form label,.settings-form>.field-help,.settings-form>input,.settings-form>select,.settings-form>textarea{max-width:760px}
+label input,label select,label textarea{display:block;margin-top:6px;font-weight:400}
+label.check input{display:inline-block;margin:4px 0 0}.check{align-items:flex-start}
+input:disabled,select:disabled,textarea:disabled{opacity:.6;cursor:not-allowed}button:disabled{cursor:not-allowed}
+.field-help{color:var(--muted);font-size:13px;margin:6px 0 14px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px;max-width:760px}.form-grid label{min-width:0}
+fieldset{margin:22px 0 6px;border:1px solid var(--line);border-radius:6px;padding:12px 16px}legend{font-weight:600;padding:0 6px}.check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}.check-grid label{margin:6px 0;font-weight:400}
+.subtle{background:transparent;border-color:transparent}.subtle:hover{background:var(--panel2)}.danger.subtle{color:#ff9299;background:transparent}.danger.subtle:hover{background:#4d292d}
+td .actions{min-width:150px;gap:2px}td button{padding:5px 8px;font-size:13px}th,td{padding:12px 10px;vertical-align:top}td small{display:block;color:var(--muted);font-size:12px}.empty-state{border:1px dashed var(--line);border-radius:6px;color:var(--muted);padding:22px;text-align:center}
+.embed-preview{max-width:650px;background:#24262b;border-left:4px solid var(--accent);padding:16px;border-radius:4px;margin:18px 0;overflow-wrap:anywhere;white-space:pre-wrap}.embed-preview p{margin:8px 0}
+details summary{cursor:pointer;font-weight:600}details.advanced{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin:22px 0}.command-help .chips{margin-top:16px}
+.role-rows .row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(120px,2fr) auto;flex-wrap:nowrap;padding:8px 0}.role-rows .row input,.role-rows .row select{min-width:0}.role-rows{max-width:760px}
+@media(max-width:800px){.sidebar{position:fixed;top:56px;height:calc(100vh - 56px)}main{padding:24px 16px}.topbar-center{min-width:0}.topbar-center select{min-width:0;width:100%}.user-button span{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.facts{grid-template-columns:auto 1fr;gap:8px 12px}.card{padding:18px}.page-head{gap:12px}.stats{gap:8px}.stat{padding:14px}.stat .label{font-size:10px}}
+@media(max-width:520px){.form-grid,.check-grid{grid-template-columns:1fr}.role-rows .row{grid-template-columns:minmax(80px,1fr) minmax(100px,1.4fr)}.role-rows .row button{grid-column:2;justify-self:end}.user-button{padding:6px 8px}.stats{grid-template-columns:1fr}.stats .stat{flex-direction:row;align-items:center;justify-content:space-between}.server-heading{align-items:flex-start}.card>.actions{gap:8px}.brand{gap:0}.topbar{padding:0 10px}}

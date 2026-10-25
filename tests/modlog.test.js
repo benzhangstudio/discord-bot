@@ -117,7 +117,7 @@ test('no /modlogs command; help points to the dashboard for mod log setup',()=>{
 });
 test('dashboard Mod log: channel picker, toggles and test message share settings with the bot',async()=>{
  const h=harness();try{
-  const api=createDashboardApi({store:h.store,client:h.client});const id={id:OWNER,manager:true,owner:false};
+  const api=createDashboardApi({store:h.store,client:h.client});const id={id:OWNER,manager:true,dashboard:true,owner:false};
   const put=data=>api.handle({method:'PUT',endpoint:'plugins/moderation',data,guild:G,identity:id});
   let d=await api.handle({method:'GET',endpoint:'plugins/moderation',guild:G,identity:id});
   assert.equal(d.modlog.enabled,false);assert.equal(d.modlog.eventList.length,11);assert.equal('logChannel' in d.config,false);

@@ -79,7 +79,11 @@ export async function processFeeds(client,store,now,{load=loadFeed,send}) {
             const sent=await send(store,key,channel,feed.batch.parts[feed.batch.part]);
             if(!sent && store.delivery(key)?.state!=='sent')throw Error('Delivery is uncertain; check the channel before posting the batch manually.');
           } catch(error) {
-            feed.paused=true;feed.error=`Weekly batch paused: ${error.message}`;store.put(saved.guild,'feed',feed);throw error;
+            // A source may be removed or paused while a Discord send is pending.
+            // Never recreate a removed source or overwrite more recent settings.
+            const current=store.get(saved.guild,'feed',feed.id);
+            if(current){current.paused=true;current.error=`Weekly batch paused: ${error.message}`;store.put(saved.guild,'feed',current);}
+            throw error;
           }
           const latest=store.get(saved.guild,'feed',feed.id);
           if(!latest)break;

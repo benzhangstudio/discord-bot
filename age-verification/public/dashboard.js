@@ -1,193 +1,127 @@
-// Dashboard shell: sign-in, server picker, History API routing and plugin pages.
-const TITLES={overview:'Overview',moderation:'Moderation',automod:'Automod',embeds:'Embeds',scheduler:'Scheduler',instagram:'Instagram',reactionroles:'Reaction Roles',verification:'Verification',access:'Access',settings:'Settings'};
-const LEADS={overview:'Server status and plugins.',moderation:'Member actions and moderation history.',automod:'Automatic message filtering.',embeds:'Saved embed messages.',scheduler:'Upcoming events, meetings and rotations.',instagram:'Instagram roundup sources.',reactionroles:'Members pick roles by reacting to a message.',access:'Members granted command access by the server owner.',settings:'General server settings.'};
-let config,guilds=[];
-const el=(tag,props={},...children)=>{const n=document.createElement(tag);for(const[k,v]of Object.entries(props)){if(k==='class')n.className=v;else if(k==='text')n.textContent=v;else n.setAttribute(k,v);}n.append(...children.filter(Boolean));return n;};
+// Server dashboard and separate member verification entry point.
+const TITLES={overview:'Overview',moderation:'Moderation',automod:'Auto Moderation',embeds:'Embed Messages',scheduler:'Scheduled Events',instagram:'Instagram Feeds',reactionroles:'Reaction Roles',verification:'Verification',access:'Access',settings:'General Settings'};
+const LEADS={overview:'Manage Number One in your server.',moderation:'Moderation settings, logging and recent cases.',automod:'Filter unwanted messages and repeated spam.',embeds:'Create and manage saved messages.',scheduler:'Events, meetings and staff rotations.',instagram:'Daily and weekly feed roundups.',reactionroles:'Let members choose roles by reacting.',access:'Choose who can manage Number One.',settings:'Set the defaults for this server.'};
+let config,guilds=[],verificationGuilds=null,routeVersion=0;
+const el=(tag,props={},...children)=>{const n=document.createElement(tag);for(const[k,v]of Object.entries(props)){if(k==='class')n.className=v;else if(k==='text')n.textContent=v;else n.setAttribute(k,v);}n.append(...children.filter(x=>x!==null&&x!==undefined&&x!==false));return n;};
 const fmt=ms=>ms?new Date(ms).toLocaleString():'—';
+const label=(text,node)=>el('label',{},text,node);
+const input=(props={},value='')=>Object.assign(el('input',props),{value});
+const select=(items,value='',blank='Choose an option')=>{const s=el('select');if(blank!==null)s.append(new Option(blank,''));for(const x of items)s.append(new Option(x.name,x.id));s.value=value||'';return s;};
+const area=(value='',max=2000)=>Object.assign(el('textarea',{rows:4,maxlength:max}),{value});
+const check=(text,value=false)=>{const i=input({type:'checkbox'});i.checked=value;return {input:i,node:el('label',{class:'check'},i,text)};};
+const ref=x=>x?(x.name||'Deleted channel or role'):'Not set';
+const actions=(...items)=>el('div',{class:'actions'},...items);
+const button=(text,fn,cls='')=>{const b=el('button',{type:'button',class:cls,text});b.onclick=fn;return b;};
+const card=(title,...children)=>el('section',{class:'card'},el('h2',{text:title}),...children);
 function show(view){for(const v of document.querySelectorAll('.view'))v.hidden=v.id!=='view-'+view;}
-function navigate(path){history.pushState(null,'',path);route();}
+function dirty(){return !!document.querySelector('form[data-dirty="true"]');}
+function navigate(path){if(NO.busy)return;if(dirty()&&!confirm('Leave this page and discard unsaved changes?'))return;Verification.clearEvidence();history.pushState(null,'',path);route();}
 document.addEventListener('click',e=>{const a=e.target.closest('a[data-link]');if(a&&!e.ctrlKey&&!e.metaKey&&e.button===0){e.preventDefault();navigate(a.getAttribute('href'));}});
-window.addEventListener('popstate',()=>route());
-function parse(){
-  const url=new URL(location.href);
-  if(url.pathname.startsWith('/verify')){const g=url.searchParams.get('guild');if(g&&/^\d{17,20}$/.test(g)){history.replaceState(null,'','/dashboard/'+g+'/verification');return {guild:g,plugin:'verification'};}history.replaceState(null,'','/dashboard');}
-  const m=location.pathname.match(/^\/dashboard\/(\d{17,20})(?:\/([a-z]+))?\/?$/);return m?{guild:m[1],plugin:m[2]||null}:{};
-}
-function sidebar(guild,plugin){
-  const g=guilds.find(x=>x.id===guild);$('sidebar').hidden=false;$('menuToggle').hidden=false;$('sidebarServer').textContent=g?.name||'';
-  for(const a of $('sidebar').querySelectorAll('a')){a.href=`/dashboard/${guild}/${a.dataset.plugin}`;a.setAttribute('data-link','');a.hidden=a.hasAttribute('data-manager')&&!g?.manageable;if(a.dataset.plugin===plugin)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
-  const sel=$('serverSelect');sel.hidden=false;sel.replaceChildren(new Option('All servers',''),...guilds.map(x=>new Option(x.name,x.id)));sel.value=guild;
-  document.body.classList.remove('nav-open');$('menuToggle').setAttribute('aria-expanded','false');
+window.addEventListener('popstate',()=>{Verification.clearEvidence();if(NO.busy){NO.pendingNavigation=true;routeVersion++;return;}route();});
+window.addEventListener('beforeunload',e=>{if(dirty()){e.preventDefault();e.returnValue='';}});
+function parse(){const u=new URL(location.href);if(u.pathname.startsWith('/verify'))return {guild:u.searchParams.get('guild'),plugin:'verification',member:true};const m=u.pathname.match(/^\/dashboard\/(\d{17,20})(?:\/([a-z]+))?\/?$/);return m?{guild:m[1],plugin:m[2]||'overview',member:false}:{member:false};}
+function sidebar(g,plugin,member=false){
+  $('sidebar').hidden=false;$('menuToggle').hidden=false;$('sidebarServer').textContent=g.name;
+  for(const a of $('sidebar').querySelectorAll('[data-plugin]')){const p=a.dataset.plugin;a.href=`/dashboard/${g.id}/${p}`;a.hidden=(a.hasAttribute('data-manager')&&!g.manageable)||(p==='access'&&!g.owner);a.setAttribute('data-link','');if(p===plugin)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
+  for(const group of $('sidebar').querySelectorAll('.nav-group'))group.hidden=![...group.querySelectorAll('[data-plugin]')].some(a=>!a.hidden);
+  const sel=$('serverSelect');sel.hidden=false;sel.replaceChildren(new Option(member?'Verification servers':'Select a server',''),...(member?verificationGuilds:guilds).map(x=>new Option(x.name,x.id)));sel.value=g.id;
+  $('backToServers').href=member?'/verify':'/dashboard';document.body.classList.remove('nav-open');$('menuToggle').setAttribute('aria-expanded','false');
 }
 async function route(){
-  NO.message('');$('installMessage').hidden=true;
+  const version=++routeVersion;Verification.clearEvidence();NO.message('');$('installMessage').hidden=true;$('pluginBody').replaceChildren();
   if(!NO.session){show('login');$('sidebar').hidden=true;return;}
-  const {guild,plugin}=parse();
-  if(!guild){$('sidebar').hidden=true;$('menuToggle').hidden=true;$('serverSelect').value='';return servers();}
-  const g=guilds.find(x=>x.id===guild);if(!g){NO.message('This server is not in your Discord server list. Join it and sign in again.');return servers();}
-  const name=plugin&&TITLES[plugin]?plugin:(g.manageable?'overview':'verification');
-  if(name!==plugin)history.replaceState(null,'',`/dashboard/${guild}/${name}`);
-  sidebar(guild,name);document.title=`${TITLES[name]} · ${g.name} · Number One`;
+  const p=parse();let g=guilds.find(x=>x.id===p.guild),member=p.member;
   try{
-    if(name==='verification'){show('verification');await Verification.load(guild);}
-    else{show('plugin');await renderPlugin(guild,name);}
-  }catch(error){NO.message(error.message);}
-  $('main').focus({preventScroll:true});
+    if(member||p.plugin==='verification'&&!g){if(!verificationGuilds)verificationGuilds=(await NO.api('/api/guilds?scope=verification')).guilds;if(version!==routeVersion)return;g=verificationGuilds.find(x=>x.id===p.guild);member=!guilds.some(x=>x.id===p.guild)||p.member;}
+    if(!p.guild||!g){$('sidebar').hidden=true;$('menuToggle').hidden=true;$('serverSelect').hidden=true;servers(member);if(p.guild)NO.message(member?'You do not belong to this server. Sign in again after joining.':'Only servers you own or have been approved to manage appear here.');return;}
+    const name=TITLES[p.plugin]?p.plugin:'overview';sidebar(g,name,member);document.title=`${TITLES[name]} · ${g.name} · Number One`;
+    if(name==='verification'){show('verification');await Verification.load(g.id);}else{show('plugin');await renderPlugin(g.id,name,version);}
+  }catch(error){if(version===routeVersion){$('pluginBody').replaceChildren(card('Unable to load settings',el('p',{text:error.message}),button('Try again',()=>route())));NO.message(error.message,'error');}}
+  if(version===routeVersion)$('main').focus({preventScroll:true});
 }
-function servers(){
-  show('servers');document.title='Your servers · Number One';const list=$('serverList');list.replaceChildren();$('noServers').hidden=guilds.length>0;
-  for(const g of guilds){
-    const icon=g.icon?el('img',{src:g.icon,alt:'',width:48,height:48,class:'server-icon'}):el('div',{class:'server-icon',text:g.name.slice(0,1).toUpperCase(),'aria-hidden':'true'});
-    const badges=el('div',{class:'badges'},g.manageable?el('span',{class:'tag',text:'Manager'}):null,g.botPresent===true?el('span',{class:'tag ok',text:'Bot installed'}):g.botPresent===false?el('span',{class:'tag muted-tag',text:'Bot not installed'}):null);
-    const actions=el('div',{class:'actions'});
-    if(g.manageable&&g.botPresent===false&&g.inviteUrl)actions.append(el('a',{class:'button primary',href:g.inviteUrl,target:'_blank',rel:'noopener',text:'Add bot'}));
-    actions.append(el('a',{class:'button'+(g.botPresent===false&&g.manageable?'':' primary'),href:`/dashboard/${g.id}`,'data-link':'',text:g.manageable?'Manage':'Verification'}));
-    list.append(el('div',{class:'card server'},icon,el('div',{class:'server-info'},el('h2',{text:g.name}),badges),actions));
-  }
+function servers(member=false){
+  show('servers');const list=member?verificationGuilds||[]:guilds;$('serversTitle').textContent=member?'Verification':'Select a server';$('serversLead').textContent=member?'Choose a server to check verification or review submissions.':'Servers you own and servers whose owner has granted you dashboard access.';document.title=`${member?'Verification':'Your servers'} · Number One`;
+  $('memberPortal').hidden=member;$('dashboardLink').hidden=!member;$('serverList').replaceChildren();$('noServers').hidden=list.length>0;$('noServers').textContent=member?'No servers found. Sign in again after joining your server.':'No servers available. You must own a server or receive dashboard access from its owner.';
+  for(const g of list){const icon=g.icon?el('img',{src:g.icon,alt:'',width:48,height:48,class:'server-icon'}):el('div',{class:'server-icon',text:g.name.slice(0,1).toUpperCase(),'aria-hidden':'true'});const badges=el('div',{class:'badges'},!member?el('span',{class:'tag muted-tag',text:g.owner?'Server owner':'Dashboard manager'}):null,el('span',{class:'tag '+(g.botPresent?'ok':'muted-tag'),text:g.botPresent===true?'Bot installed':g.botPresent===false?'Bot not installed':'Bot status unavailable'}));const controls=actions();
+    if(!member&&g.botPresent===false&&g.inviteUrl)controls.append(el('a',{class:'button primary',href:g.inviteUrl,target:'_blank',rel:'noopener',text:'Add to server'}));else controls.append(el('a',{class:'button primary',href:member?'/verify?guild='+g.id:'/dashboard/'+g.id,'data-link':'',text:member?'Open verification':'Manage server'}));
+    $('serverList').append(el('section',{class:'card server'},el('div',{class:'server-heading'},icon,el('div',{class:'server-info'},el('h2',{text:g.name}),badges)),controls));}
 }
-function table(headers,rows,empty){
-  if(!rows.length)return el('p',{class:'muted',text:empty});
-  const t=el('table',{},el('thead',{},el('tr',{},...headers.map(h=>el('th',{scope:'col',text:h})))));const tb=el('tbody');
-  for(const r of rows)tb.append(el('tr',{},...r.map(c=>c instanceof Node?el('td',{},c):el('td',{text:c??'—'}))));t.append(tb);return el('div',{class:'table-wrap'},t);
+function table(headers,rows,empty){if(!rows.length)return el('div',{class:'empty-state',text:empty});const t=el('table',{},el('thead',{},el('tr',{},...headers.map(h=>el('th',{scope:'col',text:h})))));const body=el('tbody');for(const r of rows)body.append(el('tr',{},...r.map(c=>c instanceof Node?el('td',{},c):el('td',{text:c??'—'}))));t.append(body);return el('div',{class:'table-wrap'},t);}
+function commands(list){if(!list?.length)return null;return el('details',{class:'card command-help'},el('summary',{text:'Related Discord commands'}),el('div',{class:'chips'},...list.map(c=>el('code',{text:c}))));}
+function trackForms(parent){for(const f of parent.querySelectorAll('form')){f.dataset.dirty='false';f.addEventListener('input',()=>f.dataset.dirty='true');f.addEventListener('change',()=>f.dataset.dirty='true');}}
+function saveForm(title,fields,work,notice){const f=el('form',{class:'card settings-form'},el('h2',{text:title}),...fields,notice?el('p',{class:'muted',text:notice}):null,actions(el('button',{class:'primary',text:'Save changes'})));f.onsubmit=NO.action(async()=>{await work();f.dataset.dirty='false';NO.message(title+' saved.');});return f;}
+function ownerForm(f,owner){if(!owner){for(const c of f.querySelectorAll('input,select,textarea,button'))c.disabled=true;f.append(el('p',{class:'muted',text:'Only the server owner can change these settings.'}));}return f;}
+function timezoneOptions(){return el('datalist',{id:'tzList'},...(Intl.supportedValuesOf?Intl.supportedValuesOf('timeZone'):[]).map(z=>el('option',{value:z})));}
+async function renderPlugin(guild,name,version=routeVersion){
+  const target=parse();if(target.guild!==guild||target.plugin!==name)return;
+  $('pluginTitle').textContent=TITLES[name];$('pluginLead').textContent=LEADS[name]||'';const body=$('pluginBody');body.replaceChildren(el('p',{class:'muted',text:'Loading settings…'}));body.setAttribute('aria-busy','true');$('pluginSwitch').hidden=true;
+  const base='/api/guilds/'+guild,g=guilds.find(x=>x.id===guild),owner=!!g?.owner;
+  try{const d=await NO.api(name==='overview'?base+'/overview':`${base}/plugins/${name}`);if(version!==routeVersion)return;
+    const put=async data=>NO.api(`${base}/plugins/${name}`,data,'PUT'),refresh=()=>version===routeVersion?renderPlugin(guild,name):undefined;
+    const toggle=(box,plugin)=>{box.checked=d.enabled;box.disabled=false;box.onchange=NO.action(async()=>{const previous=!box.checked;try{const result=await NO.api(`${base}/plugins/${plugin}`,{enabled:box.checked},'PUT');box.checked=result.enabled;NO.message(`${TITLES[plugin]} ${result.enabled?'enabled':'disabled'}.`);}catch(error){box.checked=previous;throw error;}});};
+    if(name==='overview'){const plugins=el('div',{class:'grid module-grid'});for(const p of ['moderation','automod','embeds','scheduler','instagram','reactionroles','verification']){const enabled=p==='verification'?d.verification?.enabled:p==='automod'?d.stats.automod:d.plugins[p];plugins.append(card(TITLES[p],el('p',{class:'muted',text:LEADS[p]}),actions(el('span',{class:'tag '+(enabled?'ok':'muted-tag'),text:p==='verification'&&!d.verification?.configured?'Not configured':enabled?'Enabled':'Disabled'}),el('a',{class:'button',href:`/dashboard/${guild}/${p}`,'data-link':'',text:'Settings'}))));}
+      const s=d.stats;body.replaceChildren(card('Server status',el('dl',{class:'facts'},el('dt',{text:'Number One'}),el('dd',{text:d.botPresent===true?'Connected':d.botPresent===false?'Not installed':'Status unavailable'}),el('dt',{text:'Your access'}),el('dd',{text:owner?'Server owner':'Approved dashboard manager'}),el('dt',{text:'Server timezone'}),el('dd',{text:d.timezone}))),el('div',{class:'grid stats'},...[['Recent cases',s.moderationCases,'moderation'],['Upcoming events',s.upcomingEvents,'scheduler'],['Saved messages',s.embeds,'embeds']].map(([text,value,p])=>el('a',{class:'card stat',href:`/dashboard/${guild}/${p}`,'data-link':''},el('span',{class:'label',text}),el('strong',{text:String(value)})))),s.casesNeedingReview||s.deliveryProblems?el('div',{class:'notice',text:`${s.casesNeedingReview} cases need review. ${s.deliveryProblems} delivery issues. Check recent cases and /settings status in Discord.`}):el('p',{class:'muted',text:'No recent delivery issues.'}),el('h2',{text:'Modules'}),plugins);return;}
+    if(d.toggleable){$('pluginSwitch').hidden=false;toggle($('pluginEnabled'),name);if(name==='automod'&&!owner)$('pluginEnabled').disabled=true;}
+    const parts=[];if(d.toggleable&&!d.enabled)parts.push(el('div',{class:'notice',text:'This module is disabled. Update its settings below and enable it when ready.'}));
+    if(name==='moderation'){const c=d.config,mod=select(d.roles,c.modRole?.id,'No moderator role'),privacy=select(d.roles,c.privacyRole?.id,'No protected role'),retention=input({type:'number',min:30,max:3650,required:''},c.retentionDays),dm=check('DM members about moderation actions by default',c.dmMembers);
+      parts.push(ownerForm(saveForm('Moderation policy',[label('Moderator role',mod),el('p',{class:'field-help',text:'Sets the moderation hierarchy. Manage command permissions in Access.'}),label('Protected role',privacy),label('Keep cases for (days)',retention),dm.node],()=>put({modRole:mod.value||null,privacyRole:privacy.value||null,retentionDays:Number(retention.value),dmMembers:dm.input.checked}),'Policy changes are recorded in case history.'),owner));
+      const m=d.modlog,channel=select(d.channels,m.channel?.id,'Choose a text channel'),on=check('Enable moderation log',m.enabled),boxes=m.eventList.map(e=>({...check(e.label,m.events[e.key]!==false),key:e.key}));
+      parts.push(saveForm('Moderation log',[el('p',{class:'muted',text:'Post moderation records to a channel. The bot needs View Channel, Send Messages, Embed Links and Attach Files.'}),on.node,label('Log channel',channel),el('fieldset',{},el('legend',{text:'Actions to log'}),el('div',{class:'check-grid'},...boxes.map(b=>b.node))),m.missingPermissions.length?el('p',{class:'notice',text:'Missing permissions: '+m.missingPermissions.join(', ')}):null,m.auditLog===false?el('p',{class:'field-help',text:'Give Number One View Audit Log to include actions taken outside the bot.'}):null,button('Send test message',NO.action(async()=>{await put({modlog:{channel:channel.value||null,test:true}});NO.message('Test message sent.');}))],()=>put({modlog:{channel:channel.value||null,enabled:on.input.checked,events:Object.fromEntries(boxes.map(b=>[b.key,b.input.checked]))}})));
+      const proof=list=>list?.length?el('span',{},...list.map((p,i)=>el('a',{href:p.logMessage||p.url,target:'_blank',rel:'noopener noreferrer',text:(p.type==='image'?'Image ':'Link ')+(i+1)+' '}))):'—';parts.push(card('Recent cases',table(['Case','Action','Member','Moderator','Status','Date','Images / links'],d.recentCases.map(c=>[c.number?'#'+c.number:'Earlier case',c.actionLabel,c.targetLabel,c.moderatorLabel,c.statusLabel,fmt(c.created),proof(c.proof)]),'No cases yet. Moderation actions taken with Number One appear here.')));}
+    if(name==='automod'){const c=d.config,on=check('Enable automatic moderation',c.automod),invites=check('Delete Discord invite links',c.blockInvites),mentions=input({type:'number',min:1,max:50,required:''},c.mentionLimit),spam=input({type:'number',min:3,max:30,required:''},c.spamLimit),words=area(c.blockedWords.join(', '),1000);const f=saveForm('Message filters',[!d.messageContentAvailable?el('p',{class:'notice',text:'Message filtering is unavailable. The bot operator must enable Message Content Intent before you can turn it on.'}):null,on.node,invites.node,label('Maximum mentions per message',mentions),label('Maximum messages per member in 10 seconds',spam),label('Blocked words',words),el('p',{class:'field-help',text:'Separate words with commas.'})],()=>put({automod:on.input.checked,blockInvites:invites.input.checked,mentionLimit:Number(mentions.value),spamLimit:Number(spam.value),blockedWords:words.value}));parts.push(ownerForm(f,owner));if(!d.messageContentAvailable&&!c.automod){on.input.disabled=true;$('pluginEnabled').disabled=true;}}
+    if(name==='embeds')parts.push(...embedMessages(d,put,refresh));if(name==='scheduler')parts.push(...scheduledEvents(d,put,refresh));if(name==='instagram')parts.push(...instagramFeeds(d,put,refresh));if(name==='reactionroles')parts.push(...reactionRoles(d,base,guild));
+    if(name==='access'){for(const dashboard of [true,false]){const items=dashboard?d.dashboardItems:d.items,member=input({required:'',inputmode:'numeric',pattern:'[0-9]{17,20}',minlength:17,maxlength:20,autocomplete:'off'});parts.push(card(dashboard?'Dashboard managers':'Command access',el('p',{class:'muted',text:dashboard?'Only the owner has dashboard access by default. Dashboard access and command access are granted separately.':'Administrators and members with Manage Server can already use commands. Approve additional members below.'}),table(['Member ID','Granted','Actions'],(items||[]).map(a=>[a.user,fmt(a.grantedAt),button('Remove',NO.action(async()=>{await put({[dashboard?'dashboardRemove':'remove']:a.user});await refresh();NO.message(dashboard?'Dashboard access removed.':'Command grant removed. Discord permissions still apply.');}),'danger subtle')]),dashboard?'No additional dashboard managers.':'No additional command grants.')),saveForm(dashboard?'Add a dashboard manager':'Grant command access',[el('p',{class:'muted',text:dashboard?'Approved members can configure modules and manage content. Only the owner can manage access and change moderation policy.':'Grant bot command access to a current member of this server.'}),label('Member’s Discord user ID',member),el('p',{class:'field-help',text:'In Discord: Settings → Advanced → Developer Mode. Right-click the member and choose Copy User ID.'})],async()=>{await put({[dashboard?'dashboardAdd':'add']:member.value.trim()});await refresh();}));}}
+    if(name==='settings'){const zone=input({required:'',maxlength:64,list:'tzList',autocomplete:'off'},d.timezone);parts.push(saveForm('Server timezone',[label('Timezone',zone),timezoneOptions(),el('p',{class:'field-help',text:'Search by region or city, for example America/New_York. New events use this default. Existing events keep their timezone.'})],()=>put({timezone:zone.value.trim()})),card('Server access',el('p',{text:'The server owner controls who can use this dashboard.'}),owner?el('a',{class:'button',href:`/dashboard/${guild}/access`,'data-link':'',text:'Manage access'}):el('p',{class:'muted',text:'Ask the server owner to change dashboard access.'})));}
+    parts.push(commands(d.commands));body.replaceChildren(...parts.filter(Boolean));trackForms(body);
+  }finally{if(version===routeVersion)body.setAttribute('aria-busy','false');}
 }
-const ref=x=>x?(x.name||'Unavailable channel or role'):'Not set';
-const commands=list=>list?.length?el('div',{class:'card'},el('h2',{text:'Slash commands'}),el('p',{class:'muted',text:'Make other changes in Discord with:'}),el('div',{class:'chips'},...list.map(c=>el('code',{text:c})))):null;
-async function renderPlugin(guild,name){
-  $('pluginTitle').textContent=TITLES[name];$('pluginLead').textContent=LEADS[name]||'';const body=$('pluginBody');body.replaceChildren(el('p',{class:'muted',text:'Loading…'}));
-  const proofCell=list=>{if(!list?.length)return '—';const span=el('span',{});let n=0,l=0;list.forEach((p,k)=>{if(k)span.append(' · ');span.append(el('a',{href:p.logMessage||p.url,target:'_blank',rel:'noopener noreferrer',text:p.type==='image'?'Screenshot '+(++n):'Link '+(++l)}));});return span;};
-  const base='/api/guilds/'+guild;$('pluginSwitch').hidden=true;
-  if(name==='overview'){
-    const o=await NO.api(base+'/overview');const s=o.stats;
-    const stat=(label,value,link)=>el('a',{class:'card stat',href:`/dashboard/${guild}/${link}`,'data-link':''},el('span',{class:'label',text:label}),el('strong',{text:String(value)}));
-    const pluginCards=el('div',{class:'grid'},...o.toggleable.map(p=>{const box=el('input',{type:'checkbox',role:'switch',id:'t-'+p,'aria-label':'Enable '+TITLES[p]});box.checked=o.plugins[p];box.onchange=NO.action(async()=>{const r=await NO.api(`${base}/plugins/${p}`,{enabled:box.checked},'PUT');box.checked=r.enabled;NO.message(`${TITLES[p]} ${r.enabled?'enabled':'disabled'}.`);});
-      return el('div',{class:'card plugin-card'},el('div',{},el('h3',{},el('a',{href:`/dashboard/${guild}/${p}`,'data-link':'',text:TITLES[p]})),el('p',{class:'muted',text:LEADS[p]})),el('label',{class:'switch'},box,el('span',{'aria-hidden':'true'})));}));
-    body.replaceChildren(...[
-      o.botPresent===false?el('div',{class:'notice',text:'Number One is not in this server. Add it from the server list to use slash commands.'}):null,
-      el('div',{class:'grid stats'},stat('Moderation cases',s.moderationCases,'moderation'),stat('Cases needing review',s.casesNeedingReview,'moderation'),stat('Automod',s.automod?'On':'Off','automod'),stat('Saved embeds',s.embeds,'embeds'),stat('Upcoming events',s.upcomingEvents,'scheduler'),stat('Instagram sources',s.instagramSources,'instagram'),stat('Access grants',s.accessGrants,'access'),stat('Verification',o.verification?.enabled?'Open':o.verification?.configured?'Paused':'Not set up','verification')),
-      el('h2',{text:'Plugins'}),el('p',{class:'muted',text:'Disabled plugins stop responding to their slash commands in this server.'}),pluginCards,
-      el('p',{class:'muted',text:`Timezone: ${o.timezone}${s.deliveryProblems?` · ${s.deliveryProblems} recent delivery problem(s); run /settings status:true in Discord.`:''}`})].filter(Boolean));
-    return;
-  }
-  const d=await NO.api(`${base}/plugins/${name}`);
-  if(d.toggleable){$('pluginSwitch').hidden=false;const box=$('pluginEnabled');box.checked=d.enabled;box.onchange=NO.action(async()=>{const r=await NO.api(`${base}/plugins/${name}`,{enabled:box.checked},'PUT');box.checked=r.enabled;NO.message(`${TITLES[name]} ${r.enabled?'enabled':'disabled'}.`);});}
-  const parts=[];
-  if(name==='moderation'){
-    const c=d.config,f=el('form',{class:'card'});
-    const pick=(id,list,value,blank)=>{const s=el('select',{id});s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name,x.id));if(value&&!list.some(x=>x.id===value.id))s.append(new Option(value.id,value.id));s.value=value?.id||'';return s;};
-    const lab=(t,n)=>el('label',{},t,n);
-    const dmm=el('input',{type:'checkbox',id:'modDmMembers'});dmm.checked=c.dmMembers;
-    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (kept during moderation)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),
-      lab('Case retention in days (30–3650)',Object.assign(el('input',{type:'number',id:'modRetention',min:30,max:3650,required:''}),{value:c.retentionDays})),
-      el('h3',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),
-      el('p',{class:'muted',text:`Locked channels: ${d.locks}. Only the server owner can save changes. Each change is recorded as a moderation case.`}),el('button',{class:'primary',text:'Save'}));
-    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,retentionDays:Number($('modRetention').value),dmMembers:dmm.checked},'PUT');NO.message('Moderation settings saved.');});
-    parts.push(f);
-    {const m=d.modlog,ml=el('form',{class:'card'}),on=el('input',{type:'checkbox',id:'mlOn'});on.checked=m.enabled;
-     const boxes=m.eventList.map(e=>{const b=el('input',{type:'checkbox','data-event':e.key});b.checked=m.events[e.key]!==false;return el('label',{class:'check'},b,e.label);});
-     const test=el('button',{type:'button',text:'Send test message'});
-     const notes=[m.missingPermissions.length?el('p',{class:'muted',text:`The bot is missing ${m.missingPermissions.join(', ')} in the mod log channel.`}):null,m.auditLog===false?el('p',{class:'muted',text:'Give the bot View Audit Log to also record bans, kicks and timeouts done outside the bot.'}):null];
-     ml.append(el('h2',{text:'Mod log'}),el('p',{class:'muted',text:'Posts a record of every moderation action to a channel. The bot needs View Channel, Send Messages, Embed Links and Attach Files there.'}),
-       el('label',{class:'check'},on,'Enable mod log'),lab('Mod log channel',pick('mlChannel',d.channels,m.channel,'Not set')),el('h3',{text:'Actions to log'}),...boxes,...notes.filter(Boolean),el('button',{class:'primary',text:'Save'}),test);
-     const events=()=>Object.fromEntries([...ml.querySelectorAll('[data-event]')].map(b=>[b.dataset.event,b.checked]));
-     ml.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,enabled:on.checked,events:events()}},'PUT');NO.message('Mod log settings saved.');});
-     test.onclick=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,test:true}},'PUT');NO.message('Test message sent. Check the mod log channel.');});
-     parts.push(ml);}
-    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created','Attachments'],d.recentCases.map(c=>[c.number?'#'+c.number:'Earlier record',c.actionLabel,c.targetLabel,c.moderatorLabel,c.statusLabel,fmt(c.created),proofCell(c.proof)]),'No cases yet.')));
-  }
-  if(name==='automod'){
-    const c=d.config;const f=el('form',{class:'card'});
-    const check=(id,label,val)=>{const i=el('input',{type:'checkbox',id});i.checked=val;return el('label',{class:'check'},i,label);};
-    const num=(id,label,val,min,max)=>[el('label',{for:id,text:label}),Object.assign(el('input',{type:'number',id,min,max,required:''}),{value:val})];
-    f.append(el('h2',{text:'Filters'}),check('amOn','Enable automod',c.automod),!d.messageContentAvailable?el('p',{class:'muted',text:'Automod cannot be turned on until the bot operator enables Message Content Intent.'}):null,check('amInv','Delete server invite links',c.blockInvites),...num('amMention','Maximum mentions per message (1–50)',c.mentionLimit,1,50),...num('amSpam','Messages per member per 10 seconds (3–30)',c.spamLimit,3,30),el('label',{for:'amWords',text:'Blocked words (comma separated)'}),Object.assign(el('textarea',{id:'amWords',maxlength:1000,rows:3}),{value:c.blockedWords.join(', ')}),el('p',{class:'muted',text:'Only the server owner can save changes. Each change is recorded as a moderation case.'}),el('button',{class:'primary',text:'Save'}));
-    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/automod`,{automod:$('amOn').checked,blockInvites:$('amInv').checked,mentionLimit:Number($('amMention').value),spamLimit:Number($('amSpam').value),blockedWords:$('amWords').value},'PUT');NO.message('Automod settings saved.');});
-    parts.push(f);
-  }
-  if(name==='embeds')parts.push(el('div',{class:'card'},el('h2',{text:'Saved embeds'}),table(['Name','Title','Updated'],d.items.map(e=>[e.name,e.title||'—',fmt(e.updatedAt)]),'No saved embeds. Create one with /embed create.')));
-  if(name==='scheduler')parts.push(el('div',{class:'card'},el('h2',{text:'Upcoming'}),el('p',{class:'muted',text:'Server timezone: '+d.timezone}),table(['Title','Starts','Type','Repeats','Channel','Status'],d.items.map(e=>[e.title,fmt(e.start),e.kind,e.repeat,ref(e.channel),e.needsAttention?'Needs attention':'OK']),'Nothing scheduled. Add an event with /schedule add.')));
-  if(name==='instagram')parts.push(el('div',{class:'card'},el('h2',{text:'Sources'}),table(['Name','Channel','Delivery','Waiting','Status'],d.items.map(f=>[f.name,ref(f.channel),f.schedule,String(f.waiting),f.needsAttention?'Needs attention':f.paused?'Paused':'Active']),'No sources. Add one with /instagram setup.')));
-  if(name==='reactionroles')parts.push(...reactionRoles(d,base,guild));
-  if(name==='access'){
-    const input=el('input',{id:'accessMember',required:'',inputmode:'numeric',pattern:'[0-9]{17,20}',minlength:17,maxlength:20,autocomplete:'off','aria-describedby':'accessHint'});
-    const form=el('form',{class:'card'},el('h2',{text:'Grant command access'}),el('p',{text:'Administrators and members with Manage Server already have access. Only the current server owner can grant or remove additional access.'}),el('label',{for:'accessMember',text:'Member’s Discord user ID'}),input,el('p',{id:'accessHint',class:'muted',text:'In Discord, enable Developer Mode under Advanced settings, then right-click the member and choose Copy User ID. The member must be a person in this server.'}),el('button',{class:'primary',text:'Grant access'}));
-    form.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/access`,{add:input.value.trim()},'PUT');await renderPlugin(guild,'access');NO.message('Command access granted.');});
-    const rows=d.items.map(a=>{
-      const remove=el('button',{type:'button',class:'danger',text:'Remove access','aria-label':`Remove command access for ${a.user}`});
-      remove.onclick=NO.action(async()=>{await NO.api(`${base}/plugins/access`,{remove:a.user},'PUT');await renderPlugin(guild,'access');NO.message('Owner-granted access removed. Discord Administrator and Manage Server permissions still apply.');});
-      return [a.user,a.grantedBy,fmt(a.grantedAt),remove];
-    });
-    parts.push(form,el('div',{class:'card'},el('h2',{text:'Granted members'}),el('p',{class:'muted',text:`${d.items.length} of ${d.limit} grants used. Removing a grant does not change the member’s Discord permissions.`}),table(['User ID','Granted by','Granted','Action'],rows,'No additional members have command access.')));
-  }
-  if(name==='settings'){
-    const f=el('form',{class:'card'},el('h2',{text:'Timezone'}),el('label',{for:'tz',text:'Timezone for new events (IANA name)'}),Object.assign(el('input',{id:'tz',required:'',maxlength:64,list:'tzList',autocomplete:'off'}),{value:d.timezone}),el('datalist',{id:'tzList'},...(Intl.supportedValuesOf?Intl.supportedValuesOf('timeZone'):[]).map(z=>el('option',{value:z}))),el('button',{class:'primary',text:'Save'}));
-    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/settings`,{timezone:$('tz').value.trim()},'PUT');NO.message('Timezone saved. Existing events keep their timezone.');});
-    parts.push(f,el('div',{class:'card'},el('h2',{text:'Staff log channel'}),el('p',{text:ref(d.logChannel)})));
-  }
-  parts.push(commands(d.commands));body.replaceChildren(...parts.filter(Boolean));
+function embedMessages(d,put,refresh){
+  let editing=null;const name=input({required:'',maxlength:80}),title=input({maxlength:256}),description=area('',4096),color=input({maxlength:20,placeholder:'e.g. blue or #5865f2'}),content=area('',1800),preview=el('div',{class:'embed-preview'}),heading=el('h2',{text:'Create a message'});
+  function draw(){preview.replaceChildren(el('strong',{text:title.value||'Message title'}),el('p',{text:description.value||'Your message preview appears here.'}));}
+  const f=saveForm('Create a message',[label('Saved name',name),label('Title',title),label('Message',description),label('Color (optional)',color),label('Accompanying text (optional)',content),el('p',{class:'field-help',text:'Use /embed send in Discord to publish a saved message to a channel. Advanced image and layout settings remain available with /embed edit.'}),preview],async()=>{await put({save:{...(editing?{id:editing}:{}),name:name.value.trim(),title:title.value,description:description.value,color:color.value,content:content.value}});await refresh();NO.message('Message saved. Use /embed send to publish it.');});f.replaceChild(heading,f.firstChild);
+  function fill(x){editing=x?.id||null;heading.textContent=x?'Edit message':'Create a message';name.value=x?.name||'';title.value=x?.embed?.title||'';description.value=x?.embed?.description||'';color.value=x?.embed?.color!=null?'#'+x.embed.color.toString(16).padStart(6,'0'):'';content.value=x?.content||'';f.dataset.dirty='false';draw();f.scrollIntoView({block:'start'});name.focus();}
+  for(const c of [title,description])c.oninput=draw;f.append(button('Cancel',()=>fill(null),'subtle'));draw();
+  const rows=d.items.map(x=>[x.name,x.embed?.title||x.title||'—',fmt(x.updatedAt),actions(button('Edit',()=>fill(x)),button('Copy',NO.action(async()=>{await put({copy:x.id});await refresh();NO.message('Message copied.');})),button('Delete',NO.action(async()=>{if(!confirm('Delete this saved message? Published messages stay in Discord.'))return;await put({delete:x.id});await refresh();NO.message('Saved message deleted.');}),'danger subtle'))]);
+  return [card('Saved messages',table(['Name','Title','Updated','Actions'],rows,'No saved messages. Create your first message below.')),f];
+}
+function scheduledEvents(d,put,refresh){
+  let editing=null;const title=input({required:'',maxlength:150}),start=input({type:'datetime-local',required:''}),zone=input({required:'',maxlength:64,list:'tzList'},d.timezone),channel=select(d.channels,'','Choose a channel'),kind=select([{id:'event',name:'Community event'},{id:'staff-meeting',name:'Staff meeting'},{id:'rotation',name:'Staff rotation'}],'event',null),repeat=select([{id:'none',name:'Does not repeat'},{id:'daily',name:'Every day'},{id:'weekly',name:'Every week'}],'none',null),duration=input({type:'number',min:1,max:10080,required:''},60),reminder=input({type:'number',min:0,max:10080,required:''},30),description=area('',2000),location=input({maxlength:300}),people=input({maxlength:1000,placeholder:'Member IDs in rotation order'}),heading=el('h2',{text:'Create an event'});channel.required=true;
+  const f=saveForm('Create an event',[label('Event name',title),el('div',{class:'form-grid'},label('Start date and time',start),label('Timezone',zone),label('Channel',channel),label('Event type',kind),label('Repeat',repeat),label('Duration (minutes)',duration),label('Reminder before start (minutes)',reminder)),timezoneOptions(),label('Description (optional)',description),label('Location (optional)',location),label('Members for staff rotation',people),el('p',{class:'field-help',text:'For rotations, enter member IDs in order, separated by spaces. Staff meetings and rotations need a staff-only channel.'})],async()=>{await put({save:{...(editing?{id:editing}:{}),title:title.value.trim(),start:start.value,zone:zone.value.trim(),channel:channel.value,kind:kind.value,repeat:repeat.value,duration:Number(duration.value),reminder:Number(reminder.value),description:description.value,location:location.value,people:people.value}});await refresh();NO.message('Event saved. Reminders will post at the scheduled time.');},'Saving schedules automatic reminders in the selected channel. A reminder of 0 posts at the start.');f.replaceChild(heading,f.firstChild);
+  function fill(x){editing=x?.id||null;heading.textContent=x?'Edit event':'Create an event';title.value=x?.title||'';start.value=x?.startLocal||'';zone.value=x?.zone||d.timezone;channel.value=x?.channel?.id||'';kind.value=x?.kind||'event';repeat.value=x?.repeat||'none';duration.value=x?.duration||60;reminder.value=x?.reminder??30;description.value=x?.description||'';location.value=x?.location||'';people.value=(x?.assignees||[]).join(' ');f.dataset.dirty='false';f.scrollIntoView({block:'start'});title.focus();}
+  f.append(button('Cancel',()=>fill(null),'subtle'));
+  const rows=d.items.map(x=>[x.title,el('span',{},x.startLocal?.replace('T',' ')||fmt(x.start),el('small',{text:x.zone||d.timezone})),ref(x.channel),({none:'Once',daily:'Daily',weekly:'Weekly'})[x.repeat]||x.repeat,x.needsAttention?'Needs attention':'Scheduled',actions(button('Edit',()=>fill(x)),button('Cancel event',NO.action(async()=>{if(!confirm('Cancel this event and stop future reminders?'))return;await put({cancel:x.id});await refresh();NO.message('Event cancelled.');}),'danger subtle'))]);
+  return [card('Upcoming events',table(['Event','Starts','Channel','Repeat','Status','Actions'],rows,'No upcoming events. Create an event below.')),f];
+}
+function instagramFeeds(d,put,refresh){
+  let editing=null;const name=input({required:'',maxlength:80}),url=input({type:'url',maxlength:1500,placeholder:'https://your-feed-provider.example/feed'}),channel=select(d.channels,'','Choose a channel'),zone=input({required:'',list:'tzList',maxlength:64},d.timezone||'America/New_York'),time=input({type:'time',required:''},'09:00'),delivery=select([{id:'daily',name:'Daily roundup'},{id:'weekly',name:'Weekly roundup'}],'weekly',null),weekday=select(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((name,i)=>({id:String(i+1),name})),'7',null),previews=check('Show link previews',false),heading=el('h2',{text:'Add a feed'});channel.required=true;
+  const f=saveForm('Add a feed',[label('Feed name',name),label('RSS or Atom feed URL',url),el('p',{class:'field-help',text:'Use a public HTTPS feed from your Instagram feed provider. A profile link will not work. Leave blank when editing to keep the saved URL.'}),el('div',{class:'form-grid'},label('Channel',channel),label('Delivery',delivery),label('Day (weekly only)',weekday),label('Time',time),label('Timezone',zone)),timezoneOptions(),previews.node],async()=>{await put({save:{...(editing?{id:editing}:{}),name:name.value.trim(),...(url.value.trim()?{url:url.value.trim()}:{}),channel:channel.value,zone:zone.value.trim(),time:time.value,weekday:Number(weekday.value),delivery:delivery.value,showPreviews:previews.input.checked}});await refresh();NO.message('Feed saved. New posts will be included in its scheduled roundup.');},'New feeds start with future posts. Roundups post automatically on the chosen schedule. Use /instagram setup in Discord to configure role notifications.');f.replaceChild(heading,f.firstChild);
+  function fill(x){editing=x?.id||null;heading.textContent=x?'Edit feed':'Add a feed';name.value=x?.name||'';url.value='';url.required=!x;channel.value=x?.channel?.id||'';zone.value=x?.zone||d.timezone||'America/New_York';time.value=x?.time||'09:00';delivery.value=x?.delivery||'weekly';weekday.value=String(x?.weekday||7);previews.input.checked=!!x?.showPreviews;f.dataset.dirty='false';f.scrollIntoView({block:'start'});name.focus();}url.required=true;f.append(button('Cancel',()=>fill(null),'subtle'));
+  const rows=d.items.map(x=>[x.name,ref(x.channel),x.schedule,String(x.waiting),el('span',{class:'tag '+(x.needsAttention?'muted-tag':x.paused?'muted-tag':'ok'),text:x.needsAttention?'Needs attention':x.paused?'Paused':'Active'}),actions(button('Edit',()=>fill(x)),button(x.paused?'Resume':'Pause',NO.action(async()=>{if(x.paused&&x.waiting&&!confirm('Resume this feed? An overdue roundup may post queued items now.'))return;await put({[x.paused?'resume':'pause']:x.id});await refresh();NO.message(x.paused?'Feed resumed. Any overdue roundup can now post.':'Feed paused.');})),button('Remove',NO.action(async()=>{if(!confirm('Remove this feed and its queued posts?'))return;await put({remove:x.id});await refresh();NO.message('Feed removed.');}),'danger subtle'))]);
+  return [card('Feeds',table(['Name','Channel','Delivery','Queued','Status','Actions'],rows,'No feeds configured. Add a feed below.')),f];
 }
 function reactionRoles(d,base,guild){
-  const opt=(list,value,blank)=>{const s=el('select');if(blank)s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name+(x.assignable===false?' (above bot role)':''),x.id));s.value=value||'';return s;};
-  const list=el('div',{class:'card'},el('h2',{text:'Reaction-role messages'}),table(['Title','Channel','Roles','Mode','Status'],d.items.map(x=>[x.title,ref(x.channel),x.entries.map(e=>e.emoji+' '+(e.role.name||e.role.id)).join(', ')||'None',(x.mode==='unique'?'Unique':'Normal')+(x.maxRoles?` · max ${x.maxRoles}`:'')+(x.duration?` · ${x.duration} min`:'')+(x.removeOnUnreact?'':' · add-only'),x.broken?'Needs attention: '+x.broken:'OK']),'No reaction-role messages yet.'));
-  const actions=el('div',{class:'actions'});
-  for(const x of d.items){
-    const editBtn=el('button',{type:'button',text:'Edit '+x.title});editBtn.onclick=()=>fill(x);
-    const del=el('button',{type:'button',class:'danger',text:'Delete '+x.title});del.onclick=NO.action(async()=>{if(!confirm('Delete this reaction-role setup? Members keep their roles.'))return;await NO.api(`${base}/plugins/reactionroles`,{delete:x.id},'PUT');NO.message('Reaction roles deleted.');await renderPlugin(guild,'reactionroles');});
-    const copy=el('button',{type:'button',text:'Copy '+x.title});copy.onclick=()=>fill(x,true);actions.append(editBtn,copy,del);
-  }
-  if(d.items.length)list.append(actions);
-  const f=el('form',{class:'card'}),heading=el('h2',{text:'Create reaction roles'});let editing=null,draftId=null;
-  const channel=opt(d.channels,'','Choose a channel'),link=el('input',{maxlength:200,placeholder:'Optional: existing message link or ID'}),title=el('input',{maxlength:256,placeholder:'Reaction roles'}),desc=el('textarea',{maxlength:2000,rows:2});
-  const mode=el('select');mode.append(new Option('Normal: toggle multiple roles','normal'),new Option('Unique: pick one role','unique'));
-  const max=Object.assign(el('input',{type:'number',min:0,max:20}),{value:0}),dur=el('input',{maxlength:10,placeholder:'off, 30m, 12h, 7d'}),unreact=el('input',{type:'checkbox'});unreact.checked=true;
-  const required=opt(d.roles,'','No required role'),rows=el('div',{class:'rows'}),preview=el('div',{class:'card preview'});
-  const row=(emoji='',role='')=>{const r=el('div',{class:'row'}),e=el('input',{maxlength:64,placeholder:'Emoji, e.g. 🎮 or <:name:id>','aria-label':'Emoji'}),s=opt(d.roles,role,'Choose a role'),x=el('button',{type:'button',text:'Remove'});s.setAttribute('aria-label','Role for this emoji');e.value=emoji;x.onclick=()=>{r.remove();draw();};e.oninput=s.onchange=draw;r.append(e,s,x);rows.append(r);};
+  const put=data=>NO.api(`${base}/plugins/reactionroles`,data,'PUT');let editing=null,draftId=null;
+  const channel=select(d.channels,'','Choose a channel'),link=input({maxlength:200,placeholder:'https://discord.com/channels/…'}),title=input({maxlength:256,placeholder:'Choose your roles'}),description=area('',2000),mode=select([{id:'normal',name:'Normal — choose multiple roles'},{id:'unique',name:'Unique — choose one role'}],'normal',null),max=input({type:'number',min:0,max:20},0),duration=input({maxlength:10,placeholder:'off, 30m, 12h, 7d'},'off'),remove=check('Remove the role when the reaction is removed',true),required=select(d.roles,'','No required role'),rows=el('div',{class:'rows role-rows'}),preview=el('div',{class:'embed-preview'}),heading=el('h2',{text:'Create reaction roles'}),f=el('form',{class:'card settings-form'});
   const entries=()=>[...rows.children].map(r=>({emoji:r.children[0].value.trim(),role:r.children[1].value})).filter(e=>e.emoji||e.role);
-  function draw(){const name=id=>d.roles.find(r=>r.id===id)?.name||'role';preview.replaceChildren(...[el('h3',{text:'Preview: '+(title.value||'Reaction roles')}),desc.value?el('p',{text:desc.value}):null,...entries().map(e=>el('p',{text:`${e.emoji} – @${name(e.role)}`}))].filter(Boolean));}
-  for(const i of [title,desc])i.oninput=draw;
-  const add=el('button',{type:'button',text:'Add emoji and role'});add.onclick=()=>{if(rows.children.length<d.limits.entries)row();};
-  const label=(t,n)=>el('label',{},t,n);
-  const publish=el('button',{type:'button',class:'primary',text:'Send to Discord'});
-  function fill(x,copy=false,isDraft=false){
-    editing=copy?null:isDraft?x.target||null:x.id;draftId=isDraft?x.id:null;heading.textContent=isDraft?'Continue saved draft':copy?'Copy reaction roles':'Edit '+x.title;
-    channel.value=(isDraft?x.channel:x.channel?.id)||'';channel.disabled=!!editing;link.disabled=!!editing;link.value=isDraft?x.message||'':'';
-    title.value=x.title||'';desc.value=x.description||'';mode.value=x.mode||'normal';max.value=x.maxRoles||0;dur.value=typeof x.duration==='string'?x.duration:x.duration?x.duration+'m':'off';unreact.checked=x.removeOnUnreact!==false;required.value=(isDraft?x.requiredRole:x.requiredRole?.id)||'';
-    rows.replaceChildren();for(const e of x.entries||[])row(e.emoji,isDraft?e.role:e.role?.id);if(!rows.children.length)row();publish.textContent='Send to Discord';draw();f.scrollIntoView();
-  }
-  const drafts=el('div',{class:'card'},el('h2',{text:'Saved drafts'}));
-  function showDrafts(items){
-    drafts.replaceChildren(el('h2',{text:'Saved drafts'}),el('p',{class:'muted',text:'Save unfinished work here. Drafts are stored for this server and are not posted until you choose Send to Discord.'}));
-    for(const item of items||[]){const open=el('button',{type:'button',text:'Continue '+(item.title||'Untitled draft')}),remove=el('button',{type:'button',class:'danger',text:'Delete draft'});open.onclick=()=>fill(item,false,true);remove.onclick=NO.action(async()=>{const result=await NO.api(`${base}/plugins/reactionroles`,{deleteDraft:item.id},'PUT');showDrafts(result.drafts);if(draftId===item.id)draftId=null;NO.message('Draft deleted. Published messages are unchanged.');});drafts.append(el('div',{class:'row'},open,remove));}
-    if(!items?.length)drafts.append(el('p',{class:'muted',text:'No saved drafts yet.'}));
-  }
-  function values(){return {target:editing||null,channel:channel.value||null,message:link.value.trim()||null,title:title.value.trim()||null,description:desc.value.trim()||null,mode:mode.value,maxRoles:Number(max.value)||0,duration:dur.value.trim()||'off',removeOnUnreact:unreact.checked,requiredRole:required.value||null,entries:entries()};}
-  const saveDraft=el('button',{type:'submit',text:'Save'});
-  f.onsubmit=NO.action(async()=>{const result=await NO.api(`${base}/plugins/reactionroles`,{draft:{...(draftId?{id:draftId}:{}),...values()}},'PUT');draftId=result.savedDraft;showDrafts(result.drafts);NO.message('Draft saved. Nothing was posted to Discord.');});
-  showDrafts(d.drafts);
-  row();
-  f.append(heading,label('Channel',channel),label('Existing message (optional)',link),label('Title',title),label('Description',desc),label('Mode',mode),label('Max roles per member (0 = no limit)',max),label('Temporary role duration',dur),el('label',{class:'check'},unreact,'Remove the role when the reaction is removed'),label('Required role',required),el('h3',{text:'Emoji and roles'}),rows,add,preview,el('p',{class:'muted',text:'The bot needs Manage Roles, and its role must be above every role listed here.'}),saveDraft,publish);
-  publish.onclick=NO.action(async()=>{
-    const o=values();
-    {const result=await NO.api(`${base}/plugins/reactionroles`,{draft:{...(draftId?{id:draftId}:{}),...o}},'PUT');draftId=result.savedDraft;await NO.api(`${base}/plugins/reactionroles`,{publishDraft:draftId},'PUT');}
-    await renderPlugin(guild,'reactionroles');NO.message('Reaction roles sent to Discord.');
-  });
-  draw();
-  return [drafts,!d.botReady?el('div',{class:'notice',text:'The bot must be online in this server to change reaction roles.'}):null,list,f];
+  function draw(){preview.replaceChildren(el('strong',{text:title.value||'Reaction roles'}),el('p',{text:description.value}),...entries().map(e=>el('p',{text:e.emoji+' — @'+(d.roles.find(r=>r.id===e.role)?.name||'Choose a role')})));}
+  function row(emoji='',role=''){const e=input({maxlength:64,placeholder:'Emoji','aria-label':'Emoji'},emoji),s=select(d.roles.filter(r=>r.assignable!==false||r.id===role),role,'Choose a role');s.setAttribute('aria-label','Role for this emoji');const r=el('div',{class:'row'},e,s,button('Remove',()=>{r.remove();f.dataset.dirty='true';draw();},'subtle'));e.oninput=s.onchange=draw;rows.append(r);}
+  const publish=button('Send to Discord',NO.action(async()=>{const result=await put({draft:{...(draftId?{id:draftId}:{}),...values()}});draftId=result.savedDraft;await put({publishDraft:draftId});f.dataset.dirty='false';await renderPlugin(guild,'reactionroles');NO.message('Reaction roles sent to Discord.');}),'primary');
+  function fill(x=null,copy=false,isDraft=false){editing=copy?null:isDraft?x?.target||null:x?.id||null;draftId=isDraft?x.id:null;heading.textContent=!x?'Create reaction roles':isDraft?'Edit saved draft':copy?'Copy reaction roles':'Edit reaction roles';channel.value=(isDraft?x?.channel:x?.channel?.id)||'';channel.disabled=!!editing;link.disabled=!!editing;link.value=isDraft?x?.message||'':'';title.value=x?.title||'';description.value=x?.description||'';mode.value=x?.mode||'normal';max.value=x?.maxRoles||0;duration.value=typeof x?.duration==='string'?x.duration:x?.duration?x.duration+'m':'off';remove.input.checked=x?.removeOnUnreact!==false;required.value=(isDraft?x?.requiredRole:x?.requiredRole?.id)||'';rows.replaceChildren();for(const e of x?.entries||[])row(e.emoji,isDraft?e.role:e.role?.id);if(!rows.children.length)row();f.dataset.dirty='false';draw();f.scrollIntoView({block:'start'});title.focus();}
+  function values(){return {target:editing,channel:channel.value||null,message:link.value.trim()||null,title:title.value.trim()||null,description:description.value.trim()||null,mode:mode.value,maxRoles:Number(max.value)||0,duration:duration.value.trim()||'off',removeOnUnreact:remove.input.checked,requiredRole:required.value||null,entries:entries()};}
+  const drafts=card('Saved drafts');function showDrafts(items){drafts.replaceChildren(el('h2',{text:'Saved drafts'}),table(['Draft','Updated','Actions'],(items||[]).map(x=>[x.title||'Untitled draft',fmt(x.updatedAt),actions(button('Continue',()=>fill(x,false,true)),button('Delete',NO.action(async()=>{if(!confirm('Delete this saved draft?'))return;const r=await put({deleteDraft:x.id});showDrafts(r.drafts);if(draftId===x.id)fill();NO.message('Draft deleted.');}),'danger subtle'))]),'No saved drafts. Use Save to keep unfinished work.'));}
+  f.onsubmit=NO.action(async()=>{const r=await put({draft:{...(draftId?{id:draftId}:{}),...values()}});draftId=r.savedDraft;f.dataset.dirty='false';showDrafts(r.drafts);NO.message('Draft saved. Choose Send to Discord when ready.');});
+  for(const i of [title,description])i.oninput=draw;
+  f.append(heading,label('Channel',channel),label('Title',title),label('Description',description),el('h3',{text:'Emoji and roles'}),rows,button('Add emoji and role',()=>{if(rows.children.length<d.limits.entries){row();f.dataset.dirty='true';}}),el('details',{class:'advanced'},el('summary',{text:'Advanced options'}),label('Mode',mode),label('Maximum roles per member (0 = unlimited)',max),label('Temporary role duration',duration),remove.node,label('Required role',required),label('Existing message link or ID (optional)',link)),el('h3',{text:'Message preview'}),preview,el('p',{class:'field-help',text:'Number One needs Manage Roles, Add Reactions and Read Message History. Its highest role must be above each offered role.'}),actions(el('button',{text:'Save'}),publish,button('Cancel',()=>fill(),'subtle')));
+  row();draw();showDrafts(d.drafts);if(!d.botReady)publish.disabled=true;
+  const list=card('Published messages',table(['Message','Channel','Roles','Status','Actions'],d.items.map(x=>[el('a',{href:x.link,target:'_blank',rel:'noopener noreferrer',text:x.title}),ref(x.channel),x.entries.map(e=>e.emoji+' '+ref(e.role)).join(', '),x.broken?'Needs attention':'Active',actions(button('Edit',()=>fill(x)),button('Copy',()=>fill(x,true)),button('Delete',NO.action(async()=>{if(!confirm('Delete this reaction-role setup? Members keep their roles.'))return;await put({delete:x.id});await renderPlugin(guild,'reactionroles');NO.message('Reaction-role setup deleted.');}),'danger subtle'))]),'No published messages. Create a setup below, then choose Send to Discord.'));
+  return [!d.botReady?el('div',{class:'notice',text:'Number One must be online in this server to publish changes. You can save a draft now.'}):null,list,drafts,f];
 }
-$('serverSelect').onchange=()=>navigate($('serverSelect').value?'/dashboard/'+$('serverSelect').value:'/dashboard');
+$('serverSelect').onchange=()=>{const member=parse().member||!guilds.some(g=>g.id===parse().guild);navigate(member?'/verify'+($('serverSelect').value?'?guild='+$('serverSelect').value:''):'/dashboard'+($('serverSelect').value?'/'+$('serverSelect').value:''));};
 $('menuToggle').onclick=()=>{const open=document.body.classList.toggle('nav-open');$('menuToggle').setAttribute('aria-expanded',String(open));};
 $('userButton').onclick=()=>{const open=$('userDropdown').hidden;$('userDropdown').hidden=!open;$('userButton').setAttribute('aria-expanded',String(open));};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('userDropdown').hidden=true;$('userButton').setAttribute('aria-expanded','false');}});
-$('logout').onclick=NO.action(async()=>{await NO.api('/api/logout',{});location.href='/dashboard';});
-$('demoLogin').onclick=NO.action(async()=>{await NO.api('/api/demo-login',{identity:$('identity').value});await boot();NO.message('Local demo. Discord actions are simulated.');});
-async function boot(){
-  NO.session=await NO.api('/api/session');const list=await NO.api('/api/guilds');guilds=list.guilds;
-  $('userMenu').hidden=false;$('userName').textContent=NO.session.name||NO.session.id;if(NO.session.avatar){$('avatar').src=NO.session.avatar;$('avatar').hidden=false;}
-  if(list.inviteUrl)$('addBot').href=list.inviteUrl;else $('addBot').hidden=true;
-  await route();
-}
-NO.action(async()=>{
-  config=await NO.api('/api/config');NO.message('');
-  if(config.mode==='setup'){show('login');$('mode').textContent='Sign-in is temporarily unavailable. Please try again later.';return;}
-  const pending=parse();const g=pending.guild;
-  $(config.mode==='demo'?'demo':'discord').hidden=false;$('discord').href='/auth/login'+(g?'?guild='+encodeURIComponent(g):'');if(config.mode==='demo')$('mode').textContent='Local demo only.';
-  try{await boot();}catch(error){NO.session=null;show('login');if(error.status!==401)NO.message(error.message);}
-})();
+document.addEventListener('click',e=>{if(!e.target.closest('#userMenu')){$('userDropdown').hidden=true;$('userButton').setAttribute('aria-expanded','false');}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.body.classList.remove('nav-open');$('menuToggle').setAttribute('aria-expanded','false');$('userDropdown').hidden=true;$('userButton').setAttribute('aria-expanded','false');}});
+$('logout').onclick=NO.action(async()=>{await NO.api('/api/logout',{});for(const f of document.querySelectorAll('form'))f.dataset.dirty='false';location.href='/dashboard';});
+$('demoLogin').onclick=NO.action(async()=>{verificationGuilds=null;await NO.api('/api/demo-login',{identity:$('identity').value});await boot();NO.message('Local demo. Discord actions are simulated.');});
+async function boot(){NO.session=await NO.api('/api/session');const list=await NO.api('/api/guilds');guilds=list.guilds;$('userMenu').hidden=false;$('userName').textContent=NO.session.name||NO.session.id;if(NO.session.avatar){$('avatar').src=NO.session.avatar;$('avatar').hidden=false;}await route();}
+NO.action(async()=>{config=await NO.api('/api/config');NO.message('');if(config.mode==='setup'){show('login');$('mode').textContent='Sign-in is temporarily unavailable. Please try again later.';return;}const pending=parse();$(config.mode==='demo'?'demo':'discord').hidden=false;$('discord').href='/auth/login'+(pending.guild?'?guild='+encodeURIComponent(pending.guild):'');if(config.mode==='demo')$('mode').textContent='Local demo only.';try{await boot();}catch(error){NO.session=null;show('login');if(error.status!==401)NO.message(error.message,'error');}})();

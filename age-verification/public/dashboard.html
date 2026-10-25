@@ -21,18 +21,30 @@
   </div>
 </header>
 <div class="layout">
-<nav id="sidebar" class="sidebar" aria-label="Plugins" hidden>
+<nav id="sidebar" class="sidebar" aria-label="Server dashboard" hidden>
+  <a id="backToServers" href="/dashboard" data-link class="back-link">← All servers</a>
   <p class="sidebar-title" id="sidebarServer"></p>
+  <div class="nav-group">
   <a data-plugin="overview" data-manager>Overview</a>
+  </div>
+  <div class="nav-group">
+  <p class="nav-label">Moderation</p>
   <a data-plugin="moderation" data-manager>Moderation</a>
-  <a data-plugin="automod" data-manager>Automod</a>
-  <a data-plugin="embeds" data-manager>Embeds</a>
-  <a data-plugin="scheduler" data-manager>Scheduler</a>
-  <a data-plugin="instagram" data-manager>Instagram</a>
+  <a data-plugin="automod" data-manager>Auto Moderation</a>
+  </div>
+  <div class="nav-group">
+  <p class="nav-label">Server tools</p>
+  <a data-plugin="embeds" data-manager>Embed Messages</a>
+  <a data-plugin="scheduler" data-manager>Scheduled Events</a>
+  <a data-plugin="instagram" data-manager>Instagram Feeds</a>
   <a data-plugin="reactionroles" data-manager>Reaction Roles</a>
   <a data-plugin="verification">Verification</a>
+  </div>
+  <div class="nav-group">
+  <p class="nav-label">Settings</p>
   <a data-plugin="access" data-manager>Access</a>
-  <a data-plugin="settings" data-manager>Settings</a>
+  <a data-plugin="settings" data-manager>General Settings</a>
+  </div>
 </nav>
 <main id="main" tabindex="-1">
   <p id="message" class="message" role="status" aria-live="polite"></p>
@@ -49,10 +61,12 @@
   </section>
 
   <section id="view-servers" class="view" hidden>
-    <h1>Your servers</h1>
-    <p class="muted">Choose a server to manage. Servers where you have Manage Server or Administrator can be configured. <a id="addBot" target="_blank" rel="noopener">Invite Number One</a></p>
+    <h1 id="serversTitle">Select a server</h1>
+    <p class="muted" id="serversLead">Servers you own and servers whose owner has granted you dashboard access.</p>
+    <p id="memberPortal" class="portal-link">Here for verification? <a href="/verify" data-link>Open member verification</a></p>
+    <p id="dashboardLink" hidden><a href="/dashboard" data-link>Return to the dashboard</a></p>
     <div id="serverList" class="grid"></div>
-    <p id="noServers" class="muted" hidden>No servers found. Join a server, then sign in again.</p>
+    <p id="noServers" class="empty-state" hidden>No servers available. You must own a server or receive dashboard access from its owner.</p>
   </section>
 
   <section id="view-plugin" class="view" hidden>
@@ -66,13 +80,13 @@
     <div class="card"><h2 id="serverName"></h2><p id="availability" class="muted"></p><label for="share">Member link</label><div class="inline"><input id="share" readonly><button id="copyLink">Copy</button></div></div>
     <div id="vSettings" class="card" hidden><h2>Setup</h2><p class="muted">Choose the reviewer role and the role granted on approval. The server owner can always review.</p>
       <form id="settingsForm"><label for="reviewerRole">Reviewer role</label><select id="reviewerRole" required></select><label for="verifiedRole">Verified role</label><select id="verifiedRole" required></select>
-      <label class="check"><input id="enabled" type="checkbox">Accept submissions and decisions</label><label class="check"><input id="betaAcknowledged" type="checkbox" required>I will use a test role that does not unlock age-restricted content.</label><button class="primary">Save</button></form></div>
+      <label class="check"><input id="enabled" type="checkbox">Accept submissions and decisions</label><label class="check"><input id="betaAcknowledged" type="checkbox" required>I will use a test role that does not unlock age-restricted content.</label><button class="primary">Save changes</button></form></div>
     <div class="card"><h2>Your verification</h2><div id="case" class="muted"></div>
       <form id="submission" hidden><label for="fixture">Test case</label><select id="fixture"><option value="adult">Test adult · April 12, 1995</option><option value="minor">Test under 18 · September 23, 2015</option><option value="unverified">Unverified extraction · blocked</option></select><label class="check"><input type="checkbox" id="consent" required>I understand this is a test. Reviewers can see the test portrait and date of birth, which expire after 24 hours or a decision.</label><button class="primary">Submit</button></form></div>
     <div id="review" class="card" hidden><h2>Review queue</h2><p class="muted">Claims last 10 minutes. Under-18 cases must be denied. You cannot review your own submission.</p><div id="queue" class="rows"></div>
       <div id="evidence" hidden><h3>Evidence</h3><div class="evidence"><img id="portrait" src="/portrait.svg" alt="Test portrait" width="130" height="160"><div><span class="label">Date of birth</span><p id="dob"></p><p class="muted">Other details withheld.</p></div></div><button id="approve" class="primary">Approve (18+)</button> <button id="deny" class="danger">Deny</button></div></div>
     <div class="card"><h2>Privacy</h2><p class="muted">Records are kept per server. Evidence expires after 24 hours or a decision; audit events after 30 days. Deleting removes the assigned role.</p><button id="export">Download my data</button> <button id="delete">Request deletion</button></div>
-    <div id="admin" class="card" hidden><h2>Privacy requests and audit</h2><div id="requests" class="rows"></div><h3>Recent audit events</h3><pre id="audit"></pre></div>
+    <div id="admin" class="card" hidden><h2>Privacy requests and audit</h2><div id="requests" class="rows"></div><h3>Recent audit events</h3><div id="audit" class="rows"></div></div>
   </section>
 </main>
 </div>

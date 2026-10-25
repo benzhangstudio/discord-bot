@@ -48,5 +48,18 @@ test('server role setup rejects elevated, managed, everyone, identical and unass
 test('OAuth guild pagination preserves all servers and never stores bearer tokens',async()=>{
   let pages=0;const calls=[];const api=new Discord({origin:'https://test.example'},async(url,options)=>{
     calls.push(url);if(url.includes('/users/@me/guilds?')){pages++;return {ok:true,status:200,json:async()=>pages===1?Array.from({length:200},(_,i)=>({id:String(i+1),name:'Community',permissions:'0',owner:false})):[{id:'201',name:'Last',permissions:'32'}]};}return fakeAPI()(url,options);
-  });const identity=await api.exchange('x');assert.equal(identity.guilds.length,201);assert.equal(identity.guilds.at(-1).manageable,true);assert(!JSON.stringify(identity).includes('transient'));assert(calls.some(x=>x.endsWith('after=200')));
+  });const identity=await api.exchange('x');assert.equal(identity.guilds.length,201);assert.equal(identity.guilds.at(-1).manageable,false);assert.equal(identity.guilds.at(-1).owner,false);assert(!JSON.stringify(identity).includes('transient'));assert(calls.some(x=>x.endsWith('after=200')));
+});
+
+test('OAuth retains explicit ownership without inferring dashboard access from admin or Manage Server',async()=>{
+  const api=new Discord({origin:'https://test.example'},async(url,options)=>{
+    if(url.includes('/users/@me/guilds?'))return {ok:true,status:200,json:async()=>[{id:'owned',owner:true,permissions:'0'},{id:'admin',owner:false,permissions:'8'},{id:'managed',owner:false,permissions:'32'}]};
+    return fakeAPI()(url,options);
+  });
+  const result=await api.exchange('x');assert.deepEqual(result.guilds.map(g=>[g.id,g.owner,g.manageable]),[['owned',true,true],['admin',false,false],['managed',false,false]]);
+});
+
+test('dashboard picker authorization verifies membership and owner without fetching role catalogues',async()=>{
+  const calls=[],api=new Discord({clientId:'bot'},fakeAPI(undefined,calls));
+  const identity=await api.dashboardIdentity('g','u');assert.equal(identity.owner,false);assert.equal(identity.ownerId,'owner');assert.deepEqual(calls.sort(),['guild','member']);
 });

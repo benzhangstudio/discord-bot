@@ -9,7 +9,7 @@ export function portalMessage(guildId,origin=process.env.AGE_ORIGIN || 'https://
   if(!guildId)throw new UserError('Use /dashboard inside your server.');
   const link=new URL(`/dashboard/${encodeURIComponent(guildId)}`,base),verify=new URL(`/dashboard/${encodeURIComponent(guildId)}/verification`,base);
   return {
-    content:'**Server dashboard**\nSign in with Discord to manage plugins, moderation, automod, reaction roles and verification. Managing requires server owner, Administrator or Manage Server. Members can check their verification status.\n\nVerification runs in test mode; real ID uploads are disabled.',
+    content:'**Server dashboard**\nSign in with Discord to manage this server. Dashboard access is limited to the server owner and members the owner approves. Members can use Verification to check their own status.\n\nVerification runs in test mode; real ID uploads are disabled.',
     components:[{type:1,components:[{type:2,style:5,label:'Open dashboard',url:link.href},{type:2,style:5,label:'Verification',url:verify.href}]}],
     allowedMentions:{parse:[]}
   };

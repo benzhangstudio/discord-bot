@@ -39,3 +39,10 @@
 - Reaction-role setup and access management are dashboard-only. Preserve published reaction-role behavior, saved drafts and configuration copying.
 
 - Removing a warning permanently deletes its case and related database records. Do not archive it or retain a Removed entry in history/dashboard. Clean up legacy voided/removed cases and preserve only the case-number counter; late background work must never recreate deleted records.
+
+## Hosted dashboard workflow
+
+- Number One runs on Wispbyte at https://number-one.wispbyte.app. The user does not run a local bot or dashboard. Do not start one or direct the user to localhost unless explicitly asked.
+- Publish completed changes to benzhangstudio/number-one main using the connected GitHub repository, wait for GitHub Actions, then ask the user to restart Wispbyte with AUTO_UPDATE=1. Source changes are not a deployed service.
+- Dashboard servers are owner-only by default, with explicit current-owner dashboard grants. Dashboard grants, slash-command grants and member verification are separate permissions.
+- Use conventional Discord bot navigation, forms and actions for every feature. No marketing or paid-product framing.

@@ -24,7 +24,7 @@ export class Discord{
       const user=await call('https://discord.com/api/v10/users/@me',options);const guilds=[];let after='0';
       for(let page=0;page<20;page++){
         const batch=await call('https://discord.com/api/v10/users/@me/guilds?limit=200&after='+after,options);assert(Array.isArray(batch),502,'Discord server list is unavailable. Sign in again.');
-        guilds.push(...batch.map(g=>({id:g.id,name:g.name,icon:typeof g.icon==='string'&&/^(a_)?[a-f0-9]{32}$/.test(g.icon)?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`:null,manageable:g.owner||((BigInt(g.permissions)&(ADMIN|MANAGE_SERVER))!==0n)})));
+        guilds.push(...batch.map(g=>({id:g.id,name:g.name,icon:typeof g.icon==='string'&&/^(a_)?[a-f0-9]{32}$/.test(g.icon)?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`:null,owner:g.owner===true,manageable:g.owner===true})));
         if(batch.length<200)return {id:user.id,name:typeof (user.global_name||user.username)==='string'?(user.global_name||user.username).slice(0,64):null,avatar:typeof user.avatar==='string'&&/^(a_)?[a-f0-9]{32}$/.test(user.avatar)?`https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`:null,guilds};
         assert(batch.at(-1).id!==after,502,'Discord server pagination failed. Sign in again.');after=batch.at(-1).id;
       }
@@ -37,7 +37,12 @@ export class Discord{
   async identity(guild,id,settings){
     const [g,member,raw]=await Promise.all([this.api('/guilds/'+guild),this.api(`/guilds/${guild}/members/${id}`),this.api(`/guilds/${guild}/roles`)]);
     const roles=raw.map(r=>({...r,everyone:r.id===guild}));const owner=g.owner_id===id;
-    return {id,name:g.name,owner,manager:owner||(permissions(roles,member)&(ADMIN|MANAGE_SERVER))!==0n,reviewer:owner||!!settings&&member.roles.includes(settings.reviewerRole)};
+    return {id,name:g.name,owner,ownerId:g.owner_id,manager:owner||(permissions(roles,member)&(ADMIN|MANAGE_SERVER))!==0n,reviewer:owner||!!settings&&member.roles.includes(settings.reviewerRole)};
+  }
+  async dashboardIdentity(guild,id){
+    // The server picker only needs current ownership and membership, not the role catalogue.
+    const [g]=await Promise.all([this.api('/guilds/'+guild),this.member(guild,id)]);
+    return {id,name:g.name,owner:g.owner_id===id,ownerId:g.owner_id};
   }
   async roleOptions(guild){
     const [roles,bot]=await Promise.all([this.api(`/guilds/${guild}/roles`),this.api(`/guilds/${guild}/members/${this.c.clientId}`)]);

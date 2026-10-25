@@ -53,12 +53,12 @@ async function harness(t,{mode='demo',discord,configure=true}={}){
   async function login(identity){const r=await fetch(c.origin+'/api/demo-login',{method:'POST',headers:{Origin:c.origin,'Content-Type':'application/json'},body:JSON.stringify({identity})});return client(r.headers.get('set-cookie').split(';')[0]);}
   return {c,root,login,client};
 }
-test('public onboarding: manager selects roles on website; members need no hosting access',async t=>{
+test('public onboarding: owner selects verification roles; members and Discord managers need approval to configure',async t=>{
   const {root,login}=await harness(t,{configure:false}),member=await login('member'),manager=await login('manager'),owner=await login('owner');
   assert.equal((await member('context')).data.enabled,false);assert.equal((await member('submit',{fixture:'adult',consent:true})).status,409);
-  assert.equal((await member('settings',settings)).status,403);assert.equal((await manager('settings')).status,200);
-  assert.equal((await manager('settings',{...settings,betaAcknowledged:false})).status,400);assert.equal((await manager('settings',{...settings,verifiedRole:R})).status,400);
-  assert.equal((await manager('settings',settings)).status,200);assert.equal((await member('context')).data.enabled,true);assert.equal((await member('context',null,B)).data.enabled,false);
+  assert.equal((await member('settings',settings)).status,403);assert.equal((await manager('settings')).status,403);
+  assert.equal((await owner('settings',{...settings,betaAcknowledged:false})).status,400);assert.equal((await owner('settings',{...settings,verifiedRole:R})).status,400);
+  assert.equal((await owner('settings',settings)).status,200);assert.equal((await member('context')).data.enabled,true);assert.equal((await member('context',null,B)).data.enabled,false);
   assert.equal((await manager('queue')).status,403);assert.equal((await owner('queue')).status,200);assert.equal(root.forGuild(A).settings().verifiedRole,V);
 });
 test('HTTP member/reviewer/owner paths and independent cases in multiple communities',async t=>{
@@ -100,8 +100,8 @@ test('OAuth state, server link, fresh access and uncertain delivery cannot repea
   assert.equal((await call('decision',{id,decision:'approved'})).status,409);assert.equal(roles,1);assert.equal(dms,1);reviewer=false;assert.equal((await call('queue')).status,403);assert.equal((await call('settings',settings)).status,403);
 });
 
-test('management removal during role validation prevents saving settings',async t=>{
-  let manager=true;const discord={exchange:async()=>({id:'manager',guilds:DEMO_GUILDS}),identity:async(guild,id)=>({id,name:'Community',manager,owner:false,reviewer:false}),validateRoles:async()=>{manager=false;}};
+test('ownership removal during role validation prevents saving settings',async t=>{
+  let owner=true;const discord={exchange:async()=>({id:'manager',guilds:DEMO_GUILDS}),identity:async(guild,id)=>({id,name:'Community',manager:true,owner,reviewer:false}),validateRoles:async()=>{owner=false;}};
   const {c,root,client}=await harness(t,{mode:'discord',discord,configure:false});const start=await fetch(c.origin+'/auth/login',{redirect:'manual'});const state=new URL(start.headers.get('location')).searchParams.get('state');const cookie=start.headers.get('set-cookie').split(';')[0];
   const callback=await fetch(c.origin+'/auth/callback?code=test&state='+state,{headers:{Cookie:cookie},redirect:'manual'});const call=await client(callback.headers.get('set-cookie').split(';')[0]);assert.equal((await call('settings',settings)).status,403);assert.equal(root.forGuild(A).settings(),null);
 });
