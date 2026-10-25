@@ -10,9 +10,9 @@ NO.api=async(path,data,method)=>{
   return result;
 };
 NO.action=fn=>async event=>{
-  event?.preventDefault();if(NO.busy)return;NO.busy=true;const controls=[...document.querySelectorAll('main button,main select,main input')];controls.forEach(el=>el.disabled=true);NO.message('Working…');$('installMessage').hidden=true;
+  event?.preventDefault();if(NO.busy)return;NO.busy=true;const controls=[...document.querySelectorAll('main button,main select,main input')].map(el=>({el,disabled:el.disabled}));controls.forEach(({el})=>el.disabled=true);NO.message('Working…');$('installMessage').hidden=true;
   try{await fn();}catch(error){Verification.clearEvidence();NO.message(error.name==='TimeoutError'?'The request timed out. Refresh to check the saved result before trying again.':error.message);}
-  finally{NO.busy=false;controls.forEach(el=>el.disabled=false);if($('share'))$('share').readOnly=true;}
+  finally{NO.busy=false;controls.forEach(({el,disabled})=>el.disabled=disabled);if($('share'))$('share').readOnly=true;}
 };
 NO.row=(parent,text)=>{const el=document.createElement('div');el.className='row';const p=document.createElement('p');p.textContent=text;el.append(p);parent.append(el);return el;};
 NO.button=(parent,label,fn,cls)=>{const b=document.createElement('button');b.textContent=label;if(cls)b.className=cls;b.onclick=NO.action(fn);parent.append(b);return b;};

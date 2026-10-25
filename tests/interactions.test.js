@@ -14,16 +14,20 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
   const channel={id:'234567890123456789',type:0,permissionsFor:target=>new PermissionsBitField(target==='everyone'?(privateChannel?[]:[P.ViewChannel]):target===member&&!visible?[]:[P.ViewChannel,P.SendMessages,P.EmbedLinks,P.MentionEveryone]),send:async p=>{sent.push(p);return {id:'posted',url:'https://discord.com/channels/server/channel/message'};}};
   const guild={id:guildId,ownerId:'999999999999999999',channels:{cache:new Map([[channel.id,channel]]),fetch:async id=>id===channel.id?channel:null},members:{me:'bot',fetch:async()=>member},roles:{everyone:'everyone',fetch:async id=>({id,mentionable:true,managed:false})}};
   channel.guild=guild;
-  const interaction=(name,sub,values={})=>({
+  const interaction=(name,sub,values={})=>{
+    if(name==='settings'&&['view','status','timezone'].includes(sub)){if(sub==='status')values={...values,status:true};sub=undefined;}
+    if(name==='schedule'&&sub==='configure')sub='edit';
+    if(name==='embed'&&sub==='remove-section'){sub='edit';values={...values,'remove-section':values.number};}
+    return ({
     guildId,guild,user:{id:member.id},member,memberPermissions:perms,commandName:name,inGuild:()=>true,isButton:()=>false,isModalSubmit:()=>false,isChatInputCommand:()=>true,
-    options:{getSubcommand:()=>sub,getString:k=>values[k]??null,getInteger:k=>values[k]??null,getRole:k=>values[k]?{id:values[k]}:null,getUser:k=>values[k]?{id:values[k]}:null,getChannel:()=>channel},
+    options:{getSubcommand:()=>sub,getString:k=>values[k]??null,getInteger:k=>values[k]??null,getBoolean:k=>values[k]??null,getRole:k=>values[k]?{id:values[k]}:null,getUser:k=>values[k]?{id:values[k]}:null,getChannel:()=>channel},
     reply:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);},
     editReply:async function(p){assert.ok(this.deferred||this.replied);outputs.push(p);},
     deferReply:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
     deferUpdate:async function(){assert.ok(!this.deferred&&!this.replied);this.deferred=true;},
     showModal:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p.toJSON());},
     update:async function(p){assert.ok(!this.deferred&&!this.replied);this.replied=true;outputs.push(p);}
-  });
+  });};
   return {store,app,outputs,sent,channel,member,interaction};
 }
 
@@ -32,14 +36,14 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 const scenarios={
   help:{},
   dashboard:{},
-  'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings status':{},
-  'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},
-  'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
+  settings:{},
+  'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed send':{message:'saved'},
+  'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule cancel':{event:'saved'},
   'instagram setup':{},'instagram list':{},'instagram preview':{source:'saved'},'instagram pause':{source:'saved'},'instagram resume':{source:'saved'},'instagram remove':{source:'saved'}
 };
 test('every registered subcommand has a complete reply or modal scenario',()=>{
   // Moderation has a separate complete scenario/permission inventory in moderation.test.js.
-  const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','untimeout','purge','warnings','case','appeals','lockdown','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.map(s=>`${c.name} ${s.name}`)||[c.name]);
+  const registered=commands.filter(c=>!['ban','unban','kick','warn','timeout','untimeout','purge','unwarn','case','lockdown','reaction-roles'].includes(c.name)).flatMap(c=>c.options?.some(o=>o.type===1)?c.options.map(s=>`${c.name} ${s.name}`):[c.name]);
   assert.deepEqual(Object.keys(scenarios).sort(),registered.sort());
 });
 
@@ -59,7 +63,7 @@ for(const [name,values] of Object.entries(scenarios)) {
 test('added access is scoped to one server and cannot bypass channel permissions',async()=>{
   const h=harness({manager:false,visible:false});h.store.put('other-server','access',{id:h.member.id});
   await h.app.dispatch(h.interaction('help'));assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);
-  h.store.put('server-a','access',{id:h.member.id});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
+  h.store.put('server-a','access',{id:h.member.id,grantedBy:'999999999999999999'});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
   await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(textOf(h.outputs.at(-1)),/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
 });
 
@@ -141,10 +145,10 @@ test('failed message publishing and channel permission checks finish with an err
   const i=h.interaction('embed','send',{message:'saved'});await h.app.dispatch(i);assert.equal(i.replied,true);assert.match(textOf(h.outputs[0]),/permissions/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });
 
-test('an event cancelled during a channel lookup cannot be revived by configure',async()=>{
-  const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event'});
-  h.channel.guild.channels.cache.clear();h.channel.guild.channels.fetch=async()=>{const e=h.store.get('server-a','event','event');e.cancelled=true;h.store.put('server-a','event',e);return h.channel;};
-  await h.app.dispatch(h.interaction('schedule','configure',{event:'event',duration:90}));assert.equal(h.store.get('server-a','event','event').cancelled,true);assert.match(textOf(h.outputs[0]),/no longer active/);h.store.close();
+test('a cancelled event cannot be revived by edit options',async()=>{
+  const h=harness();h.store.put('server-a','event',{id:'event',title:'Meeting',channel:h.channel.id,start:Date.now()+600000,duration:60,repeat:'none',kind:'event',cancelled:true});
+  await h.app.dispatch(h.interaction('schedule','edit',{event:'event',duration:90}));
+  const saved=h.store.get('server-a','event','event');assert.equal(saved.cancelled,true);assert.equal(saved.duration,60);assert.match(textOf(h.outputs[0]),/no longer active/);h.store.close();
 });
 
 test('an announcement removed while permissions are being checked is not posted',async()=>{
@@ -255,7 +259,7 @@ test('legacy /events returns a useful reply without fetching a member',async()=>
   await h.app.handle(i);assert.equal(i.replied,true);assert.match(textOf(h.outputs[0]),/renamed/);assert.match(textOf(h.outputs[0]),/schedule list/);h.store.close();
 });
 test('retired commands still cached by Discord point to their replacement',async()=>{
-  for(const [old,replacement] of [['delwarn','/warnings remove'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
+  for(const [old,replacement] of [['delwarn','/unwarn'],['mute','/timeout'],['mod-settings','dashboard'],['emergency','/lockdown'],['portal','/dashboard']]){
     const h=harness();const i=h.interaction(old,null);await h.app.dispatch(i);
     assert.equal(h.outputs.length,1,old);assert.ok(messageOf(h.outputs[0]).includes(replacement),old);assert.equal(h.outputs[0].embeds[0].title,'Command renamed');assert.ok(!((h.outputs[0].flags||0)&64));h.store.close();
   }

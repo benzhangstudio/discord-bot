@@ -3,35 +3,35 @@
 // Discord message links. Proof is never included in member DMs.
 import {UserError} from './user-error.js';
 export const PROOF={
- type:'Proof screenshots must be PNG, JPEG, GIF or WebP images.',
- size:'Each proof screenshot must be 10 MB or smaller.',
- link:'Proof links must be Discord message links from this server, such as https://discord.com/channels/…',
- tooMany:'Add up to 5 proof message links.',
- none:'Attach a screenshot or add a message link as proof.',
- full:'This case already has the maximum of 10 proof items.',
+ type:'Images must be PNG, JPEG, GIF or WebP images.',
+ size:'Each image must be 10 MB or smaller.',
+ link:'Message links must be Discord message links from this server, such as https://discord.com/channels/…',
+ tooMany:'Add up to 5 message links.',
+ none:'Attach a screenshot or add a message link.',
+ full:'This case already has the maximum of 10 attachments.',
 };
 export const MAX_IMAGE_BYTES=10*1024*1024,MAX_LINKS=5,MAX_ITEMS=10;
 const IMAGE_TYPES=['image/png','image/jpeg','image/gif','image/webp'];
 const LINK=/^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\/(\d{17,20})\/(\d{17,20})\/(\d{17,20})\/?$/;
 export const proofOptions=[
- {type:11,name:'proof',description:'Screenshot as proof (image)'},
- {type:11,name:'proof2',description:'Extra screenshot as proof'},
- {type:11,name:'proof3',description:'Extra screenshot as proof'},
- {type:3,name:'proof_link',description:'Discord message link(s) as proof, separated by spaces',max_length:600},
+ {type:11,name:'image',description:'Optional image or screenshot',required:false},
+ {type:11,name:'image2',description:'Another optional image',required:false},
+ {type:11,name:'image3',description:'Another optional image',required:false},
+ {type:3,name:'message-link',description:'Optional Discord message links from this server, separated by spaces',max_length:600},
 ];
 const fail=m=>{throw new UserError(m);};
-const safeName=(name,n)=>{const ext=(/\.(png|jpe?g|gif|webp)$/i.exec(String(name||''))?.[1]||'png').toLowerCase();return `proof-${n}.${ext}`;};
+const safeName=(name,n)=>{const ext=(/\.(png|jpe?g|gif|webp)$/i.exec(String(name||''))?.[1]||'png').toLowerCase();return `image-${n}.${ext}`;};
 // Reads and validates proof options. Returns [] when none were given.
 export function readProof(i,{actor=i.user?.id,now=Date.now()}={}){
  const items=[];
- const atts=['proof','proof2','proof3'].map(n=>i.options?.getAttachment?.(n)).filter(Boolean);
+ const atts=['image','image2','image3'].map(n=>i.options?.getAttachment?.(n)).filter(Boolean);
  for(const a of atts){
   const type=String(a.contentType||'').split(';')[0].trim().toLowerCase();
   if(!IMAGE_TYPES.includes(type))fail(PROOF.type);
   if(!(Number(a.size)>0&&Number(a.size)<=MAX_IMAGE_BYTES))fail(PROOF.size);
   items.push({type:'image',url:String(a.url),name:safeName(a.name,items.length+1),size:Number(a.size),addedBy:actor,at:now,stored:false});
  }
- const raw=i.options?.getString?.('proof_link');
+ const raw=i.options?.getString?.('message-link');
  if(raw!=null&&String(raw).trim()){
   const links=[...new Set(String(raw).split(/[\s,]+/).filter(Boolean))];
   if(links.length>MAX_LINKS)fail(PROOF.tooMany);

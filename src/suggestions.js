@@ -5,19 +5,6 @@ export const timezoneLabel=(value='America/New_York')=>timezones.find(([zone])=>
 export function suggestions(store,i,{canManage=false,canConfigure=false}={}) {
   if(!i.inGuild() || !canManage)return [];
   const focused=i.options.getFocused(true),query=normalized(focused.value);
-  if(['case','id','appeal'].includes(focused.name)&&['case','warnings','appeals'].includes(i.commandName)){
-    const cfg=store.get(i.guildId,'mod-config','main');
-    const permissions=i.memberPermissions;
-    const roleIds=i.member?.roles?.cache?[...i.member.roles.cache.keys()]:i.member?.roles||[];
-    if(!permissions?.has(P.Administrator)&&!permissions?.has(P.ModerateMembers)&&i.user?.id!==i.guild?.ownerId&&(!cfg?.modRole||!roleIds.includes(cfg.modRole)))return [];
-    const grant=store.get(i.guildId,'access',i.user?.id||'');
-    if(!permissions?.has(P.Administrator)&&!permissions?.has(P.ManageGuild)&&i.user?.id!==i.guild?.ownerId&&grant?.grantedBy!==i.guild?.ownerId)return [];
-    const sub=i.options.getSubcommand?.(false);
-    if(i.commandName==='case'&&sub==='resolve'&&i.user?.id!==i.guild?.ownerId)return [];
-    const kind=focused.name==='appeal'?'mod-appeal':'mod-case';
-    const memberName=c=>i.guild.members?.cache?.get(c.target||c.actor)?.displayName||c.details?.memberName||c.target||c.actor;
-    return store.list(i.guildId,kind).reverse().filter(c=>!(i.commandName==='warnings'&&sub==='remove')||c.action==='warn'&&c.state==='succeeded'&&!c.voided).filter(c=>normalized([c.id,c.target,c.actor,c.action,c.reason,c.state,memberName(c)].join(' ')).includes(query)).slice(0,25).map(c=>({name:`${c.action||'Appeal'} · ${memberName(c)} · ${c.reason||c.state} · ${c.id}`.slice(0,100),value:c.id}));
-  }
   if(focused.name==='zone') {
     if((i.commandName==='settings'&&!canConfigure)||(i.commandName==='schedule'&&!canManage))return [];
     return timezones.filter(([value,name])=>normalized(value+' '+name).includes(query)).slice(0,25).map(([value,name])=>({name,value}));

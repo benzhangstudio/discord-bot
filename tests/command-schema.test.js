@@ -10,12 +10,10 @@ test('the complete serialized production command inventory is valid',()=>{
   validateCommandSchema(JSON.parse(JSON.stringify(commands)));
 });
 
-test('index 8 is /case view and retains the id required by its handler',()=>{
-  assert.equal(commands[8].name,'case');
-  assert.equal(commands[8].options[0].name,'view');
-  assert.equal(commands[8].options[0].options[0].name,'id');
-  assert.equal(commands[8].options[0].options[0].required,true);
-  assert.equal(commands[8].options[0].options[0].autocomplete,true);
+test('case options preserve their names and saved-item names remain meaningful',()=>{
+  const c=commands.find(c=>c.name==='case');assert(c.options.every(o=>o.type!==1));
+  assert.equal(c.options.find(o=>o.name==='number').type,4);
+  assert(c.options.every(o=>!o.autocomplete));
   // Every moderation definition must survive shared command normalization.
   for(const original of moderationCommands)assert.deepEqual(JSON.parse(JSON.stringify(commands.find(c=>c.name===original.name).options)),original.options);
   for(const [command,name] of [['embed','message'],['schedule','event'],['instagram','source']]) {
@@ -25,7 +23,7 @@ test('index 8 is /case view and retains the id required by its handler',()=>{
 });
 
 test('missing nested names reproduce the exact Discord rejection path',()=>{
-  const broken=structuredClone(commands);delete broken[8].options[0].options[0].name;
+  const broken=Array.from({length:9},(_,n)=>({type:1,name:'command'+n,description:'Example'}));broken[8].options=[{type:1,name:'view',description:'View',options:[{type:3,description:'Missing name'}]}];
   assert.throws(()=>validateCommandSchema(broken),/8\.options\[0\]\.options\[0\]\.name/);
 });
 
@@ -53,12 +51,12 @@ test('valid subcommand groups are validated recursively',()=>{
 });
 
 test('both registration entry points reject malformed payloads before any REST call',async()=>{
-  const option=commands[8].options[0].options[0],original=option.name;
+  const option=commands.find(c=>c.name==='embed').options[0].options[0],original=option.name;
   let calls=0;const rest={get:async()=>{calls++;},put:async()=>{calls++;}};
   try {
     delete option.name;
-    await assert.rejects(syncApplicationCommands({rest,applicationId:'app'}),/8\.options\[0\]\.options\[0\]\.name/);
-    for(const guild of [undefined,'test'])await assert.rejects(registerCommands(rest,'app',guild),/8\.options\[0\]\.options\[0\]\.name/);
+    await assert.rejects(syncApplicationCommands({rest,applicationId:'app'}),/options\[0\]\.options\[0\]\.name/);
+    for(const guild of [undefined,'test'])await assert.rejects(registerCommands(rest,'app',guild),/options\[0\]\.options\[0\]\.name/);
     assert.equal(calls,0);
   } finally {option.name=original;}
 });

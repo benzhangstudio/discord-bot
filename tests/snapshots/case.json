@@ -38,13 +38,8 @@
    "inline": true
   },
   {
-   "name": "Appeal",
-   "value": "Open",
-   "inline": true
-  },
-  {
    "name": "Updates",
-   "value": "<t:1767225660:R> note: Checked audit log",
+   "value": "<t:1767225660:R> Note added: Checked audit log",
    "inline": false
   }
  ]

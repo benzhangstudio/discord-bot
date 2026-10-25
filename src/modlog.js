@@ -8,7 +8,7 @@ import {proofSummary} from './mod-proof.js';
 export const BLURPLE=0x5865F2;
 export const MODLOG_EVENTS=Object.freeze([
  ['ban','Bans'],['unban','Unbans'],['kick','Kicks'],['warn','Warnings'],['void','Warnings removed'],['timeout','Timeouts'],['untimeout','Timeouts removed'],
- ['purge','Purges'],['lockdown','Lockdown on/off'],['update','Case updates (reason, proof, resolve)'],['appeal','Appeal decisions'],['external','Actions taken outside the bot (bans, unbans, kicks, timeouts)'],
+ ['purge','Purges'],['lockdown','Lockdown on/off'],['update','Case updates (reason, images, outcome)'],['external','Actions taken outside the bot (bans, unbans, kicks, timeouts)'],
 ]);
 export const EVENT_KEYS=MODLOG_EVENTS.map(e=>e[0]);
 export const MODLOG_PERMISSIONS=[['View Channel',P.ViewChannel],['Send Messages',P.SendMessages],['Embed Links',P.EmbedLinks],['Attach Files',P.AttachFiles]];
@@ -38,14 +38,13 @@ export function eventKey(c,action){
  }
  if(action==='void')return 'void';
  if(['note','proof'].includes(action)||String(action).startsWith('reconciled:'))return 'update';
- if(String(action).startsWith('appeal:'))return 'appeal';
  return null;
 }
 const mention=id=>/^\d{15,25}$/.test(String(id))?`<@${id}>`:'Unknown';
 const cut=(s,n)=>{s=String(s??'').replace(/@(everyone|here)/g,'@\u200b$1');return s.length>n?s.slice(0,n-1)+'…':s;};
 const DM={sent:'Sent',failed:'Failed (DMs closed)',skipped:'Failed (DMs closed)',disabled:'Not sent'};
 const fmtDuration=ms=>{const m=Math.round(ms/60000);if(m%10080===0)return `${m/10080}w`;if(m%1440===0)return `${m/1440}d`;if(m%60===0)return `${m/60}h`;return `${m}m`;};
-const UPDATE={note:'Reason updated',proof:'Proof added',void:'Warning removed','appeal:accepted':'Appeal accepted','appeal:denied':'Appeal denied','reconciled:succeeded':'Resolved as completed','reconciled:failed':'Resolved as not completed'};
+const UPDATE={note:'Reason updated',proof:'Images added',void:'Warning removed','appeal:accepted':'Appeal accepted','appeal:denied':'Appeal denied','reconciled:succeeded':'Resolved as completed','reconciled:failed':'Resolved as not completed'};
 /** The mod log embed. `event` is the case event being logged; `tag` the target's username if known. */
 export function modlogEmbed(c,event,{tag,actorTag,image}={}){
  const f=(name,value,inline=true)=>({name,value:cut(value,1024),inline});
@@ -64,10 +63,10 @@ export function modlogEmbed(c,event,{tag,actorTag,image}={}){
  if(isAction&&DM[c.details?.dm])fields.push(f('DM',DM[c.details.dm]));
  fields.push(f('Reason',cut((isAction?c.reason:event.reason)||'No reason provided',1000),false));
  if(!isAction&&c.reason&&event.action!=='note')fields.push(f('Original reason',cut(c.reason,500),false));
- const proof=proofSummary(c);if(proof)fields.push(f('Proof',proof,false));
+ const proof=proofSummary(c);if(proof)fields.push(f('Attachments',proof,false));
  if(c.details?.external)fields.push(f('Source','Done outside the bot (from the audit log)',false));
  const at=isAction?c.created:event.at;
- const target=/^\d{15,25}$/.test(String(c.target))?`User ID: ${c.target}`:`Case ID: ${cut(c.id,40)}`;
+ const target=/^\d{15,25}$/.test(String(c.target))?`User ID: ${c.target}`:'Moderation record';
  return {color:BLURPLE,title,fields,footer:{text:target},timestamp:new Date(at||Date.now()).toISOString(),...(image?{image:{url:image}}:{})};
 }
 export function enabledEmbed(cfg,actor){

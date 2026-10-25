@@ -17,7 +17,7 @@ Use one or two short sentences: what the user needs to know and their next usefu
 
 ## Error embed format
 
-Every error is sent as a clean neutral embed via `errorPayload(message,{title,fields})` in `src/error-embed.js`: grey colour `0x4F545C`, empty content, no buttons and no mentions. The title is concise (`Check your input`, `Not allowed`, `Not found`, `Couldn’t complete that`, `Result not confirmed`, `Action failed`, `Command renamed`) and the description is the catalogue copy. Failed or uncertain moderation actions add a `Case` field. Errors in server channels stay public; the DM appeal flow keeps its private replies.
+Every error is sent as a clean neutral embed via `errorPayload(message,{title,fields})` in `src/error-embed.js`: grey colour `0x4F545C`, empty content, no buttons and no mentions. The title is concise (`Check your input`, `Not allowed`, `Not found`, `Couldn’t complete that`, `Result not confirmed`, `Action failed`, `Command renamed`) and the description is the catalogue copy. Failed or uncertain moderation actions add a `Case` field. Errors in server channels stay public; direct-message replies are private by nature.
 
 Add a reviewed catalogue entry when introducing a validation error. Keep public copy under 160 characters, without hosting details, codes, secrets or technical paths. Preserve useful commands and input examples. The source-coverage regression test checks current validation messages; the unknown-error tests verify that future unmapped failures remain safe.
 
@@ -37,13 +37,11 @@ Warnings and local moderation record operations use the signed interaction plus 
 
 Bot copy uses a neutral, concise, functional voice. Avoid product branding in titles, footers and modal headings ("Commands", "Edit message", not "Number One · …"). Default embed color is Discord blurple (`5865F2`); `pink` remains an accepted color name. Verification is one dashboard plugin: its test-only/synthetic disclaimer appears only where verification is used (the `/dashboard` message and the verification page), not in general commands or help.
 
-## Moderation notices and appeals
+## Moderation notices
 
 Action confirmations are a one-line result plus an embed titled like `Member banned`, with User, Moderator, Reason and Case fields in blurple. Log-channel posts use the same embed.
 
-Affected members get a plain DM before ban, kick or timeout (after a warning): `You were banned from **Server**.` / `Reason: …` / `Case: …`, plus an **Appeal** button unless `dm-appeals` is off. If the DM fails, the moderator's reply adds: "Could not DM the member. If they contact staff another way, use /appeals record."
 
-The `/appeals panel` message is for members still in the server and says that removed members receive an Appeal button by DM. Review replies never imply a sanction changed: "Appeal X accepted. The sanction was not changed; use /unban or /untimeout if needed."
 
 ## Help and command text
 
@@ -53,10 +51,12 @@ The `/appeals panel` message is for members still in the server and says that re
 
 Every reply in a server channel is public, including errors, permission denials, access lists, embed editors and previews, Instagram setup, schedules, help and settings. No reply is removed: each command still confirms its result and each failure still gets a short public error. Moderator notes such as "Could not DM the member…" are part of the public action reply.
 
-Private by nature only: the appeal DM (notice, **Appeal** button, modal and its confirmation) and Discord modals. Verification cases and evidence are dashboard-only; no slash command, button or message shows them.
+Direct messages are private by nature; modals are Discord UI. Verification cases and evidence are dashboard-only; no slash command, button or message shows them.
 
-Moderation proof (screenshots and message links) is staff evidence. It appears in public confirmations, the mod log channel, case views and the dashboard, but never in member DMs. Proof validation errors use reviewed public copy (`PROOF` in src/mod-proof.js).
+Optional images and message links is staff evidence. It appears in public confirmations, the mod log channel, case views and the dashboard, but never in member DMs. Image validation errors use reviewed public copy (`PROOF` in src/mod-proof.js).
 
 ## Mod log entries
 
-Mod log entries are blurple record embeds (`Case #N | Ban`, `Case #N updated`, `Case #N | Warning removed`) with User, Moderator, Reason, DM, Duration and Proof fields, a `User ID:` footer and a timestamp. They never ping (`allowedMentions: {parse: []}`) and never contain diagnostics. Delivery failures are logged by status code only and are not resent. Mod log setup errors appear on the dashboard (for example `The bot needs Embed Links, Attach Files in #mod-log.`). An old cached `/modlogs` command gets a grey error embed titled **Moved to the dashboard**: `The mod log is set up on the dashboard under Moderation › Mod log. Use /dashboard for the link.`
+Mod log entries are blurple record embeds (`Case #N | Ban`, `Case #N updated`, `Case #N | Warning removed`) with User, Moderator, Reason, DM, Duration and Attachments fields, a `User ID:` footer and a timestamp. They never ping (`allowedMentions: {parse: []}`) and never contain diagnostics. Delivery failures are logged by status code only and are not resent. Mod log setup errors appear on the dashboard (for example `The bot needs Embed Links, Attach Files in #mod-log.`). An old cached `/modlogs` command gets a grey error embed titled **Moved to the dashboard**: `The mod log is set up on the dashboard under Moderation › Mod log. Use /dashboard for the link.`
+
+Moderation DMs state the action, server and reason. They contain no appeal button or record ID. If delivery fails, the moderator sees “Could not DM the member. The moderation action was still completed.” Images are optional and appear as Attachments in case details and logs; they are never sent in member DMs. Moderation appeals are unavailable, including old panels and DM controls.

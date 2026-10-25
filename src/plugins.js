@@ -2,7 +2,7 @@
 // (kind 'dashboard-plugins', id 'main'), so no schema migration is required.
 // A missing record or missing key means enabled, preserving behaviour for existing servers.
 export const TOGGLEABLE_PLUGINS=Object.freeze(['moderation','embeds','scheduler','instagram','reactionroles']);
-const MODERATION_COMMANDS=['ban','unban','kick','warn','timeout','untimeout','purge','warnings','case','appeals','lockdown'];
+const MODERATION_COMMANDS=['ban','unban','kick','warn','timeout','untimeout','purge','unwarn','case','lockdown'];
 export const COMMAND_PLUGINS=Object.freeze({
   ...Object.fromEntries(MODERATION_COMMANDS.map(name=>[name,'moderation'])),
   embed:'embeds',schedule:'scheduler',instagram:'instagram','reaction-roles':'reactionroles'

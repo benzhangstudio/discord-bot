@@ -17,7 +17,7 @@ function harness({admin=false,missingRole=false}={}){
  for(const [object,key]of [[guild,'fetch'],[guild.members,'fetch'],[guild.members,'fetchMe'],[guild.roles,'fetch']])object[key]=()=>{lookups++;return new Promise(()=>{});};
  client.rest.post=async(route,{body})=>{requests.push({route,body});};
  const app=createApp(client,store,{operationTimeoutMs:20,acknowledgementDelayMs:0,confirmationTransport:async()=>{throw Error('A webhook reply would wait 693 seconds; it must not be used.');}});
- const interaction=name=>new ChatInputCommandInteraction(client,{id:'777777777777777777',application_id:botId,type:2,token:'test-interaction-token',version:1,guild_id:gid,channel:{id:'888888888888888888',type:0},data:{id:'999999999999999999',name,type:1,options:name==='warnings'?[{name:'list',type:1,options:[{name:'user',type:6,value:targetId}]}]:[{name:'user',type:6,value:targetId},...(name==='warn'?[{name:'reason',type:3,value:'Please follow the rules'}]:[])],resolved:{users:{[targetId]:user(targetId)},members:{[targetId]:{roles:missingRole?[memberRole,'101010101010101010']:[memberRole],joined_at:new Date().toISOString(),permissions:admin?'8':'0'}}}},member:{...member(actorId,[]),permissions:'8'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'});
+ const interaction=(name,{image=false}={})=>new ChatInputCommandInteraction(client,{id:'777777777777777777',application_id:botId,type:2,token:'test-interaction-token',version:1,guild_id:gid,channel:{id:'888888888888888888',type:0},data:{id:'999999999999999999',name,type:1,options:[{name:'user',type:6,value:targetId},...(name==='warn'?[{name:'reason',type:3,value:'Please follow the rules'}]:[]),...(image?[{name:'image',type:11,value:'121212121212121212'}]:[])],resolved:{...(image?{attachments:{'121212121212121212':{id:'121212121212121212',filename:'screenshot.png',size:2048,url:'https://cdn.discordapp.com/attachments/1/2/screenshot.png',proxy_url:'https://media.discordapp.net/attachments/1/2/screenshot.png',content_type:'image/png'}}}:{}),users:{[targetId]:user(targetId)},members:{[targetId]:{roles:missingRole?[memberRole,'101010101010101010']:[memberRole],joined_at:new Date().toISOString(),permissions:admin?'8':'0'}}}},member:{...member(actorId,[]),permissions:'8'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'});
  return {app,store,client,guild,requests,interaction,get lookups(){return lookups;},close(){app.stop();client.destroy();store.close();}};
 }
 test('real SDK: admin-target warn error is the initial public response, with zero deferrals or webhook edits',async()=>{
@@ -29,6 +29,18 @@ test('real SDK: a valid warning is recorded and confirmed through one initial re
 test('real SDK: incomplete signed role data fails closed immediately instead of guessing rank or opening thinking',async()=>{
  const h=harness({missingRole:true});try{const i=h.interaction('warn');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(textOf(h.requests[0].body.data),/Could not check this member/);assert.equal(i.deferred,false);assert.equal(h.store.list(gid,'mod-case').length,0);}finally{h.close();}
 });
-test('real SDK: local warnings history returns its final response without a REST preflight or deferral',async()=>{
- const h=harness();try{const i=h.interaction('warnings');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.embeds[0].description,/Alex has no warnings\./);assert.equal(i.deferred,false);}finally{h.close();}
+test('real SDK: local case history returns its final response without a REST preflight or deferral',async()=>{
+ const h=harness();try{const i=h.interaction('case');await h.app.dispatch(i);assert.equal(h.lookups,0);assert.equal(h.requests[0].body.type,4);assert.match(h.requests[0].body.data.embeds[0].description,/Alex has no moderation history\./);assert.equal(i.deferred,false);}finally{h.close();}
+});
+
+
+test('real SDK: optional image stays on the warning command and is stored without a separate action',async()=>{
+ const h=harness();try{
+  const i=h.interaction('warn',{image:true});assert.equal(i.options.getAttachment('image').contentType,'image/png');
+  await h.app.dispatch(i);assert.equal(h.lookups,0);
+  const c=h.store.list(gid,'mod-case')[0];assert.equal(c.details.proof.length,1);
+  const reply=h.requests.find(r=>String(r.route).includes('/interactions/')).body.data;
+  assert(reply.embeds[0].fields.some(f=>f.name==='Attachments'));
+  assert(!reply.embeds[0].fields.some(f=>f.name==='Case'||f.name==='Proof'));
+ }finally{h.close();}
 });

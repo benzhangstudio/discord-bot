@@ -23,7 +23,7 @@ function harness({botBits=[P.Administrator],channelBits=null}={}){
  client.guilds.cache.set(G,guild);
  const app=createApp(client,store,{operationTimeoutMs:200,acknowledgementDelayMs:100});
  let seq=0;
- const interaction=(name,sub,values={})=>{const v={user:TARGET,reason:'Spamming',duration:'1h',dm:false,...values};return {
+ const interaction=(name,sub,values={})=>{if(sub&&typeof sub==='object'){values=sub;sub=undefined;}if(name==='case'&&sub==='history'){values={...values,reason:null};sub=undefined;}else if(name==='case'){const ref=values.number??values.id??values.case;values={reason:sub==='reason'?'Updated':null,...values,number:/^\d{1,9}$/.test(String(ref))?Number(ref):app.moderation.core.get(G,ref).number};sub=undefined;}if(name==='warnings'){name='unwarn';values={...values,warning:Number(values.case)};sub=undefined;}if(name==='settings')sub=undefined;const v={user:TARGET,reason:'Spamming',duration:'1h',dm:false,...values};return {
   id:String(900000000000000000n+BigInt(++seq)),guildId:G,guild,channelId:CH,user:actor.user,member:actor,memberPermissions:actor.permissions,commandName:name,
   inGuild:()=>true,isChatInputCommand:()=>true,isButton:()=>false,isModalSubmit:()=>false,
   options:{getSubcommand:()=>sub,getUser:()=>v.user?{id:v.user}:null,getMember:()=>v.user===TARGET?target:null,getString:k=>v[k]??null,getInteger:k=>v[k]??null,getBoolean:k=>v[k]??null,getAttachment:k=>v[k]??null,getRole:()=>null,getChannel:()=>channel},
@@ -107,20 +107,20 @@ test('event keys cover the requested actions',()=>{
  for(const a of ['ban','unban','kick','warn','timeout','untimeout','purge'])assert.equal(eventKey(c(a),'succeeded'),a);
  assert.equal(eventKey(c('emergency-on'),'succeeded'),'lockdown');assert.equal(eventKey(c('emergency-off'),'succeeded'),'lockdown');
  assert.equal(eventKey(c('warn'),'void'),'void');assert.equal(eventKey(c('ban'),'note'),'update');assert.equal(eventKey(c('ban'),'proof'),'update');
- assert.equal(eventKey(c('ban'),'appeal:accepted'),'appeal');assert.equal(eventKey(c('ban'),'failed'),null);assert.equal(eventKey(c('configure'),'succeeded'),null);
+ assert.equal(eventKey(c('ban'),'appeal:accepted'),null);assert.equal(eventKey(c('ban'),'failed'),null);assert.equal(eventKey(c('configure'),'succeeded'),null);
  assert.equal(modlogEmbed({id:'x',number:4,action:'emergency-on',target:'channel:'+CH,actor:OWNER,reason:'Raid',created:0,details:{}},{action:'succeeded'}).title,'Case #4 | Lockdown');
 });
 test('no /modlogs command; help points to the dashboard for mod log setup',()=>{
  assert.ok(!commands.some(c=>c.name==='modlogs'));
  const text=helpMenu({page:'mod',guildId:G}).embeds[0].toJSON().description;
- assert.match(text,/Mod log:\*\* the mod log channel .* dashboard under Moderation › Mod log: https:\/\/.+\/dashboard\/123456789012345678\/moderation/);
+ assert.match(text,/Mod log:\*\* set up recording on the dashboard: https:\/\/.+\/dashboard\/123456789012345678\/moderation/);
 });
 test('dashboard Mod log: channel picker, toggles and test message share settings with the bot',async()=>{
  const h=harness();try{
   const api=createDashboardApi({store:h.store,client:h.client});const id={id:OWNER,manager:true,owner:false};
   const put=data=>api.handle({method:'PUT',endpoint:'plugins/moderation',data,guild:G,identity:id});
   let d=await api.handle({method:'GET',endpoint:'plugins/moderation',guild:G,identity:id});
-  assert.equal(d.modlog.enabled,false);assert.equal(d.modlog.eventList.length,12);assert.equal('logChannel' in d.config,false);
+  assert.equal(d.modlog.enabled,false);assert.equal(d.modlog.eventList.length,11);assert.equal('logChannel' in d.config,false);
   await assert.rejects(put({modlog:{enabled:true}}),/Choose a mod log channel/);
   await assert.rejects(put({logChannel:CH}),/Unsupported/);
   d=await put({modlog:{channel:CH,enabled:true,events:{purge:false}}});

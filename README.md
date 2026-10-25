@@ -1,6 +1,6 @@
 # Number One
 
-Moderation, case tracking, timeouts, automod, appeals and Critical Emergency Mode are documented in [MODERATION.md](MODERATION.md) (including screenshot and message-link proof on every moderation action, and the dashboard-configured Mod log channel) (ban/kick/timeout DMs with an Appeal button are sent before the action; the dashboard Moderation settings (Appeal button, appeal contact) control them), including setup, permissions and recovery. Message Content Intent is optional and required only for message-based automod.
+Moderation actions, case history, timeouts, automod and reversible channel lockdown are documented in [MODERATION.md](MODERATION.md). Optional images and message links stay on the action command. Member DMs are optional notices without appeal buttons. Reaction roles and command access are managed on the dashboard; reaction-role drafts can be saved, resumed and copied. Moderation appeals are not available. Verification remains a separate dashboard feature.
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
 
@@ -32,7 +32,7 @@ Release requirements are recorded in AGENTS.md. Before each push, inspect respon
 
 Every slash command is authorized at runtime for server administrators, members with Manage Server, and users approved by that Discord server’s owner. Grants are saved per server and persist across restarts. Only the current server owner can grant, remove, or list command access on the dashboard Access page (100 grants maximum). Enter the member's Discord user ID to grant access. Added people must be current human members. Removing a grant does not revoke Discord permissions. Approved users cannot grant others or bypass channel permissions. General commands are visible in Discord so approved non-managers can invoke them; ordinary members get an immediate public permission denial, and unauthorized autocomplete returns no names. Access management is dashboard-only; the server verifies current ownership before saving changes.
 
-Normal successes and actionable errors appear publicly in the channel. Error reference IDs and technical diagnostics stay in server logs. Every reply in a server channel is public, including drafts, previews, access lists, schedules, RSVP acknowledgements and permission denials; no reply is ever dropped. Only the appeal DM flow is private. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
+Normal successes and actionable errors appear publicly in the channel. Error reference IDs and technical diagnostics stay in server logs. Every reply in a server channel is public, including drafts, previews, schedules, RSVP acknowledgements and permission denials; no reply is ever dropped. Direct messages are private by nature. Slow commands acknowledge before network work; modal-opening actions respond immediately with their form. Retired commands still cached by Discord return guidance to the current commands rather than silently timing out. An offline/disconnected bot cannot reply; check Wispbyte's online message and console if no request is logged.
 
 ## Server portal
 
@@ -50,7 +50,7 @@ Each community's owner/manager signs in with Discord and opens the web dashboard
 
 ## Scheduler
 
-`/settings timezone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. Every slash command, including /help and schedule viewing, requires Administrator, Manage Server, or explicit approval from the server owner. Custom staff roles alone do not grant access. The former /settings staff and /settings clear-staff commands have been retired.
+`/settings zone` offers city suggestions such as New York or Seoul and sets the server default. Existing events retain their own timezone. Every slash command, including /help and schedule viewing, requires Administrator, Manage Server, or explicit approval from the server owner. Custom staff roles alone do not grant access. The former /settings staff and /settings clear-staff commands have been retired.
 
 `/schedule add title:Staff meeting start:2026-12-01T19:00 channel:#staff kind:staff-meeting repeat:weekly reminder:30`
 
@@ -78,23 +78,19 @@ Public HTTPS sources only, with public DNS addresses checked and pinned for ever
 
 ## Reaction roles
 
-Members pick roles by reacting to a message. Staff with command access set it up with `/reaction-roles` or on the dashboard (**Reaction Roles**).
+Members pick roles by reacting to a published message. Manage setup on the dashboard under **Reaction Roles**; there is no reaction-role slash command.
 
-- `/reaction-roles create channel:#roles title:Games emoji:🎮 role:@Gamer` posts a blurple embed listing each emoji and role, and adds the reactions.
-- `/reaction-roles attach channel:#rules link:<message link>` uses an existing message instead.
-- `/reaction-roles add message:<setup> emoji:🎲 role:@Board games` · `/reaction-roles remove message:<setup> emoji:🎲`
-- `/reaction-roles edit message:<setup> mode:unique max-roles:2 duration:7d required-role:@Member remove-on-unreact:false`
-- `/reaction-roles delete message:<setup>` · `/reaction-roles list`
+Choose a channel, title, description and emoji/role pairs. Normal mode allows several roles; Unique mode allows one. You can set limits, a required role, temporary roles, or whether removing a reaction removes the role. An optional existing-message link attaches the setup to that message.
 
-Modes: **normal** (pick any), **unique** (picking one removes the others). Options: max roles per member, add-only (`remove-on-unreact:false`, verify-style), temporary roles (`30m` to `30d`; expiries are stored and resume after a restart), and a required role. Custom emojis must come from a server the bot is in. Up to 20 roles per message and 50 messages per server.
+Use **Save** to keep unfinished work without posting. **Continue** resumes it after reloading or signing in again. **Copy** starts a new setup from an existing one; text and emoji fields accept normal copy/paste. **Send to Discord** is explicit. Drafts are saved per server, and an uncertain publication cannot automatically send the same draft twice.
 
-The bot needs **Manage Roles**, and its highest role must be above every role it gives. Staff can only use roles below their own highest role (the server owner is exempt). Setup errors reply publicly in the channel. Member-side problems never post in channels: they are logged, and the member's reaction is removed. Deleted messages, roles and channels mark the setup as **Needs attention** on the dashboard. The plugin can be turned off from the dashboard like the others.
+Existing reaction-role messages, member selections and temporary-role expirations continue to work after slash commands are removed. The bot needs Manage Roles, Add Reactions and Read Message History; offered roles must be below its highest role. Delete removes the setup, not the member roles already granted.
 
 ## Data and reliability
 
 `data/rose.sqlite` persists templates, settings, schedules, RSVPs (Discord user IDs), subscriptions and delivery records. Keep it and its SQLite sidecar files private. Stop Number One before copying the data directory for a consistent simple backup. Run only one bot process against this local folder. Do not copy credentials or databases into public repositories.
 
-Delivery records prevent repeat sends across normal restarts. Number One claims a delivery before sending. A crash or ambiguous network failure can therefore leave a **missed** notification; it is not automatically retried to avoid duplicate pings. `/settings status` reports recent uncertain/failed deliveries. Staff can manually post an event card or source link after checking the channel. This is not an exactly-once delivery guarantee. SQLite records are retained when Number One leaves a server; the operator must handle deletion requests. One reminder per occurrence; no monthly/custom recurrence, timed embed publishing, or multi-instance deployment in this first build.
+Delivery records prevent repeat sends across normal restarts. Number One claims a delivery before sending. A crash or ambiguous network failure can therefore leave a **missed** notification; it is not automatically retried to avoid duplicate pings. `/settings status:true` reports recent uncertain/failed deliveries. Staff can manually post an event card or source link after checking the channel. This is not an exactly-once delivery guarantee. SQLite records are retained when Number One leaves a server; the operator must handle deletion requests. One reminder per occurrence; no monthly/custom recurrence, timed embed publishing, or multi-instance deployment in this first build.
 
 ## Validation
 

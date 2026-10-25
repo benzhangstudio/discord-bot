@@ -15,20 +15,20 @@ export const statusOf=c=>c.voided?'Removed':STATE[c.state]||cut(c.state,40);
 export function entryField(c){
  const lines=[`**Reason:** ${cut(c.reason||'No reason provided',200)}`,`**Moderator:** ${mention(c.actor)}`,`**Date:** ${ts(c.created)} (${ts(c.created,'R')})`];
  if(c.details?.until)lines.push(`**Until:** ${ts(c.details.until)}`);
- const proof=proofItems(c);if(proof.length){let n=0,l=0;lines.push(`**Proof:** ${proof.slice(0,4).map(p=>p.type==='image'?`[Screenshot ${++n}](${imageUrl(p)})`:`[Link ${++l}](${p.url})`).join(' · ')}${proof.length>4?` +${proof.length-4} more`:''}`);}
+ const proof=proofItems(c);if(proof.length){let n=0,l=0;lines.push(`**Attachments:** ${proof.slice(0,4).map(p=>p.type==='image'?`[Screenshot ${++n}](${imageUrl(p)})`:`[Link ${++l}](${p.url})`).join(' · ')}${proof.length>4?` +${proof.length-4} more`:''}`);}
  if(c.voided||c.state!=='succeeded')lines.push(`**Status:** ${statusOf(c)}`);
  return {name:`${caseRef(c)} · ${actionName(c.action)}`,value:lines.join('\n').slice(0,1024)};
 }
 const pages=n=>Math.max(1,Math.ceil(n/PAGE_SIZE));
 export const clampPage=(p,n)=>Math.min(Math.max(1,Number(p)||1),pages(n));
 
-// kind: 'warnings' | 'history'; user: {id,name,avatar}
+// Moderation history; user: {id,name,avatar}
 export function caseListPayload({kind,user,rows,page=1,invoker}){
- const noun=kind==='warnings'?'warning':'case',plural=n=>`${n} ${noun}${n===1?'':'s'}`;
+ const noun='case',plural=n=>`${n} ${noun}${n===1?'':'s'}`;
  const name=cut(user.name||'This member',80);
- if(!rows.length)return {embeds:[{color:BLURPLE,description:kind==='warnings'?`${name} has no warnings.`:`${name} has no moderation history.`}],components:[],allowedMentions:{parse:[]}};
+ if(!rows.length)return {embeds:[{color:BLURPLE,description:`${name} has no moderation history.`}],components:[],allowedMentions:{parse:[]}};
  page=clampPage(page,rows.length);
- const embed={color:BLURPLE,author:{name:kind==='warnings'?`Warnings for ${name}`:`Moderation history for ${name}`,...(user.avatar?{icon_url:user.avatar}:{})},
+ const embed={color:BLURPLE,author:{name:`Moderation history for ${name}`,...(user.avatar?{icon_url:user.avatar}:{})},
   fields:rows.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE).map(entryField),
   footer:{text:`Total: ${plural(rows.length)}${pages(rows.length)>1?` · Page ${page} of ${pages(rows.length)}`:''}`}};
  return {embeds:[embed],components:pager(`modpage:${kind}:${user.id}`,page,pages(rows.length),invoker),allowedMentions:{parse:[]}};
@@ -39,32 +39,15 @@ export function pager(prefix,page,total,invoker){
   {type:2,style:2,label:'Previous',custom_id:`${prefix}:${page-1}:${invoker}`,disabled:page<=1},
   {type:2,style:2,label:'Next',custom_id:`${prefix}:${page+1}:${invoker}`,disabled:page>=total}]}];
 }
-const APPEAL_STATE={open:'Open',accepted:'Accepted',denied:'Denied'};
-export function caseEmbedFull(c,appeal){
+export function caseEmbedFull(c){
  const f=(name,value,inline=true)=>({name,value:String(value).slice(0,1024),inline});
  const fields=[f('User',mention(c.target)),f('Moderator',mention(c.actor)),f('Action',actionName(c.action)),
   f('Reason',cut(c.reason||'No reason provided',1000),false),f('Status',statusOf(c)),f('Date',ts(c.created))];
  if(c.details?.until)fields.push(f('Until',ts(c.details.until)));
- fields.push(f('Appeal',appeal?APPEAL_STATE[appeal.state]||appeal.state:'None'));
- const proof=proofSummary(c);if(proof)fields.push(f('Proof',proof,false));
+ const proof=proofSummary(c);if(proof)fields.push(f('Attachments',proof,false));
  if(/^https:\/\/discord\.com\/channels\//.test(String(c.logMessage||'')))fields.push(f('Mod log',`[Jump to log entry](${c.logMessage})`));
  const recent=(c.events||[]).slice(1).slice(-5);
- if(recent.length)fields.push(f('Updates',recent.map(e=>`${ts(e.at,'R')} ${cut(e.action,30)}: ${cut(e.reason,120)}`).join('\n'),false));
+ if(recent.length)fields.push(f('Updates',recent.map(e=>`${ts(e.at,'R')} ${({proof:'Images added',void:'Warning removed',note:'Note added','reconciled:succeeded':'Marked completed','reconciled:failed':'Marked not completed'}[e.action]||'Updated')}: ${cut(e.reason,120)}`).join('\n'),false));
  const img=firstImage(c);
  return {color:BLURPLE,title:`${caseRef(c)} · ${actionName(c.action)}`,fields,...(img?{image:{url:img}}:{})};
-}
-export function appealListPayload({rows,page=1,invoker,caseOf}){
- if(!rows.length)return {embeds:[{color:BLURPLE,description:'There are no open appeals.'}],components:[],allowedMentions:{parse:[]}};
- page=clampPage(page,rows.length);
- const fields=rows.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE).map(a=>{const c=caseOf(a.caseId);return {name:`Appeal for ${caseRef(c)}${c?' · '+actionName(c.action):''}`,
-  value:[`**Member:** ${mention(a.actor)}`,`**Submitted:** ${ts(a.created)} (${ts(a.created,'R')})`,`**Appeal ID:** \`${cut(a.id,40)}\``].join('\n')};});
- return {embeds:[{color:BLURPLE,title:'Open appeals',fields,footer:{text:`Total: ${rows.length} open appeal${rows.length===1?'':'s'}${pages(rows.length)>1?` · Page ${page} of ${pages(rows.length)}`:''}`}}],
-  components:pager('modpage:appeals:all',page,pages(rows.length),invoker),allowedMentions:{parse:[]}};
-}
-export function appealEmbed(a,c){
- const fields=[{name:'Member',value:mention(a.actor),inline:true},{name:'Case',value:c?`${caseRef(c)} · ${actionName(c.action)}`:'Unknown',inline:true},{name:'Status',value:APPEAL_STATE[a.state]||cut(a.state,30),inline:true},
-  {name:'Submitted',value:ts(a.created),inline:true},{name:'Statement',value:cut(a.body||'—',1000)}];
- if(a.reviewer)fields.push({name:'Reviewed by',value:mention(a.reviewer),inline:true});
- if(a.reason)fields.push({name:'Decision note',value:cut(a.reason,1000)});
- return {color:BLURPLE,title:`Appeal for ${caseRef(c)}`,fields};
 }

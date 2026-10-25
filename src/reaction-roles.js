@@ -5,6 +5,7 @@ import {EmbedBuilder,PermissionFlagsBits as P} from 'discord.js';
 import {UserError} from './user-error.js';
 import {RR} from './reaction-role-messages.js';
 import {pluginEnabled} from './plugins.js';
+import {withDeadline} from './responses.js';
 
 export const RR_LIMITS=Object.freeze({groups:50,entries:20,durationMinutes:43200});
 export const RR_MODES=Object.freeze(['normal','unique']);
@@ -47,6 +48,7 @@ export function planReaction(group,key,memberRoles,added){
     if(group.removeOnUnreact===false||!memberRoles.has(entry.role))return none;
     return {...none,remove:[entry.role]};
   }
+  if(group.mode==='normal'&&group.removeOnUnreact!==false&&memberRoles.has(entry.role))return {...none,remove:[entry.role],removeReaction:true};
   if(group.requiredRole&&!memberRoles.has(group.requiredRole))return {...none,denied:'required',removeReaction:true};
   const others=group.entries.filter(e=>e.role!==entry.role&&memberRoles.has(e.role));
   if(group.mode==='unique')return {add:memberRoles.has(entry.role)?[]:[entry.role],remove:others.map(e=>e.role),clearReactions:others.map(e=>e.key)};
@@ -56,7 +58,7 @@ export function planReaction(group,key,memberRoles,added){
 
 export function groupEmbed(group){
   const lines=group.entries.map(e=>`${e.display} – <@&${e.role}>`);
-  const notes=[group.mode==='unique'?'Pick one role':group.maxRoles?`Pick up to ${group.maxRoles} roles`:null,
+  const notes=[group.mode==='unique'?'Pick one role':group.removeOnUnreact===false?'React to add roles':group.maxRoles?`Toggle up to ${group.maxRoles} roles`:'React to toggle roles',
     group.requiredRole?'Requires a role':null,group.removeOnUnreact===false?'Roles stay when you remove your reaction':null,
     group.duration?`Roles last ${durationLabel(group.duration)}`:null].filter(Boolean);
   const description=[group.description,lines.length?lines.join('\n'):'No roles yet.'].filter(Boolean).join('\n\n');
@@ -79,10 +81,11 @@ function normalizeOptions(o,base={}){
   return g;
 }
 
-export function createReactionRoles({store,client,log=console,now=()=>Date.now()}){
-  async function me(guild){return guild.members.me||await guild.members.fetchMe();}
+export function createReactionRoles({store,client,log=console,now=()=>Date.now(),publishTimeoutMs=8000}){
+  const read=work=>withDeadline(Promise.resolve().then(work),publishTimeoutMs,RR.lookupTimeout);
+  async function me(guild){return guild.members.me||await read(()=>guild.members.fetchMe());}
   async function channelFor(guild,id){
-    const ch=guild.channels.cache.get(id)||await guild.channels.fetch(id).catch(()=>null);
+    const ch=guild.channels.cache.get(id)||await read(()=>guild.channels.fetch(id));
     must(ch&&[0,5].includes(ch.type),RR.channel);return ch;
   }
   async function checkBot(guild,channel){
@@ -92,12 +95,12 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
     return bot;
   }
   async function checkRole(guild,roleId,actor){
-    const role=guild.roles.cache.get(roleId)||await guild.roles.fetch(roleId).catch(()=>null);
+    const role=guild.roles.cache.get(roleId)||await read(()=>guild.roles.fetch(roleId));
     must(role&&role.id!==guild.id&&!role.managed,RR.role);
     const bot=await me(guild);
     must(role.position<bot.roles.highest.position,RR.roleAboveBot);
     if(actor&&!actor.owner&&actor.id!==guild.ownerId){
-      const member=actor.roles?actor:await guild.members.fetch(actor.id).catch(()=>null);
+      const member=actor.roles?actor:await read(()=>guild.members.fetch(actor.id));
       must(member&&role.position<member.roles.highest.position,RR.roleAboveYou);
     }
     return role;
@@ -120,26 +123,69 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
   }
   function save(guild,group){group.updatedAt=now();group.broken=null;return store.put(guild,'reaction-role',group);}
 
+  const reactionQueues=new Map();
+  async function applyReaction(reaction,user,added){
+      try{
+        if(user.bot)return;
+        if(reaction.partial)reaction=await read(()=>reaction.fetch());
+        const guild=reaction.message.guild;if(!guild)return;
+        if(!pluginEnabled(store,guild.id,'reactionroles'))return;
+        const group=store.list(guild.id,'reaction-role').find(g=>g.message===reaction.message.id);if(!group)return;
+        const key=reactionKey(reaction.emoji);if(!group.entries.some(e=>e.key===key))return;
+        const member=await read(()=>guild.members.fetch({user:user.id,force:true}));
+        const roles=new Set(member.roles.cache.keys());
+        const plan=planReaction(group,key,roles,added);
+        if(plan.denied){log.log(`Reaction role not given (${plan.denied}) in server ${guild.id}.`);if(plan.removeReaction)await read(()=>reaction.users.remove(user.id)).catch(()=>{});return;}
+        const missing=[...plan.add,...plan.remove].filter(r=>!guild.roles.cache.has(r));
+        if(missing.length){api.markBroken(guild.id,g=>g.id===group.id,'A role on this message was deleted.');return;}
+        if(plan.remove.length)await read(()=>member.roles.remove(plan.remove,'Reaction roles'));
+        if(plan.add.length)await read(()=>member.roles.add(plan.add,'Reaction roles'));
+        for(const r of plan.remove)store.remove(guild.id,'rr-temp',`${user.id}-${r}`);
+        if(group.duration)for(const r of plan.add)store.put(guild.id,'rr-temp',{id:`${user.id}-${r}`,user:user.id,role:r,group:group.id,expires:now()+group.duration*60000});
+        if(plan.removeReaction)await read(()=>reaction.users.remove(user.id));
+        for(const k of plan.clearReactions)await read(()=>reaction.message.reactions.cache.get(k)?.users.remove(user.id)).catch(()=>{});
+      }catch(error){
+        log.warn(`Reaction role update failed${error.code?` (${error.code})`:''}.`);
+        if(added)await read(()=>reaction.users?.remove?.(user.id)).catch(()=>{});
+      }
+  }
   const api={
     list:guild=>store.list(guild,'reaction-role'),
     get,
     /** Post a new embed (message omitted) or attach to an existing message. */
-    async create(guild,{channel,message,entries=[],...options},actor){
+    async create(guild,{channel,message,entries=[],requestId,...options},actor){
+      const deadline=now()+publishTimeoutMs;
+      const assertActive=()=>must(now()<=deadline,RR.lookupTimeout);
+      const prior=requestId&&store.get(guild.id,'rr-publish',requestId);
+      if(prior?.groupId)return get(guild.id,prior.groupId);
+      must(!prior||prior.state==='failed',RR.publishUncertain);
       must(store.list(guild.id,'reaction-role').length<RR_LIMITS.groups,RR.groupLimit);
       let ref=message?parseMessageRef(message,guild.id):null;
       const ch=await channelFor(guild,ref?.channel||channel);await checkBot(guild,ch);
       const group=normalizeOptions(options,{channel:ch.id,createdBy:actor?.id||null,createdAt:now()});
       if(group.requiredRole)await checkRole(guild,group.requiredRole,null);
       must(entries.length<=RR_LIMITS.entries,RR.entryLimit);
-      for(const x of entries)group.entries.push(await entryFrom(guild,group,x,actor));
+      for(const x of entries){assertActive();group.entries.push(await entryFrom(guild,group,x,actor));}
+      assertActive();
       let msg;
       if(ref){
         must(!store.list(guild.id,'reaction-role').some(g=>g.message===ref.message),RR.messageTaken);
-        msg=await ch.messages.fetch(ref.message).catch(()=>null);must(msg,RR.messageMissing);group.owned=false;
-      }else{msg=await ch.send(groupEmbed(group));group.owned=true;}
+        msg=await read(()=>ch.messages.fetch(ref.message));must(msg,RR.messageMissing);assertActive();group.owned=false;
+      }else{
+        // A timed-out send may still have posted. Keep a durable barrier so a
+        // second click or restart cannot publish the same saved draft twice.
+        if(requestId){const current=store.get(guild.id,'rr-publish',requestId);must(!current||current.state==='failed',RR.publishUncertain);store.put(guild.id,'rr-publish',{id:requestId,state:'pending',createdAt:now()});}
+        try{msg=await withDeadline(ch.send({...groupEmbed(group),...(requestId?{nonce:requestId.slice(-24),enforceNonce:true}:{})}),publishTimeoutMs,RR.publishUncertain);}
+        catch(error){if(requestId)store.put(guild.id,'rr-publish',{id:requestId,state:Number(error.status)>=400&&Number(error.status)<500?'failed':'uncertain',createdAt:now()});throw error;}
+        group.owned=true;
+      }
       group.message=msg.id;
-      for(const e of group.entries)await react(msg,e);
-      return save(guild.id,group);
+      // Persist the posted message even if adding a reaction later fails.
+      save(guild.id,group);
+      if(requestId)store.put(guild.id,'rr-publish',{id:requestId,state:'posted',groupId:group.id,createdAt:now()});
+      try{for(const e of group.entries)await withDeadline(react(msg,e),publishTimeoutMs,RR.publishUncertain);}
+      catch(error){group.broken='Some reactions were not added. Check the message and edit it on the dashboard.';store.put(guild.id,'reaction-role',group);throw error;}
+      return group;
     },
     async addEntry(guild,id,{emoji,role},actor){
       const group=get(guild.id,id);must(group.entries.length<RR_LIMITS.entries,RR.entryLimit);
@@ -178,30 +224,14 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
     markBroken(guildId,predicate,reason){
       for(const g of store.list(guildId,'reaction-role'))if(predicate(g)&&g.broken!==reason){g.broken=reason;store.put(guildId,'reaction-role',g);}
     },
-    /** Gateway handler for messageReactionAdd/Remove. Never posts in channels; failures are logged. */
+    /** Serialize each member’s events and read fresh roles for both toggle directions. */
     async onReaction(reaction,user,added){
-      try{
-        if(user.bot)return;
-        if(reaction.partial)reaction=await reaction.fetch();
-        const guild=reaction.message.guild;if(!guild)return;
-        if(!pluginEnabled(store,guild.id,'reactionroles'))return;
-        const group=store.list(guild.id,'reaction-role').find(g=>g.message===reaction.message.id);if(!group)return;
-        const key=reactionKey(reaction.emoji);if(!group.entries.some(e=>e.key===key))return;
-        const member=await guild.members.fetch(user.id);
-        const roles=new Set(member.roles.cache.keys());
-        const plan=planReaction(group,key,roles,added);
-        if(plan.denied){log.log(`Reaction role not given (${plan.denied}) in server ${guild.id}.`);if(plan.removeReaction)await reaction.users.remove(user.id).catch(()=>{});return;}
-        const missing=[...plan.add,...plan.remove].filter(r=>!guild.roles.cache.has(r));
-        if(missing.length){api.markBroken(guild.id,g=>g.id===group.id,'A role on this message was deleted.');return;}
-        if(plan.remove.length)await member.roles.remove(plan.remove,'Reaction roles');
-        if(plan.add.length)await member.roles.add(plan.add,'Reaction roles');
-        for(const r of plan.remove)store.remove(guild.id,'rr-temp',`${user.id}-${r}`);
-        if(group.duration)for(const r of plan.add)store.put(guild.id,'rr-temp',{id:`${user.id}-${r}`,user:user.id,role:r,group:group.id,expires:now()+group.duration*60000});
-        for(const k of plan.clearReactions)await reaction.message.reactions.cache.get(k)?.users.remove(user.id).catch(()=>{});
-      }catch(error){
-        log.warn(`Reaction role update failed${error.code?` (${error.code})`:''}.`);
-        if(added)await reaction.users?.remove?.(user.id).catch(()=>{});
-      }
+      if(user.bot)return;
+      const key=(reaction.message.guildId||reaction.message.guild?.id||reaction.message.id)+':'+user.id;
+      const previous=reactionQueues.get(key)||Promise.resolve();
+      const work=previous.catch(()=>{}).then(()=>applyReaction(reaction,user,added));
+      reactionQueues.set(key,work);
+      try{await work;}finally{if(reactionQueues.get(key)===work)reactionQueues.delete(key);}
     },
     /** Removes expired temporary roles. Expiries are persisted, so this also restores timers after a restart. */
     async sweep(){

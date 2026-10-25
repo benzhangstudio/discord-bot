@@ -17,7 +17,6 @@ import {suggestions,timezoneLabel} from './suggestions.js';
 import {portalMessage} from './portal.js';
 import {commandPluginEnabled} from './plugins.js';
 import {createReactionRoles} from './reaction-roles.js';
-import {createReactionRoleCommands} from './reaction-role-commands.js';
 import {BLURPLE} from './mod-format.js';
 const listEmbed=(title,fields,footer,description)=>({embeds:[{color:BLURPLE,title,...(description?{description}:{}),...(fields?.length?{fields:fields.slice(0,25)}:{}),...(footer?{footer:{text:footer}}:{})}],allowedMentions:{parse:[]}});
 
@@ -30,7 +29,7 @@ function staff(i) {
     return true;
   } else if (isServerOwner(i)) {
     return true;
-  } else if (i.guildId && i.user?.id && store.get(i.guildId,'access',i.user.id)) {
+  } else if (i.guildId && i.guild?.ownerId && i.user?.id && store.get(i.guildId,'access',i.user.id)?.grantedBy===i.guild?.ownerId) {
     return true;
   } else {
     return false;
@@ -103,7 +102,6 @@ function eventView(e) {
 
 const moderation=createModeration(client,store,{needStaff,timeoutMs:operationTimeoutMs});
 const reactionRoles=createReactionRoles({store,client});
-const reactionRoleCommands=createReactionRoleCommands(reactionRoles);
 const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
@@ -135,18 +133,16 @@ async function handle(i) {
       return i.respond(suggestions(store,i,{canManage:true,canConfigure:true}));
     }
   }
-  // Appeal buttons arrive in DMs after a ban or kick; moderation validates them without guild context.
-  if(!i.inGuild()&&i.customId?.startsWith('mod-appeal-dm')){i.privateResponse=true;if(await moderation.handle(i))return;}
+  if(i.customId?.startsWith('mod-appeal'))return respond(i,errorPayload('Moderation appeals are no longer available. Contact your server staff.',{title:'Feature unavailable'}));
   if(!i.inGuild()) throw new UserError('Use this command in a server.');
   if (i.isChatInputCommand()) {
     needStaff(i);
     if(!commandPluginEnabled(store,i.guildId,i.commandName)){throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');}
   }
-  // Every reply in a server channel is public. Only DMs (appeal flow) are private by nature.
+  // Every reply in a server channel is public. Direct messages are private by nature.
   i.privateResponse=false;
   if(await moderation.handle(i))return;
   if(await instagram(i))return;
-  if(await reactionRoleCommands(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {
     needStaff(i);const [,id,action]=i.customId.split(':'),d=item(i,'embed',id);
     const key={channel:'sendChannel',role:'sendRole',user:'sendUser'}[action];
@@ -194,8 +190,14 @@ async function handle(i) {
   // Discord already supplies the invoking member. Do not delay acknowledgement with a REST fetch.
   if(i.isChatInputCommand()) {
     const definition=commands.find(command=>command.name===i.commandName);
-    if(!definition)return respond(i,errorPayload(i.commandName==='modlogs'?'The mod log is set up on the dashboard under Moderation › Mod log. Use /dashboard for the link.':RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.',{title:i.commandName==='modlogs'?'Moved to the dashboard':RETIRED_COMMANDS[i.commandName]?'Command renamed':'Command unavailable'}));
-    if(definition.options&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current options, or use /help.');
+    if(!definition){
+      const moved={access:'Access','reaction-roles':'Reaction Roles',modlogs:'Moderation › Mod log'};
+      if(moved[i.commandName])return respond(i,errorPayload(`Manage this feature on the dashboard under ${moved[i.commandName]}. Use /dashboard for the link.`,{title:'Moved to the dashboard'}));
+      if(i.commandName==='appeals')return respond(i,errorPayload('Moderation appeals are no longer available. Contact your server staff.',{title:'Feature unavailable'}));
+      if(i.commandName==='warnings')return respond(i,errorPayload('Warnings are included in moderation history. Use /case user to choose a member.',{title:'Use case history'}));
+      return respond(i,errorPayload(RETIRED_COMMANDS[i.commandName]?`This command was renamed. Use ${RETIRED_COMMANDS[i.commandName]} instead.`:'This is an older or unavailable command. Use /help for current commands.',{title:RETIRED_COMMANDS[i.commandName]?'Command renamed':'Command unavailable'}));
+    }
+    if(definition.options?.some(option=>option.type===1)&&!definition.options.some(option=>option.name===i.options.getSubcommand(false)))throw new UserError('This command has changed. Choose one of its current options, or use /help.');
   }
   if(i.isButton()) {
     const [kind,id,action,value]=i.customId.split(':');
@@ -261,15 +263,17 @@ async function handle(i) {
   const name=i.commandName,sub=i.options.getSubcommand(false),opt=i.options;
   if(name==='settings') {
     needStaff(i);
+    if(sub)throw new UserError('This command has changed. Choose one of its current options, or use /help.');
     const s=settings(i.guildId);
-    if(sub==='timezone')s.zone=zone(opt.getString('zone'));
-    if(sub==='status') {
+    if(opt.getString('zone'))s.zone=zone(opt.getString('zone'));
+    if(opt.getString('zone'))store.put(i.guildId,'settings',s);
+    if(opt.getBoolean?.('status')) {
       const issues=store.problems(i.guildId).map(p=>p.key.startsWith('event:')?'• A reminder could not be confirmed. Check the event’s channel before posting it again.':'• A roundup could not be confirmed. Check its channel before sending another copy.');
       for(const e of store.list(i.guildId,'event'))if(e.error)issues.push('• An event needs attention. Check that the bot can view and send messages in its channel.');
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and the bot’s channel permissions.`);
-      return respond(i,listEmbed('Delivery status',null,null,issues.length?[...new Set(issues)].join('\n').slice(0,4000):'No recent reminder or Instagram delivery problems.'));
+      return respond(i,listEmbed('Delivery status',opt.getString('zone')?[{name:'Timezone saved',value:timezoneLabel(s.zone)+' (new events)'}]:null,null,issues.length?[...new Set(issues)].join('\n').slice(0,4000):'No recent reminder or Instagram delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'},...(sub==='view'?[{name:'Moderation',value:moderation.settingsSummary(i.guildId).slice(0,1000)},{name:'Change settings',value:'Moderation, automod and appeal settings are on the dashboard (/dashboard).'}]:[])]));
+    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'},...(!opt.getString('zone')?[{name:'Moderation',value:moderation.settingsSummary(i.guildId).slice(0,1000)},{name:'Change settings',value:'Moderation, automod and command access settings are on the dashboard (/dashboard).'}]:[])]));
   }
   if(name==='embed') {
     needStaff(i);
@@ -280,9 +284,8 @@ async function handle(i) {
     }
     if(sub==='list') {const saved=store.list(i.guildId,'embed');return respond(i,saved.length?listEmbed('Saved messages',null,`Total: ${saved.length} saved message${saved.length===1?'':'s'} · Use /embed edit or /embed send`,saved.slice(0,100).map(d=>`• **${String(d.name).replace(/[*_`~|]/g,'')}**${d.embed?.title?' · '+String(d.embed.title).replace(/[*_`~|@<>]/g,'').slice(0,60):''}`).join('\n').slice(0,4000)):listEmbed(undefined,null,null,'No saved messages yet. Start your first one with /embed create.'));}
     const d=item(i,'embed',selected(i));
-    if(sub==='edit')return respond(i,editor(d,i));
+    if(sub==='edit') {const n=opt.getInteger('remove-section');if(n!=null){if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);saveDraft(i,d);}return respond(i,editor(d,i));}
     if(sub==='delete') {store.remove(i.guildId,'embed',d.id);return respond(i,reply('Saved message deleted. Any copies already posted in channels are unchanged.'));}
-    if(sub==='remove-section') {const n=opt.getInteger('number');if(!d.embed.fields?.[n-1])throw new UserError('There is no section at that position. Count the sections from the top, starting at 1.');d.embed.fields.splice(n-1,1);validateEmbed(d);saveDraft(i,d);return respond(i,editor(d,i));}
     if(sub==='send')return publishEmbed(i,d.id,opt.getChannel('channel').id,opt.getRole('role')?.id,opt.getUser('user')?.id);
   }
   if(name==='schedule') {
@@ -310,7 +313,7 @@ async function handle(i) {
     else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
     e=item(i,'event',e.id);needStaff(i);
     if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);e=item(i,'event',e.id);if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');const sent=await step(i,channel.send(eventView(e)),{uncertain:true});return respond(i,reply(`Event card posted: ${sent.url}`));}
-    if(sub==='configure') {
+    if(sub==='edit'&&[opt.getString('repeat'),opt.getInteger('duration'),opt.getInteger('reminder')].some(value=>value!=null)) {
       if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');
       e.repeat=opt.getString('repeat')??e.repeat;e.duration=opt.getInteger('duration')??e.duration;e.reminder=opt.getInteger('reminder')??e.reminder;
       if(e.kind==='rotation'&&e.repeat==='none')throw new UserError('Choose Every day or Every week for a staff rotation.');

@@ -6,7 +6,7 @@
 - Never copy raw exceptions or server/Wispbyte output to Discord, even in staff-only replies. Stack traces, SDK/HTTP codes, file paths, environment variables, hosting/restart instructions, internal references, queues and diagnostics belong only in redacted server logs.
 - Use the reviewed public-error catalogue through `publicErrorMessage`. Unknown errors, including unknown `UserError` messages, must use a safe generic reply. An exception's diagnostic message is not its public message.
 - Apply this to EVERY command, component, modal, acknowledgement, deferred reply, fallback, moderation failure, staff log and status screen. Do not fix only the particular error the user reports. Never recommend blindly retrying an uncertain action.
-- Every Discord error is a clean neutral embed built by `errorPayload` in `src/error-embed.js` (grey `0x4F545C`, concise title plus the catalogue message as description, optional fields such as Case). Never send errors as plain content. Server-channel errors stay public; only the DM appeal flow stays ephemeral.
+- Every Discord error is a clean neutral embed built by `errorPayload` in `src/error-embed.js` (grey `0x4F545C`, concise title plus the catalogue message as description, optional fields such as Case). Never send errors as plain content. Server-channel errors stay public; direct-message replies are private by nature.
 - Run the public-error catalogue and leakage regression tests before every push. See `DISCORD_MESSAGES.md` for the examples and implementation contract.
 
 - Work in this checkout. Do not create replacement project folders or edit synced sources.
@@ -27,5 +27,13 @@
 
 - Public-facing replies must be actual success or actionable errors, not request-received receipts or developer timeout disclaimers. Prefer one final initial response for fast actions. For longer work, acknowledge before expiry and finish the loading state. Respect Discord 429 Retry-After/retry_after; never immediately try another route to evade a rate limit. Keep completed side effects separate from failed confirmation delivery in diagnostics.
 
-- Every reply in a server channel is public: command confirmations, results, lists, previews, drafts, access lists, permission denials, disabled-plugin notices and errors. Never set the ephemeral flag for guild interactions (`respond` strips it as a safeguard). Making replies public must never drop a reply: every command still confirms and every failure still gets a Discord error. Only DMs (the appeal notice, Appeal button, modal and confirmation) are private by nature, and modals are Discord UI. Because errors are public, they must never contain diagnostics, stack traces or internal references; those belong only in logs. Verification cases and evidence are managed only on the dashboard, never in Discord.
+- Every reply in a server channel is public: command confirmations, results, lists, previews, drafts, access lists, permission denials, disabled-plugin notices and errors. Never set the ephemeral flag for guild interactions (`respond` strips it as a safeguard). Making replies public must never drop a reply: every command still confirms and every failure still gets a Discord error. Direct messages are private by nature, and modals are Discord UI. Because errors are public, they must never contain diagnostics, stack traces or internal references; those belong only in logs. Verification cases and evidence are managed only on the dashboard, never in Discord.
 - Reaction-role gateway handlers never post in channels. Member-side failures are logged (status code only) and the member’s reaction is removed. Setup paths validate Manage Roles, channel permissions and role hierarchy (bot and invoker) before changing anything.
+
+## Command design
+
+- Design from a moderator’s point of view: familiar names, clear required inputs, and optional inputs on the same action. No opaque interaction IDs or case dropdowns for routine moderation. Use short, stable case numbers only when choosing a specific history record.
+- `/case user` is the single moderation history. Do not recreate `/warnings` or per-warning removal buttons. `/unwarn user warning` removes one warning by its short history number.
+- Images are optional attachment inputs named `image`, never `proof`; retain existing stored attachment data.
+- Moderation appeals are removed, including commands, panels, DM controls and dashboard settings. Keep verification separate.
+- Reaction-role setup and access management are dashboard-only. Preserve published reaction-role behavior, saved drafts and configuration copying.

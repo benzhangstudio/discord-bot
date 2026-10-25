@@ -152,24 +152,10 @@ function slash(w,sub,values={},{member,perms=[P.ManageGuild]}={}){
     reply:async function(p){this.replied=true;outputs.push(p);},editReply:async function(p){outputs.push(p);},deferReply:async function(p){this.deferred=true;},followUp:async p=>outputs.push(p)};
   return {i,outputs};
 }
-test('every /reaction-roles subcommand confirms publicly; errors and denials reply publicly without diagnostics',async()=>{
-  const w=world(),app=createApp(w.client,w.store);
-  const subs=commands.find(c=>c.name==='reaction-roles').options.map(o=>o.name);
-  const existing='345678901234567890';w.messages.set(existing,{id:existing,react:async()=>{},reactions:{cache:new Map()}});
-  const g=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}]},null);
-  const values={create:{emoji:'🎲',role:R2,title:'Pick'},attach:{link:existing},add:{message:g.id,emoji:'🎯',role:R3},remove:{message:g.id,emoji:'🎯'},edit:{message:g.id,mode:'unique'},list:{},delete:{message:g.id}};
-  assert.deepEqual(Object.keys(values).sort(),subs.sort());
-  for(const sub of ['create','attach','add','remove','edit','list','delete']){
-    const {i,outputs}=slash(w,sub,values[sub]);await app.dispatch(i);
-    assert.equal(outputs.length,1,sub);assert.ok(!((outputs[0].flags||0)&64),sub);assert.ok(outputs[0].content.length>5,sub);assert.doesNotMatch(textOf(outputs[0]),/wrong|permission/i,sub);
-  }
-  const err=slash(w,'add',{message:'missing',emoji:'🎮',role:R1});await app.dispatch(err.i);
-  assert.match(textOf(err.outputs[0]),/no longer available/);assert.ok(!((err.outputs[0].flags||0)&64));
-  const high=slash(w,'create',{emoji:'🎮',role:HIGH});await app.dispatch(high.i);assert.match(textOf(high.outputs[0]),/above the bot’s highest role/);
-  const denied=slash(w,'list',{},{member:{id:'400000000000000009',roles:{highest:{position:1}}},perms:[]});await app.dispatch(denied.i);
-  assert.match(textOf(denied.outputs[0]),/permission/);assert.ok(!((denied.outputs[0].flags||0)&64));
-  setPluginEnabled(w.store,G,'reactionroles',false,'x');const off=slash(w,'list');await app.dispatch(off.i);assert.match(textOf(off.outputs[0]),/turned off/);
-  app.stop();
+test('reaction-role setup is dashboard-only and stale slash commands give dashboard guidance',async()=>{
+ const w=world(),app=createApp(w.client,w.store);assert(!commands.some(c=>c.name==='reaction-roles'));
+ const {i,outputs}=slash(w,'create',{emoji:'🎮',role:R1});await app.dispatch(i);
+ assert.match(textOf(outputs[0]),/dashboard.*Reaction Roles/);assert.equal(w.rr.list(G).length,0);app.stop();w.store.close();
 });
 
 test('dashboard API: managers create, edit and delete with CSRF; members are refused',async t=>{
@@ -198,4 +184,98 @@ test('dashboard API: managers create, edit and delete with CSRF; members are ref
   assert.equal((await manager(url,{method:'PUT',data:{bogus:1}})).status,400);
   assert.equal((await manager(url,{method:'PUT',data:{delete:item.id}})).status,200);assert.equal(w.store.list(G,'reaction-role').length,0);
   assert.equal((await manager(url,{method:'PUT',data:{enabled:false}})).status,200);
+});
+
+
+test('dashboard drafts save incomplete work without Discord calls, survive reopening, copy and publish explicitly',async()=>{
+ const w=world();try{
+  const api=createDashboardApi({store:w.store,client:w.client});
+  const call=(method,data,guild=G)=>api.handle({method,endpoint:'plugins/reactionroles',guild,identity:{id:'owner',owner:true,manager:true},data});
+  const partial=await call('PUT',{draft:{title:'My saved roles',entries:[{emoji:'🎮',role:''}]}});
+  assert.equal(w.sent.length,0);assert.equal(partial.drafts.length,1);
+  const saved=partial.savedDraft;
+  const reopened=await createDashboardApi({store:w.store,client:w.client}).handle({method:'GET',endpoint:'plugins/reactionroles',guild:G,identity:{id:'owner',owner:true,manager:true}});
+  assert.equal(reopened.drafts[0].title,'My saved roles');assert.deepEqual(reopened.commands,[]);
+  await assert.rejects(call('PUT',{draft:{id:saved,title:'Other server'}},DEMO_GUILDS[1].id),/not found/);
+  const copy=await call('PUT',{draft:{title:'Copy of roles',entries:[{emoji:'🎮',role:R1}]}});assert.notEqual(copy.savedDraft,saved);assert.equal(copy.drafts.length,2);
+  await call('PUT',{draft:{id:saved,channel:CH,title:'Ready',entries:[{emoji:'🎮',role:R1}]}});
+  await call('PUT',{publishDraft:saved});assert.equal(w.sent.length,1);assert.equal(w.rr.list(G).length,1);
+  await assert.rejects(call('PUT',{publishDraft:saved}),/not found/);assert.equal(w.sent.length,1);
+  await call('PUT',{deleteDraft:copy.savedDraft});assert.equal((await call('GET')).drafts.length,0);
+ }finally{w.store.close();}
+});
+
+test('an uncertain saved-draft publish cannot post again after retry or restart',async()=>{
+ const w=world();try{
+  let calls=0,release;w.channel.send=()=>{calls++;return new Promise(resolve=>{release=resolve;});};
+  const args={channel:CH,title:'Test',requestId:'draft-stable',entries:[]};
+  const rr=createReactionRoles({store:w.store,client:w.client,publishTimeoutMs:5});
+  await assert.rejects(rr.create(w.guild,args,{id:'owner',owner:true}),/could not be confirmed/);
+  assert.equal(w.store.get(G,'rr-publish','draft-stable').state,'uncertain');
+  const restarted=createReactionRoles({store:w.store,client:w.client,publishTimeoutMs:5});
+  await assert.rejects(restarted.create(w.guild,args,{id:'owner',owner:true}),/could not be confirmed/);
+  release({id:'999999999999999999'});await new Promise(setImmediate);assert.equal(calls,1);assert.equal(w.rr.list(G).length,0);
+ }finally{w.store.close();}
+});
+
+
+for(const stage of ['channel','role','member','message'])test(`a stalled reaction-role ${stage} lookup cannot publish late`,async()=>{
+ const w=world();try{
+  let release;const pending=new Promise(resolve=>{release=resolve;});
+  const args={channel:CH,requestId:'draft-read-'+stage,entries:[{emoji:'🎮',role:R1}]};
+  const actor=stage==='member'?{id:'mod',owner:false}:{id:w.guild.ownerId,owner:true};
+  if(stage==='channel'){w.guild.channels.cache.clear();w.guild.channels.fetch=()=>pending;}
+  if(stage==='role'){w.guild.roles.cache.delete(R1);w.guild.roles.fetch=()=>pending;}
+  if(stage==='member')w.guild.members.fetch=()=>pending;
+  if(stage==='message'){args.message='999999999999999999';w.channel.messages.fetch=()=>pending;}
+  const rr=createReactionRoles({store:w.store,client:w.client,publishTimeoutMs:5});
+  await assert.rejects(rr.create(w.guild,args,actor),/took too long/);
+  release(null);await new Promise(setImmediate);assert.equal(w.sent.length,0);assert.equal(w.rr.list(G).length,0);
+ }finally{w.store.close();}
+});
+
+
+test('Save of an existing message changes only the portal draft; Send explicitly updates Discord',async()=>{
+ const w=world();try{
+  const g=await w.rr.create(w.guild,{channel:CH,title:'Original',entries:[{emoji:'🎮',role:R1}]},null);
+  const message=w.messages.get(g.message);assert.equal(message.edits.length,0);
+  const api=createDashboardApi({store:w.store,client:w.client});const put=data=>api.handle({method:'PUT',endpoint:'plugins/reactionroles',data,guild:G,identity:{id:w.guild.ownerId,owner:true,manager:true}});
+  const saved=await put({draft:{target:g.id,channel:CH,title:'Edited in portal',entries:[{emoji:'🎮',role:R1}]}});
+  assert.equal(w.rr.get(G,g.id).title,'Original');assert.equal(message.edits.length,0);assert.equal(w.sent.length,1);
+  await put({publishDraft:saved.savedDraft});assert.equal(w.rr.get(G,g.id).title,'Edited in portal');assert(message.edits.length>0);assert.equal(w.sent.length,1);
+ }finally{w.store.close();}
+});
+
+test('Normal mode toggles an already-held role off, while explicit sticky mode keeps it',async()=>{
+ const w=world();try{
+  const g=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}],removeOnUnreact:true},null);
+  const member=w.member('500000000000000010',[R1]);const {r,user}=w.react(g.message,'🎮',member.id);
+  await w.rr.onReaction(r,user,true);assert(!member.roles.cache.has(R1));assert.deepEqual(r.removed,[member.id]);
+  await w.rr.onReaction(r,user,false);assert(!member.roles.cache.has(R1));
+  await w.rr.edit(w.guild,g.id,{removeOnUnreact:false});member.roles.cache.set(R1,w.roles.get(R1));
+  await w.rr.onReaction(r,user,true);await w.rr.onReaction(r,user,false);assert(member.roles.cache.has(R1));
+ }finally{w.store.close();}
+});
+
+test('reaction removal refreshes stale cached member roles before deciding what to remove',async()=>{
+ const w=world();try{
+  const g=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}],removeOnUnreact:true},null);
+  const stale=w.member('500000000000000011'),fresh=w.member(stale.id,[R1]);let forced=0;
+  w.guild.members.fetch=async input=>{if(input?.force){forced++;assert.equal(input.user,stale.id);return fresh;}return stale;};
+  const {r,user}=w.react(g.message,'🎮',stale.id);await w.rr.onReaction(r,user,false);
+  assert.equal(forced,1);assert(!fresh.roles.cache.has(R1));
+ }finally{w.store.close();}
+});
+
+test('rapid add then remove is processed in order and finishes without the role',async()=>{
+ const w=world();try{
+  const g=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}],removeOnUnreact:true},null);
+  const member=w.member('500000000000000012');let release,reads=0;
+  const fetch=w.guild.members.fetch;w.guild.members.fetch=async input=>{reads++;return fetch(input);};
+  member.roles.add=async roles=>{await new Promise(resolve=>{release=resolve;});for(const role of roles)member.roles.cache.set(role,w.roles.get(role));};
+  const {r,user}=w.react(g.message,'🎮',member.id);
+  const added=w.rr.onReaction(r,user,true);await new Promise(setImmediate);
+  const removed=w.rr.onReaction(r,user,false);await new Promise(setImmediate);assert.equal(reads,1);
+  release();await Promise.all([added,removed]);assert.equal(reads,2);assert(!member.roles.cache.has(R1));
+ }finally{w.store.close();}
 });

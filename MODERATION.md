@@ -1,173 +1,61 @@
-# Number One moderation
+# Moderation
 
-This module runs inside the existing bot and uses its server-scoped SQLite store. It implements moderation commands, persistent cases and warning history, native Discord timeouts, kicks, bans/unbans, recent-message purges, message filters, private case logs, member appeals, and a reversible Critical Emergency Mode. It does not claim Dyno feature parity or live Discord verification.
+Number One uses familiar member actions with required inputs first and optional inputs on the same command. Server settings, command access, automod and reaction-role setup live on the dashboard. Moderation appeals are unavailable; verification remains a separate dashboard feature.
 
-## Wispbyte setup
+## Commands
 
-1. Keep the production branch at `main`, `AUTO_UPDATE=1`, startup file `src/index.js`, and Node 24.12 or newer. Back up `data/` before restarting after the GitHub checks pass. Keep the live database and private `.env` on Wispbyte.
-2. In Discord, put Number One above the members it must moderate. Give it View Channels, Send Messages, Moderate Members, Kick Members, Ban Members, Manage Messages and Read Message History as needed. Critical Emergency Mode additionally needs Manage Roles for channel overwrites. Administrator is not required. Server 2FA requirements still apply.
-3. Set up the **Mod log** on the dashboard (`/dashboard` → Moderation → Mod log): pick a channel, turn it on, choose which actions to record and use **Send test message**. A staff-only channel is recommended. See [Mod log](#mod-log).
-4. For staff without Administrator or Manage Server, the current owner first grants the member command access on the dashboard **Access** page. The owner may then set **Moderator role** on the dashboard Moderation page. A role alone never bypasses Number One command authorization. A staff member also needs either the relevant native moderation permission or the configured moderation role. Manage Server alone does not confer moderation powers.
-5. Optional message filters need `MODERATION_MESSAGE_CONTENT=1` in Wispbyte and Message Content Intent enabled in the Discord Developer Portal, followed by a restart. Then turn automod on in the dashboard Automod page. Without that option, moderation slash commands work without privileged intents. No Guild Members intent is requested; individual members are fetched as needed.
-6. Set `blocked-words` (comma-separated literal phrases), `mention-limit`, `spam-limit`, `block-invites` and `retention-days` on the dashboard Automod page (retention is on the Moderation page). Defaults: filters off, mention limit 8, six messages per ten seconds, invites blocked when filters are enabled, retention 365 days. Set automod false to stop enforcement immediately.
-7. Post `/appeals panel channel:#appeals` for members still in the server. Banned, kicked and timed-out members get an **Appeal** button by DM automatically. Optionally set **Appeal contact** (link or email) on the dashboard Moderation page as a fallback for members whose DMs are closed.
+| Command | Required inputs | Optional inputs and behavior |
+| --- | --- | --- |
+| `/warn` | `user`, `reason` | `dm`, images, message links. Records one warning. |
+| `/unwarn` | `user`, `warning` | `reason`, images, message links. Removes one active warning while retaining its history. |
+| `/ban` | `user` | `reason`, `dm`, images, message links. Does not erase past messages. |
+| `/unban` | `user` | `reason`, `dm`, images, message links. Does not automatically rejoin the member. |
+| `/kick` | `user` | `reason`, `dm`, images, message links. |
+| `/timeout` | `user`, `duration` | `reason`, `dm`, images, message links. Examples: `10m`, `1h`, `2d`; maximum 28 days. |
+| `/untimeout` | `user` | `reason`, `dm`, images, message links. |
+| `/purge` | `count` | `user` filter, `reason`, images, message links. Checks up to 100 recent messages; skips pinned and old messages. |
+| `/case` | A `user` or a `number` | `page` for history; `reason` and images add context to the specified number; `outcome` is owner-only. |
+| `/lockdown` | None for status | `channel` plus `locked:true` locks; `locked:false` restores saved writing permissions. Optional reason and images. |
 
-Startup registers familiar standalone moderation commands including `/ban`, `/kick`, `/warn`, `/timeout`, `/purge`, `/warnings` and `/case`. Retired names are removed automatically on startup (see the migration table below). `/help` groups moderation actions together and lists required inputs. Case fields offer suggestions by member, action, reason or ID. No token, database migration command or replacement upload is required for this update.
+### One moderation history
 
-## Everyday workflow
+Use `/case user:@Alex` to see all of Alex’s moderation records, including warnings and removed warnings. Each page contains 10 records. Use `page:2` for older records; Previous/Next navigation is also available. There is no separate warnings list or removal-button collection.
 
-| Command | Behavior |
-| --- | --- |
-| `/warn user reason` | Record a warning without changing roles or Discord permissions. |
-| `/timeout user duration` | Native Discord timeout; use `10m`, `1h`, `1d` or `1w`, up to 28 days. Reason is optional. Discord expires it even if the bot is offline. |
-| `/untimeout user reason` | Remove the native timeout. |
-| `/kick user reason` | Remove a current member. Does not prevent rejoining. |
-| `/ban user reason` | Ban a current member without deleting their previous messages. |
-| `/unban user reason` | Remove an existing ban; does not automatically rejoin the member. |
-| `/purge count` | Scan up to 100 recent messages in this text/announcement channel; skip pinned and nearly fourteen-day-old messages. Optional `user` filters to one member; optional `reason` records context. No extra confirmation text is required. |
-| `/warnings list user page` | Show a member’s active warnings. |
-| `/warnings remove case reason` | Void an active warning while retaining its original reason/history. It does not reverse a sanction. |
-| `/case history user page` | Page through cases for a member, including removed warnings. |
-| `/case view id` | Show the case, outcome, appeal status and recent staff notes. |
-| `/case reason case reason` | Append a staff note. |
-| `/case resolve case outcome reason` | Owner only: record the observed result of an uncertain action. |
-| `/settings view` | Show policy, log delivery issues and unresolved cases. Change them on the dashboard. |
+The short number in `Case #12` identifies that exact record in this server. It is not a Discord user ID or a long internal interaction ID. It never changes when another warning is removed. To remove that warning, use `/unwarn user:@Alex warning:12 reason:Issued by mistake`. The bot verifies both the member and the warning. Bans, timeouts and other records cannot be removed with `/unwarn`.
 
-Member actions protect the owner, bot accounts, administrators, configured moderators, the invoking moderator, and members at or above Number One's role. Non-owner moderators also cannot act on peers or higher roles. Actual Discord mutations refresh permissions, owner and role hierarchy during preflight. Local warnings, notes and case-history operations use signed interaction and complete guild-role data, finishing through one initial reply without unnecessary REST lookups or deferral. Missing role data fails closed. Warnings and case notes require a reason; common sanctions accept an optional reason and record “No reason provided” if omitted. Stored/rendered text cannot trigger mentions. Moderation and appeal replies are public in the channel where staff run the command (use staff channels); the appeal panel is intentionally posted publicly to its selected channel.
+Use `/case number:12` to view details, or `/case number:12 reason:Additional context image:...` to add a note and an optional image. Supplying an image without a note also adds it to that case; there is no separate image command. Adding context requires an explicit case number, so the bot never silently chooses the latest case. If both member and number are supplied, they must match.
 
-### Member DMs (`dm` option)
+Only the current owner can set `outcome:Completed` or `outcome:Not completed`, with a reason, after checking an uncertain action in Discord. This updates the record; it never repeats the action.
 
-`/ban`, `/kick`, `/warn`, `/timeout`, `/untimeout` and `/unban` take an optional `dm` boolean ("Send the member a DM (default: on)"). The default comes from the server's **Member DMs** setting on the dashboard Moderation page .
+### Images and links
 
-- `dm:false`: no DM and no Appeal button.
-- `dm:true`: the DM states the action, reason and `Case #N`. Ban, kick, timeout and warning DMs include an Appeal button when the dm-appeals setting is on. Ban and kick DMs are sent **before** the action, because the member can no longer be reached afterwards.
-- Unban DMs only arrive if the user still shares another server with the bot. Otherwise the DM is recorded as failed and the unban still completes.
-- The public confirmation embed has a **DM** field: `Sent`, `Not sent (disabled)` or `Failed (DMs closed)`.
+`image`, `image2` and `image3` are optional image attachments. Discord controls its native attachment input; the bot does not provide a custom clipboard box. PNG, JPEG, GIF and WebP images are supported up to 10 MB each. `message-link` accepts up to five Discord message links from the same server. A case can retain up to 10 attachments and links in total.
 
-### Proof (screenshots and message links)
+Images appear under **Attachments** in confirmations, history and logs, and are never included in member DMs. Existing stored images remain compatible. With the mod log enabled and Attach Files allowed, images are copied to the log channel; otherwise original Discord upload links can expire.
 
-These commands take optional proof options: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/warnings remove`, `/case reason`, `/case proof` (adds proof to an existing case later), and `/lockdown on` / `/lockdown off`.
-- `proof`, `proof2`, `proof3`: image attachments, PNG, JPEG, GIF or WebP, up to 10 MB each.
-- `proof_link`: up to 5 Discord message links from this server (`https://discord.com/channels/<server>/<channel>/<message>`, ptb/canary accepted), separated by spaces.
+### Member notices
 
-Invalid uploads or links are rejected with a public error before any action runs. A case holds up to 10 proof items.
+The `dm` option overrides the dashboard’s default member-notice setting. Notices state the action, server and reason. They contain no appeal controls or case number. Ban and kick notices are attempted before removal; failed DMs never block moderation. The public confirmation reports a failed notice separately from the completed action. Moderation appeal commands, panels, forms, DM buttons and dashboard settings are removed. Old controls display an unavailable message and cannot create a new appeal. Historical records are retained.
 
-Where proof appears:
-- **Public confirmation embed**: a **Proof** field listing `Screenshot N` and `Message link N`, with the first screenshot as the embed image.
-- **Mod log channel**: screenshots not yet stored are **re-uploaded as files** to the log message, with the first one as the embed image. Discord's original attachment links expire, so the case then stores the log copy's URL and the log message permalink (`log copy`).
-- **`/case view`**: a Proof field plus the image. **`/case history`** and **`/warnings list`** entries show a short `Proof:` line.
-- **Dashboard → Moderation → Recent cases**: a Proof column with links.
-- Proof is staff evidence and is **never included in member DMs**.
+## Setup and permissions
 
-With the mod log off, screenshots are kept only as the original upload link, which expires; the confirmation says so. If the bot lacks **Attach Files** in the mod log channel, the entry is still posted with the original links.
+1. Keep Node 24.12 or newer, `AUTO_UPDATE=1`, and startup file `src/index.js` on Wispbyte. Keep its existing `data/` folder and private environment settings.
+2. Place the bot above members it must moderate. Grant only needed permissions: View Channel, Send Messages, Moderate Members, Kick Members, Ban Members, Manage Messages, Read Message History, and Manage Roles for lockdown restoration.
+3. Configure the log channel under Dashboard → Moderation → Mod log. View Channel, Send Messages, Embed Links and Attach Files are used. Give View Audit Log if you want to capture bans, unbans, kicks and timeouts done outside Number One.
+4. The current server owner grants additional command access under Dashboard → Access. Administrator or Manage Server already grants general command access. Approved users cannot grant access to others or bypass channel permissions.
+5. Moderation also checks each action’s relevant native permission or the configured moderator role. Manage Server alone does not confer moderation powers. Configure the moderator/protected roles and retention on the dashboard.
+6. Automod is off by default. Message filters require `MODERATION_MESSAGE_CONTENT=1` and Message Content Intent, then dashboard configuration. Normal moderation does not require that intent.
 
-### Output and case numbers
+Owner, bot, administrator, configured-moderator and role-hierarchy protections apply. Discord mutations refresh permissions before execution. Local warnings, case history, notes and warning removals use complete signed interaction data without redundant REST preflight. Missing role data fails closed.
 
-Lists (`/warnings list`, `/case history`, `/appeals list`) and details (`/case view`, `/appeals show`) are blurple embeds:
-- One field per case, headed `Case #12 · Warn`, with the reason, the moderator as a mention, and a Discord timestamp.
-- A `Total: N` footer.
-- Public Previous/Next buttons above 10 entries. Only the invoker or staff can press them.
-- An empty state such as “Alex has no warnings.”
+## Mod log, persistence and recovery
 
-Cases are numbered sequentially per server (`Case #12`). Existing cases are backfilled in creation order the first time a server's cases are read. `/case view`, `/case reason`, `/warnings remove` and appeals accept the number (`12`, `#12`) or the old ID. Audit-log reasons, DMs, appeals and the dashboard use the number.
+Mod log starts off per server. Supported events are bans/unbans, kicks, warnings/removals, timeouts/removals, purges, lockdown, case updates and external moderation actions. Each can be toggled on the dashboard. Historical moderation appeal events are not newly delivered. An unconfirmed send is retained for review, not automatically repeated.
 
-Internally, cases use interaction/message IDs, scoped to each server. A reservation is stored before a Discord mutation. Repeated interaction IDs cannot repeat that mutation. Confirmed outcomes and their log-outbox events are committed together. The underlying SQLite database remains editable by its operator; this is an operational audit history, not tamper-proof forensic storage.
+Lockdown saves a restoration journal before changing writing permissions. Restoration preserves independently changed visibility settings and refuses conflicting writing changes. Partial operations keep their journal for review.
 
-## Automod
+Use one bot process per SQLite file. Retention keeps pending/uncertain cases and legacy records with an unresolved historical appeal; completed expired cases follow the configured policy. Existing cases, numbers, images, schedules, access grants and reaction roles are preserved. Command changes do not require a database replacement.
 
-Message create and cached message edit events enforce literal blocked phrases, invite URLs, excessive mentions and per-member floods. Bot/webhook messages, the owner, administrators, Manage Server/Moderate Members holders and configured moderators are exempt. Matching messages are deleted and a case is saved. Message content is not retained in cases. Filters do not automatically ban, kick or escalate punishments. Review cases before issuing a separate sanction.
+Before release, run `npm run check` and `npm test`. Tests cover registered command paths, ordinary-member denial before input access, real discord.js interactions, hierarchy, persistence, 50-warning history, attachment validation, uncertain mutations, stalled requests, fallback replies and recovery. Offline tests do not establish live Discord delivery.
 
-Flood windows are local, ten-second windows and reset on restart. Filters cover messages delivered while the bot is online; uncached partial edit events are skipped. They are application-side moderation, not Discord-native AutoMod rules, and cannot prevent a message from briefly appearing. Ambiguous deletes are not retried. Monitor logs and Discord's native safety controls during raids.
-
-## Appeals
-
-Moderation appeals are separate from age verification: `mod-appeal` records live in the bot's `rose.sqlite`, while verification uses `age_cases` in `age-verification.sqlite`. The queues, reviewer authorization and case IDs are independent. Only in-server and externally received **moderation** appeals share a review queue; neither path enters the verification queue.
-
-There are two appeal paths:
-
-- **Members still in the server** use the `/appeals panel` message: **Appeal a case** (case number + statement) and **Check appeal status**.
-- **Banned, kicked or timed-out members** receive a DM *before* the action is applied (Discord does not let a bot open a DM with someone who shares no server). The DM states the server, action, reason and case number and has an **Appeal** button. The button's custom ID carries the server and case; on click and on submit the bot checks that the clicking user is the case's target, the case completed, and no appeal exists for it. The modal only asks for the statement. Buttons are handled statelessly, so they keep working after restarts and after the member has left the server. Turning off the Appeal button on the dashboard Moderation page removes it (the notice is still sent).
-- If the DM fails (closed DMs, error 50007, timeout), the sanction still proceeds, the case records `dm: failed`, and the moderator sees: "Could not DM the member. If they contact staff another way, use /appeals record." Staff then enter the appeal with `/appeals record`.
-
-Members who leave on their own get no DM and must use the server's published contact (shown on the panel if `appeal-contact` is set).
-
-Staff use `/appeals list`, `/appeals show appeal:...` and `/appeals review appeal:... decision:accepted|denied reason:...`. Neither the subject nor the original moderator can review the appeal. A decision and its case event are saved together. The member can read the decision privately through the panel. Accepted appeals do not automatically reverse bans/timeouts or erase warnings: staff use the explicit reversal/void command and record a reason.
-
-Appeals never use a public web form or the verification portal. Accepting an appeal never reverses a sanction automatically; the confirmation reminds staff to use `/unban` or `/untimeout`. The member is sent a best-effort DM with the decision.
-
-## Critical Emergency Mode and privacy roles
-
-There was no saved Emergency Mode design in this checkout. This integration is a channel-by-channel, owner/administrator-controlled writing lockdown:
-
-1. `/lockdown on channel:#channel reason:...` saves every current role/member overwrite before denying Send Messages, Send Messages in Threads, Create Public/Private Threads and Add Reactions. Repeat for each affected text/announcement channel.
-2. `/lockdown status` lists saved locks and recovery states. Administrators and the owner still bypass channel permissions. New channels/overwrites created after activation are not automatically locked; review them separately. Voice, invites, joins, webhooks, existing reactions and server-wide verification settings are not changed.
-3. `/lockdown off channel:#channel reason:...` restores only the saved writing bits. Current visibility and other permission bits are preserved. Concurrent writing changes cause restoration to stop and retain the journal for manual review. Partial operations retain per-overwrite progress across restarts.
-
-`privacy-role` identifies a protected privacy/verification role and must differ from `mod-role`. Moderation never grants/removes roles, never changes View Channel, and never copies private verification evidence into a case. Existing verification reviewer, verified-role and privacy-administration authorization stays separate. A privacy role is not a moderation exemption: members can still receive timeouts and sanctions without losing their privacy role. No identity evidence is requested for appeals.
-
-Do not use a mass role replacement or channel overwrite replacement as an emergency recovery shortcut. Review the saved journal and preserve privacy denies. New role/member overwrites during an incident can weaken a lockdown. Category synchronization may change when channel overwrites are edited; restore category sync manually only after checking the intended privacy policy.
-
-## Uncertain operations and recovery
-
-A network timeout is not proof of failure. A mutation can finish at Discord after the bot stops waiting. Such a case is `uncertain`; a process interrupted during work leaves `pending`. Additional actions for that same target are blocked, including after restart.
-
-The current owner must inspect Discord and its audit log, allow any in-flight request to settle, then use `/case resolve case:... outcome:succeeded|failed reason:...`. This records the observed result; it does not execute the mutation again. Never reconcile speculatively just to remove the block. For a partially applied/restored emergency operation, record the verified case outcome, resolve writing conflicts manually, then run `/lockdown off` to finish restoring the saved journal.
-
-Mod log entries post right after the confirmation, with a 30-second maintenance pass as backup. An entry whose send times out becomes `uncertain`; a crash may leave it `sending`. Those sends are never blindly retried. If the bot lacks View Channel, Send Messages or Embed Links, the entry is marked failed. `/settings view` and the dashboard show delivery issues; use `/case` as the source of truth. Confirmation delivery failure never repeats the moderation action.
-
-This is a single-process service. Run one Number One instance per SQLite file; do not share the file among replicas. Retention removes completed cases, their appeals and delivery metadata after the configured age, checked every 30 seconds. Unresolved cases and cases with open appeals are retained for review. Channel log messages and backups need separate deletion/retention policies. Case content consists of staff-supplied reasons, member/staff IDs, timestamps, message IDs and action metadata; avoid adding sensitive evidence to reasons. Operator-assisted data access/deletion must preserve active sanctions and required incident records under the server's published policy.
-
-## Verification before production use
-
-Run `npm ci`, `npm run check`, and `npm test` from this directory. The moderation suite covers the entire new command inventory, authorization denial before option access, scope boundaries, hierarchy, timeouts that never settle, duplicate mutations, purge filtering, appeals, retention, uncertain log sends and privacy-preserving lockdown restoration. Existing transport tests cover stalled confirmations and independent fallbacks.
-
-Use a test server to verify role placement, each bot permission, native timeout expiry, ban/unban, closed/private log channels, member appeal/status buttons and partial-lock restoration before enabling filters in a busy server. Offline tests do not establish live API permissions, operational readiness or deployment. Wispbyte restart is an operator action after GitHub checks pass.
-
-## Command migration
-
-Retired names are removed from Discord on the next startup (global bulk registration). A cached old command still replies publicly with "This command was renamed. Use X instead."
-
-| Old | New |
-| --- | --- |
-| `/mute` | `/timeout` |
-| `/unmute` | `/untimeout` |
-| `/warnings user` | `/warnings list user` |
-| `/delwarn` | `/warnings remove` |
-| `/modlogs` | Dashboard: Moderation → Mod log (member history is `/case history`) |
-| `/case id` | `/case view id` |
-| `/reason` | `/case reason` |
-| `/mod-reconcile` | `/case resolve` |
-| `/mod-settings view` | `/settings view` (read-only) |
-| `/mod-settings set` / `clear-role` | Dashboard: Moderation page (roles, mod log, retention, member DMs, appeals) and Automod page (filters) |
-| `/emergency on/off/status` | `/lockdown on/off/status` |
-| `/portal open` / `/portal setup` | `/dashboard` |
-| `/events` | `/schedule list` |
-| `/access add` / `/access remove` / `/access list` | Dashboard → Access (current server owner only) |
-
-Unchanged: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/appeals ...`, `/schedule ...`, `/embed ...`, `/instagram ...`, `/settings ...`, `/reaction-roles ...`, `/help`.
-
-
-## Mod log
-
-A Dyno/MEE6-style record channel. It is set up **only on the dashboard** (Moderation → Mod log): channel picker, an on/off switch, per-action toggles and a **Send test message** button that checks the bot's permissions in the channel. There is no `/modlogs` command; an old cached `/modlogs` replies that the setup moved to the dashboard. Member history stays at `/case history`.
-
-Each completed action posts one blurple embed:
-
-```
-Case #12 | Ban
-User        @Member (member_name)
-Moderator   @Staff (staff_name)
-DM          Sent | Failed (DMs closed) | Not sent
-Duration    1h (ends in 59 minutes)        (timeouts only)
-Reason      Spamming invites
-Proof       Screenshot 1 · Message link 1   (screenshots re-uploaded as files)
-Footer      User ID: 4234…   · timestamp
-```
-
-Logged actions (each can be turned off): ban, unban, kick, warn, warning removed (`Case #N | Warning removed`), timeout (with Duration), timeout removed, purge (channel and message count), lockdown on/off, case updates from `/case reason`, `/case proof` and `/case resolve` (`Case #N updated`), appeal decisions, and actions taken outside the bot. The first entry's link is stored on the case and `/case view` shows **Jump to log entry**.
-
-**Actions outside the bot.** Bans, unbans, kicks and timeouts done in Discord's own menus or by another bot are read from the audit log, create a normal case (moderator and reason from the audit log entry, `No reason provided` when empty) and post an entry marked *Done outside the bot*. This needs **View Audit Log**. Without it, Discord sends no audit events and nothing is captured; the dashboard shows the missing permission. The bot's own actions are never logged twice.
-
-**Fresh start.** The mod log is a new feature and starts **off** in every server. The old moderation "log channel" setting is retired and not migrated. Existing cases, case numbers, warnings, proof and appeals carry over unchanged and keep working in `/case history`, `/case view`, `/warnings` and the dashboard. Old cases are not backfilled into the new channel, and actions taken while the mod log is off are not posted later.
-
-The bot needs **View Channel, Send Messages, Embed Links and Attach Files** in the mod log channel, and **View Audit Log** server-wide for outside actions.
+After GitHub checks pass, restart Wispbyte with auto-update enabled. Confirm the deployed commit and successful command verification. Old commands and subcommands are removed on registration; cached copies return guidance. Do not replace production files or upload a development database.

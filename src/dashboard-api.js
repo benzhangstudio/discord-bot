@@ -10,16 +10,16 @@ import {deliveryLabel} from './weekly-feeds.js';
 import {TOGGLEABLE_PLUGINS,pluginStates,setPluginEnabled} from './plugins.js';
 import {modlogConfig,saveModlog,missingPermissions,enabledEmbed,MODLOG_EVENTS,EVENT_KEYS} from './modlog.js';
 import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
+import {actionName,statusOf} from './mod-format.js';
 
 export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
 const commandsFor={
-  moderation:['/ban','/kick','/warn','/timeout','/untimeout','/purge','/warnings list','/warnings remove','/case view','/case history','/case reason','/case resolve','/appeals','/lockdown'],
+  moderation:['/ban','/unban','/kick','/warn','/unwarn','/timeout','/untimeout','/purge','/case','/lockdown'],
   automod:[],
   embeds:['/embed create','/embed edit','/embed send','/embed list','/embed delete'],
-  scheduler:['/schedule add','/schedule list','/schedule show','/schedule edit','/schedule cancel','/settings timezone'],
+  scheduler:['/schedule add','/schedule list','/schedule show','/schedule edit','/schedule post','/schedule cancel','/settings'],
   instagram:['/instagram setup','/instagram list','/instagram preview','/instagram pause','/instagram resume','/instagram remove'],
-  reactionroles:['/reaction-roles create','/reaction-roles attach','/reaction-roles add','/reaction-roles remove','/reaction-roles edit','/reaction-roles delete','/reaction-roles list'],
-  settings:['/settings view','/settings timezone','/settings status','/help','/dashboard']
+  settings:['/settings','/help','/dashboard']
 };
 const text=(value,max=200)=>String(value??'').slice(0,max);
 const only=(data,allowed)=>assert(data&&Object.keys(data).every(k=>allowed.includes(k)),400,'Unsupported fields for this plugin.');
@@ -47,7 +47,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     const g=cached(guild),me=g?.members?.me;
     const channels=g?[...g.channels.cache.values()].filter(c=>[0,5].includes(c.type)).map(c=>({id:c.id,name:text(c.name,100)})):[];
     const roles=g?[...g.roles.cache.values()].filter(r=>r.id!==g.id&&!r.managed).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:text(r.name,100),assignable:!!me&&r.position<me.roles.highest.position})):[];
-    return {limits:RR_LIMITS,channels,roles,botReady:!!g,
+    return {limits:RR_LIMITS,channels,roles,botReady:!!g,drafts:store.list(guild,'reaction-role-draft'),
       items:store.list(guild,'reaction-role').map(x=>({id:x.id,title:text(x.title||'Reaction roles',256),description:text(x.description,2000),channel:label(guild,'channel',x.channel),message:x.message,owned:!!x.owned,mode:x.mode,maxRoles:x.maxRoles||0,duration:x.duration||0,removeOnUnreact:x.removeOnUnreact!==false,requiredRole:label(guild,'role',x.requiredRole),
         entries:x.entries.map(e=>({emoji:text(e.display,64),role:label(guild,'role',e.role)})),broken:x.broken?text(x.broken,120):null,link:`https://discord.com/channels/${guild}/${x.channel}/${x.message}`}))};
   }
@@ -59,7 +59,6 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       plugins:pluginStates(store,guild),toggleable:TOGGLEABLE_PLUGINS,botPresent:hasBot(guild),
       stats:{
         moderationCases:cases.length,casesNeedingReview:cases.filter(c=>['pending','uncertain'].includes(c.state)).length,
-        openAppeals:store.list(guild,'mod-appeal').filter(a=>a.state==='open').length,
         automod:!!modConfig(guild).automod,embeds:store.list(guild,'embed').length,
         upcomingEvents:events.filter(e=>!e.cancelled&&!e.complete&&e.start+e.duration*60000>now).length,
         instagramSources:store.list(guild,'feed').length,accessGrants:store.list(guild,'access').length,
@@ -110,8 +109,8 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     if(name==='moderation'){
       const cfg=modConfig(guild);
       const {channels,roles}=rrView(guild);
-      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false,dmAppeals:cfg.dmAppeals!==false,appealContact:cfg.appealContact?text(cfg.appealContact,200):null},
-        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
+      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false},
+        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),actionLabel:actionName(c.action),targetLabel:text(c.details?.memberName||cached(guild)?.members?.cache?.get?.(c.target)?.displayName||client?.users?.cache?.get?.(c.target)?.username||'Member',100),moderatorLabel:text(client?.users?.cache?.get?.(c.actor)?.username||'Moderator',100),statusLabel:statusOf(c),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
         locks:store.list(guild,'mod-lock').length,modlog:modlogView(guild)};
     }
     if(name==='automod'){
@@ -159,8 +158,31 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       return plugin(guild,name);
     }
     if(name==='reactionroles'&&data&&!('enabled' in data)){
-      only(data,['create','update','delete']);assert(Object.keys(data).length===1,400,'Make one change at a time.');
+      only(data,['create','update','delete','draft','deleteDraft','publishDraft']);assert(Object.keys(data).length===1,400,'Make one change at a time.');
+      if(data.draft){
+        const draft=data.draft;only(draft,['id','target','channel','message','title','description','mode','maxRoles','duration','removeOnUnreact','requiredRole','entries']);
+        assert(draft.id===undefined||typeof draft.id==='string'&&!!store.get(guild,'reaction-role-draft',draft.id),404,'Saved draft not found in this server.');
+        assert(draft.target==null||typeof draft.target==='string'&&!!store.get(guild,'reaction-role',draft.target),404,'The original reaction-role setup is no longer available in this server.');
+        for(const [key,max] of [['channel',20],['message',200],['title',256],['description',2000],['duration',10],['requiredRole',20]])assert(draft[key]==null||typeof draft[key]==='string'&&draft[key].length<=max,400,'One of the draft fields is too long.');
+        assert(draft.mode==null||['normal','unique'].includes(draft.mode),400,'Choose normal or unique mode.');
+        assert(draft.maxRoles==null||Number.isInteger(draft.maxRoles)&&draft.maxRoles>=0&&draft.maxRoles<=20,400,'Max roles must be 0 to 20.');
+        assert(draft.removeOnUnreact===undefined||typeof draft.removeOnUnreact==='boolean',400,'Choose on or off.');
+        assert(draft.entries===undefined||Array.isArray(draft.entries)&&draft.entries.length<=20&&draft.entries.every(e=>e&&Object.keys(e).every(k=>['emoji','role'].includes(k))&&typeof e.emoji==='string'&&e.emoji.length<=64&&typeof e.role==='string'&&e.role.length<=20),400,'Use up to 20 emoji and role rows.');
+        assert(draft.id||store.list(guild,'reaction-role-draft').length<50,400,'This server already has 50 drafts. Remove one before saving another.');
+        const id=draft.id||randomUUID();
+        store.put(guild,'reaction-role-draft',{...draft,id,updatedBy:identity.id,updatedAt:Date.now()});
+        return {...plugin(guild,name),savedDraft:id};
+      }
+      if(data.deleteDraft){assert(typeof data.deleteDraft==='string',400,'Choose a saved draft.');store.remove(guild,'reaction-role-draft',data.deleteDraft);return plugin(guild,name);}
       const g=rrGuild(guild),actor={id:identity.id,owner:!!identity.owner};
+      if(data.publishDraft){
+        assert(typeof data.publishDraft==='string',400,'Choose a saved draft.');
+        const draft=store.get(guild,'reaction-role-draft',data.publishDraft);assert(draft,404,'Saved draft not found in this server.');
+        const {id,target,updatedBy,updatedAt,...options}=draft;
+        if(target){const {channel,message,entries,...settings}=options;await rr(async()=>{await reactionRoles.edit(g,target,settings);if(entries)await reactionRoles.setEntries(g,target,entries,actor);});}
+        else await rr(()=>reactionRoles.create(g,{...options,requestId:'draft-'+id},actor));
+        store.remove(guild,'reaction-role-draft',id);return plugin(guild,name);
+      }
       const opts=o=>{only(o,['id','channel','message','title','description','mode','maxRoles','duration','removeOnUnreact','requiredRole','entries']);
         for(const k of ['channel','message','requiredRole','id'])assert(o[k]==null||(typeof o[k]==='string'&&o[k].length<=200),400,'Invalid field.');
         assert(o.entries===undefined||Array.isArray(o.entries)&&o.entries.every(e=>e&&typeof e.emoji==='string'&&e.emoji.length<=64&&/^\d{17,20}$/.test(e.role)),400,'Each row needs an emoji and a role.');
@@ -170,7 +192,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
       return plugin(guild,name);
     }
-    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','retentionDays','dmAppeals','dmMembers','appealContact','modlog']:name==='settings'?['timezone']:['enabled']);
+    only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','retentionDays','dmMembers','modlog']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
       assert(TOGGLEABLE_PLUGINS.includes(name),400,'This section cannot be turned off.');assert(typeof data.enabled==='boolean',400,'Choose on or off.');
       setPluginEnabled(store,guild,name,data.enabled,identity.id);
@@ -191,8 +213,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       }
       assert((patch.modRole??cfg.modRole)===null||(patch.modRole??cfg.modRole)!==(patch.privacyRole??cfg.privacyRole),400,'Protected and moderator roles must differ.');
       if('retentionDays' in data){assert(Number.isInteger(data.retentionDays)&&data.retentionDays>=30&&data.retentionDays<=3650,400,'Case retention must be 30 to 3650 days.');patch.retentionDays=data.retentionDays;}
-      for(const k of ['dmAppeals','dmMembers'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
-      if('appealContact' in data){const v=data.appealContact==null?'':String(data.appealContact).trim();assert(v.length<=200&&!/@(everyone|here)|<[@#]|[*_~`|]/.test(v),400,'Enter a short appeal contact, such as a link or email address.');patch.appealContact=v||null;}
+      for(const k of ['dmMembers'])if(k in data){assert(typeof data[k]==='boolean',400,'Choose on or off.');patch[k]=data[k];}
       if(Object.keys(patch).length){
         const core=new Moderation(store);
         const result=await core.run({guild,id:'dash-'+randomUUID().slice(0,12),actor:identity.id,target:'configuration',action:'configure',reason:'Updated moderation settings on the dashboard',details:{before:cfg,patch},effect:()=>core.saveConfig(guild,patch)});

@@ -1,5 +1,7 @@
 // Reviewed public copy for reaction-role setup. Shared by slash commands (UserError) and the dashboard (Fault).
 export const RR={
+  lookupTimeout:'Discord took too long to check the setup. Your draft is saved; no new message was sent.',
+  publishUncertain:'The message could not be confirmed. Check the channel before publishing again; this draft will not be sent twice.',
   needManageRoles:'The bot needs the Manage Roles permission to give reaction roles.',
   channel:'Choose a text or announcement channel in this server.',
   channelPerms:'The bot needs View Channel, Send Messages, Embed Links, Add Reactions and Read Message History in that channel.',
@@ -16,7 +18,7 @@ export const RR={
   emojiMissing:'That emoji is not used on this message.',
   entryLimit:'A message can have at most 20 reaction roles.',
   groupLimit:'This server already has 50 reaction-role messages. Delete one first.',
-  groupMissing:'That reaction-role message is no longer available. Choose one from the suggestions.',
+  groupMissing:'That reaction-role message is no longer available. Open Reaction Roles on the dashboard and choose an existing message.',
   duration:'Use a duration such as 30m, 12h, 7d or 2w (up to 30 days), or off.',
   maxRoles:'Max roles must be between 1 and 20, or 0 for no limit.',
   mode:'Choose normal or unique mode.',

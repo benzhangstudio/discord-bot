@@ -56,3 +56,12 @@ test('registration checks every page of joined servers',async()=>{
 test('wrong application credentials cannot remove another application’s commands',async()=>{
   const rest=fakeRest();await assert.rejects(syncApplicationCommands({applicationId:'wrong-app',rest,log:()=>{}}),/does not match/);assert.deepEqual(rest.writes,[]);
 });
+
+
+test('startup removes warning lists, moderation appeals, and reaction-role setup commands',async()=>{
+ const rest=fakeRest(),retired=['warnings','appeals','reaction-roles'].map(name=>({type:1,name,description:'Retired command'}));
+ rest.data.set('/applications/app/commands',[...commands,...retired]);rest.data.set('/applications/app/guilds/one/commands',retired);
+ await registerCommands(rest,'app',undefined,()=>{});
+ assert.deepEqual(rest.data.get('/applications/app/commands'),commands);
+ assert.deepEqual(rest.data.get('/applications/app/guilds/one/commands'),[]);
+});

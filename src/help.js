@@ -5,10 +5,8 @@ import {UserError} from './user-error.js';
 // Every registered command belongs to exactly one category (enforced by tests).
 // Command lines are generated from the registered definitions so help stays in sync.
 export const categories=[
-  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case tools',commands:['warn','timeout','untimeout','kick','ban','unban','purge','warnings','case'],note:'**Proof:** actions, `/case reason` and `/case proof` take optional `proof`, `proof2`, `proof3` (screenshots: PNG, JPEG, GIF or WebP, up to 10 MB) and `proof_link` (message links from this server). Proof shows in the confirmation, the log channel and `/case view`. It is never sent to members.\n**DMs:** set `dm:false` to skip the member DM.\n**Mod log:** the mod log channel and which actions it records are set up on the dashboard under Moderation › Mod log: {dashboard}'},
-  {value:'appeals',label:'Appeals',description:'Appeal panel and staff review',commands:['appeals']},
+  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case history',commands:['warn','unwarn','timeout','untimeout','kick','ban','unban','purge','case'],note:'**Images:** add optional `image`, `image2`, `image3` or `message-link` inputs to the same command. Images are never sent in member DMs.\n**History:** `/case user:@member` lists all moderation records, 10 per page. Use `page` for older records.\n**Remove a warning:** `/unwarn user:@member warning:12` uses the short Case #12 shown in that member’s history.\n**Update a case:** `/case number:12 reason:... image:...`; omit note and image to view it. Only the owner can supply `outcome` after checking Discord.\n**DMs:** set `dm:false` to skip the member notice.\n**Mod log:** set up recording on the dashboard: {dashboard}'},
   {value:'lockdown',label:'Lockdown',description:'Lock and unlock channels',commands:['lockdown']},
-  {value:'roles',label:'Reaction roles',description:'Let members pick roles by reacting',commands:['reaction-roles']},
   {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
   {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
   {value:'feeds',label:'Instagram',description:'Instagram feed sources and roundups',commands:['instagram']},

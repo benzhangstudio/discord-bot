@@ -1,6 +1,6 @@
 // Dashboard shell: sign-in, server picker, History API routing and plugin pages.
 const TITLES={overview:'Overview',moderation:'Moderation',automod:'Automod',embeds:'Embeds',scheduler:'Scheduler',instagram:'Instagram',reactionroles:'Reaction Roles',verification:'Verification',access:'Access',settings:'Settings'};
-const LEADS={overview:'Server status and plugins.',moderation:'Cases, actions and appeals.',automod:'Automatic message filtering.',embeds:'Saved embed messages.',scheduler:'Upcoming events, meetings and rotations.',instagram:'Instagram roundup sources.',reactionroles:'Members pick roles by reacting to a message.',access:'Members granted command access by the server owner.',settings:'General server settings.'};
+const LEADS={overview:'Server status and plugins.',moderation:'Member actions and moderation history.',automod:'Automatic message filtering.',embeds:'Saved embed messages.',scheduler:'Upcoming events, meetings and rotations.',instagram:'Instagram roundup sources.',reactionroles:'Members pick roles by reacting to a message.',access:'Members granted command access by the server owner.',settings:'General server settings.'};
 let config,guilds=[];
 const el=(tag,props={},...children)=>{const n=document.createElement(tag);for(const[k,v]of Object.entries(props)){if(k==='class')n.className=v;else if(k==='text')n.textContent=v;else n.setAttribute(k,v);}n.append(...children.filter(Boolean));return n;};
 const fmt=ms=>ms?new Date(ms).toLocaleString():'—';
@@ -50,7 +50,7 @@ function table(headers,rows,empty){
   const t=el('table',{},el('thead',{},el('tr',{},...headers.map(h=>el('th',{scope:'col',text:h})))));const tb=el('tbody');
   for(const r of rows)tb.append(el('tr',{},...r.map(c=>c instanceof Node?el('td',{},c):el('td',{text:c??'—'}))));t.append(tb);return el('div',{class:'table-wrap'},t);
 }
-const ref=x=>x?(x.name?(x.name+' ('+x.id+')'):x.id):'Not set';
+const ref=x=>x?(x.name||'Unavailable channel or role'):'Not set';
 const commands=list=>list?.length?el('div',{class:'card'},el('h2',{text:'Slash commands'}),el('p',{class:'muted',text:'Make other changes in Discord with:'}),el('div',{class:'chips'},...list.map(c=>el('code',{text:c})))):null;
 async function renderPlugin(guild,name){
   $('pluginTitle').textContent=TITLES[name];$('pluginLead').textContent=LEADS[name]||'';const body=$('pluginBody');body.replaceChildren(el('p',{class:'muted',text:'Loading…'}));
@@ -63,9 +63,9 @@ async function renderPlugin(guild,name){
       return el('div',{class:'card plugin-card'},el('div',{},el('h3',{},el('a',{href:`/dashboard/${guild}/${p}`,'data-link':'',text:TITLES[p]})),el('p',{class:'muted',text:LEADS[p]})),el('label',{class:'switch'},box,el('span',{'aria-hidden':'true'})));}));
     body.replaceChildren(...[
       o.botPresent===false?el('div',{class:'notice',text:'Number One is not in this server. Add it from the server list to use slash commands.'}):null,
-      el('div',{class:'grid stats'},stat('Moderation cases',s.moderationCases,'moderation'),stat('Cases needing review',s.casesNeedingReview,'moderation'),stat('Open appeals',s.openAppeals,'moderation'),stat('Automod',s.automod?'On':'Off','automod'),stat('Saved embeds',s.embeds,'embeds'),stat('Upcoming events',s.upcomingEvents,'scheduler'),stat('Instagram sources',s.instagramSources,'instagram'),stat('Access grants',s.accessGrants,'access'),stat('Verification',o.verification?.enabled?'Open':o.verification?.configured?'Paused':'Not set up','verification')),
+      el('div',{class:'grid stats'},stat('Moderation cases',s.moderationCases,'moderation'),stat('Cases needing review',s.casesNeedingReview,'moderation'),stat('Automod',s.automod?'On':'Off','automod'),stat('Saved embeds',s.embeds,'embeds'),stat('Upcoming events',s.upcomingEvents,'scheduler'),stat('Instagram sources',s.instagramSources,'instagram'),stat('Access grants',s.accessGrants,'access'),stat('Verification',o.verification?.enabled?'Open':o.verification?.configured?'Paused':'Not set up','verification')),
       el('h2',{text:'Plugins'}),el('p',{class:'muted',text:'Disabled plugins stop responding to their slash commands in this server.'}),pluginCards,
-      el('p',{class:'muted',text:`Timezone: ${o.timezone}${s.deliveryProblems?` · ${s.deliveryProblems} recent delivery problem(s); run /settings status in Discord.`:''}`})].filter(Boolean));
+      el('p',{class:'muted',text:`Timezone: ${o.timezone}${s.deliveryProblems?` · ${s.deliveryProblems} recent delivery problem(s); run /settings status:true in Discord.`:''}`})].filter(Boolean));
     return;
   }
   const d=await NO.api(`${base}/plugins/${name}`);
@@ -75,12 +75,12 @@ async function renderPlugin(guild,name){
     const c=d.config,f=el('form',{class:'card'});
     const pick=(id,list,value,blank)=>{const s=el('select',{id});s.append(new Option(blank,''));for(const x of list)s.append(new Option(x.name,x.id));if(value&&!list.some(x=>x.id===value.id))s.append(new Option(value.id,value.id));s.value=value?.id||'';return s;};
     const lab=(t,n)=>el('label',{},t,n);
-    const dm=el('input',{type:'checkbox',id:'modDm'}),dmm=el('input',{type:'checkbox',id:'modDmMembers'});dm.checked=c.dmAppeals;dmm.checked=c.dmMembers;
-    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (members with it cannot be moderated)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),
+    const dmm=el('input',{type:'checkbox',id:'modDmMembers'});dmm.checked=c.dmMembers;
+    f.append(el('h2',{text:'Settings'}),lab('Moderator role',pick('modRole',d.roles,c.modRole,'Not set')),lab('Protected role (kept during moderation)',pick('modPrivacy',d.roles,c.privacyRole,'Not set')),
       lab('Case retention in days (30–3650)',Object.assign(el('input',{type:'number',id:'modRetention',min:30,max:3650,required:''}),{value:c.retentionDays})),
-      el('h3',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),el('h3',{text:'Appeals'}),el('label',{class:'check'},dm,'Include an Appeal button in ban, kick, timeout and warning DMs'),lab('Appeal contact for banned or kicked members (link or email)',Object.assign(el('input',{id:'modContact',maxlength:200}),{value:c.appealContact||''})),
+      el('h3',{text:'Member DMs'}),el('label',{class:'check'},dmm,'DM members about moderation actions by default (the dm option on each command overrides this)'),
       el('p',{class:'muted',text:`Locked channels: ${d.locks}. Only the server owner can save changes. Each change is recorded as a moderation case.`}),el('button',{class:'primary',text:'Save'}));
-    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,retentionDays:Number($('modRetention').value),dmAppeals:dm.checked,dmMembers:dmm.checked,appealContact:$('modContact').value.trim()||null},'PUT');NO.message('Moderation settings saved.');});
+    f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modRole:$('modRole').value||null,privacyRole:$('modPrivacy').value||null,retentionDays:Number($('modRetention').value),dmMembers:dmm.checked},'PUT');NO.message('Moderation settings saved.');});
     parts.push(f);
     {const m=d.modlog,ml=el('form',{class:'card'}),on=el('input',{type:'checkbox',id:'mlOn'});on.checked=m.enabled;
      const boxes=m.eventList.map(e=>{const b=el('input',{type:'checkbox','data-event':e.key});b.checked=m.events[e.key]!==false;return el('label',{class:'check'},b,e.label);});
@@ -92,7 +92,7 @@ async function renderPlugin(guild,name){
      ml.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,enabled:on.checked,events:events()}},'PUT');NO.message('Mod log settings saved.');});
      test.onclick=NO.action(async()=>{await NO.api(`${base}/plugins/moderation`,{modlog:{channel:$('mlChannel').value||null,test:true}},'PUT');NO.message('Test message sent. Check the mod log channel.');});
      parts.push(ml);}
-    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created','Proof'],d.recentCases.map(c=>[c.number?'#'+c.number:c.id.slice(0,12),c.action,c.target,c.actor,c.state,fmt(c.created),proofCell(c.proof)]),'No cases yet.')));
+    parts.push(el('div',{class:'card'},el('h2',{text:'Recent cases'}),table(['Case','Action','Target','Moderator','State','Created','Attachments'],d.recentCases.map(c=>[c.number?'#'+c.number:'Earlier record',c.actionLabel,c.targetLabel,c.moderatorLabel,c.statusLabel,fmt(c.created),proofCell(c.proof)]),'No cases yet.')));
   }
   if(name==='automod'){
     const c=d.config;const f=el('form',{class:'card'});
@@ -131,31 +131,46 @@ function reactionRoles(d,base,guild){
   for(const x of d.items){
     const editBtn=el('button',{type:'button',text:'Edit '+x.title});editBtn.onclick=()=>fill(x);
     const del=el('button',{type:'button',class:'danger',text:'Delete '+x.title});del.onclick=NO.action(async()=>{if(!confirm('Delete this reaction-role setup? Members keep their roles.'))return;await NO.api(`${base}/plugins/reactionroles`,{delete:x.id},'PUT');NO.message('Reaction roles deleted.');await renderPlugin(guild,'reactionroles');});
-    actions.append(editBtn,del);
+    const copy=el('button',{type:'button',text:'Copy '+x.title});copy.onclick=()=>fill(x,true);actions.append(editBtn,copy,del);
   }
   if(d.items.length)list.append(actions);
-  const f=el('form',{class:'card'}),heading=el('h2',{text:'Create reaction roles'});let editing=null;
+  const f=el('form',{class:'card'}),heading=el('h2',{text:'Create reaction roles'});let editing=null,draftId=null;
   const channel=opt(d.channels,'','Choose a channel'),link=el('input',{maxlength:200,placeholder:'Optional: existing message link or ID'}),title=el('input',{maxlength:256,placeholder:'Reaction roles'}),desc=el('textarea',{maxlength:2000,rows:2});
-  const mode=el('select');mode.append(new Option('Normal: pick any roles','normal'),new Option('Unique: pick one role','unique'));
+  const mode=el('select');mode.append(new Option('Normal: toggle multiple roles','normal'),new Option('Unique: pick one role','unique'));
   const max=Object.assign(el('input',{type:'number',min:0,max:20}),{value:0}),dur=el('input',{maxlength:10,placeholder:'off, 30m, 12h, 7d'}),unreact=el('input',{type:'checkbox'});unreact.checked=true;
   const required=opt(d.roles,'','No required role'),rows=el('div',{class:'rows'}),preview=el('div',{class:'card preview'});
-  const row=(emoji='',role='')=>{const r=el('div',{class:'row'}),e=el('input',{maxlength:64,placeholder:'Emoji, e.g. 🎮 or <:name:id>','aria-label':'Emoji'}),s=opt(d.roles,role,'Choose a role'),x=el('button',{type:'button',text:'Remove'});e.value=emoji;x.onclick=()=>{r.remove();draw();};e.oninput=s.onchange=draw;r.append(e,s,x);rows.append(r);};
+  const row=(emoji='',role='')=>{const r=el('div',{class:'row'}),e=el('input',{maxlength:64,placeholder:'Emoji, e.g. 🎮 or <:name:id>','aria-label':'Emoji'}),s=opt(d.roles,role,'Choose a role'),x=el('button',{type:'button',text:'Remove'});s.setAttribute('aria-label','Role for this emoji');e.value=emoji;x.onclick=()=>{r.remove();draw();};e.oninput=s.onchange=draw;r.append(e,s,x);rows.append(r);};
   const entries=()=>[...rows.children].map(r=>({emoji:r.children[0].value.trim(),role:r.children[1].value})).filter(e=>e.emoji||e.role);
-  function draw(){const name=id=>d.roles.find(r=>r.id===id)?.name||'role';preview.replaceChildren(el('h3',{text:'Preview: '+(title.value||'Reaction roles')}),desc.value?el('p',{text:desc.value}):null,...entries().map(e=>el('p',{text:`${e.emoji} – @${name(e.role)}`})));}
+  function draw(){const name=id=>d.roles.find(r=>r.id===id)?.name||'role';preview.replaceChildren(...[el('h3',{text:'Preview: '+(title.value||'Reaction roles')}),desc.value?el('p',{text:desc.value}):null,...entries().map(e=>el('p',{text:`${e.emoji} – @${name(e.role)}`}))].filter(Boolean));}
   for(const i of [title,desc])i.oninput=draw;
   const add=el('button',{type:'button',text:'Add emoji and role'});add.onclick=()=>{if(rows.children.length<d.limits.entries)row();};
   const label=(t,n)=>el('label',{},t,n);
-  function fill(x){editing=x.id;heading.textContent='Edit '+x.title;channel.value=x.channel?.id||'';channel.disabled=true;link.disabled=true;title.value=x.title;desc.value=x.description||'';mode.value=x.mode;max.value=x.maxRoles;dur.value=x.duration?x.duration+'m':'off';unreact.checked=x.removeOnUnreact;required.value=x.requiredRole?.id||'';rows.replaceChildren();for(const e of x.entries)row(e.emoji,e.role.id);draw();f.scrollIntoView();}
+  const publish=el('button',{type:'button',class:'primary',text:'Send to Discord'});
+  function fill(x,copy=false,isDraft=false){
+    editing=copy?null:isDraft?x.target||null:x.id;draftId=isDraft?x.id:null;heading.textContent=isDraft?'Continue saved draft':copy?'Copy reaction roles':'Edit '+x.title;
+    channel.value=(isDraft?x.channel:x.channel?.id)||'';channel.disabled=!!editing;link.disabled=!!editing;link.value=isDraft?x.message||'':'';
+    title.value=x.title||'';desc.value=x.description||'';mode.value=x.mode||'normal';max.value=x.maxRoles||0;dur.value=typeof x.duration==='string'?x.duration:x.duration?x.duration+'m':'off';unreact.checked=x.removeOnUnreact!==false;required.value=(isDraft?x.requiredRole:x.requiredRole?.id)||'';
+    rows.replaceChildren();for(const e of x.entries||[])row(e.emoji,isDraft?e.role:e.role?.id);if(!rows.children.length)row();publish.textContent='Send to Discord';draw();f.scrollIntoView();
+  }
+  const drafts=el('div',{class:'card'},el('h2',{text:'Saved drafts'}));
+  function showDrafts(items){
+    drafts.replaceChildren(el('h2',{text:'Saved drafts'}),el('p',{class:'muted',text:'Save unfinished work here. Drafts are stored for this server and are not posted until you choose Send to Discord.'}));
+    for(const item of items||[]){const open=el('button',{type:'button',text:'Continue '+(item.title||'Untitled draft')}),remove=el('button',{type:'button',class:'danger',text:'Delete draft'});open.onclick=()=>fill(item,false,true);remove.onclick=NO.action(async()=>{const result=await NO.api(`${base}/plugins/reactionroles`,{deleteDraft:item.id},'PUT');showDrafts(result.drafts);if(draftId===item.id)draftId=null;NO.message('Draft deleted. Published messages are unchanged.');});drafts.append(el('div',{class:'row'},open,remove));}
+    if(!items?.length)drafts.append(el('p',{class:'muted',text:'No saved drafts yet.'}));
+  }
+  function values(){return {target:editing||null,channel:channel.value||null,message:link.value.trim()||null,title:title.value.trim()||null,description:desc.value.trim()||null,mode:mode.value,maxRoles:Number(max.value)||0,duration:dur.value.trim()||'off',removeOnUnreact:unreact.checked,requiredRole:required.value||null,entries:entries()};}
+  const saveDraft=el('button',{type:'submit',text:'Save'});
+  f.onsubmit=NO.action(async()=>{const result=await NO.api(`${base}/plugins/reactionroles`,{draft:{...(draftId?{id:draftId}:{}),...values()}},'PUT');draftId=result.savedDraft;showDrafts(result.drafts);NO.message('Draft saved. Nothing was posted to Discord.');});
+  showDrafts(d.drafts);
   row();
-  f.append(heading,label('Channel',channel),label('Existing message (optional)',link),label('Title',title),label('Description',desc),label('Mode',mode),label('Max roles per member (0 = no limit)',max),label('Temporary role duration',dur),el('label',{class:'check'},unreact,'Remove the role when the reaction is removed'),label('Required role',required),el('h3',{text:'Emoji and roles'}),rows,add,preview,el('p',{class:'muted',text:'The bot needs Manage Roles, and its role must be above every role listed here.'}),el('button',{class:'primary',text:'Save'}));
-  f.onsubmit=NO.action(async()=>{
-    const o={title:title.value.trim()||null,description:desc.value.trim()||null,mode:mode.value,maxRoles:Number(max.value)||0,duration:dur.value.trim()||'off',removeOnUnreact:unreact.checked,requiredRole:required.value||null,entries:entries()};
-    if(editing)await NO.api(`${base}/plugins/reactionroles`,{update:{id:editing,...o}},'PUT');
-    else await NO.api(`${base}/plugins/reactionroles`,{create:{channel:channel.value,message:link.value.trim()||null,...o}},'PUT');
-    NO.message('Reaction roles saved.');await renderPlugin(guild,'reactionroles');
+  f.append(heading,label('Channel',channel),label('Existing message (optional)',link),label('Title',title),label('Description',desc),label('Mode',mode),label('Max roles per member (0 = no limit)',max),label('Temporary role duration',dur),el('label',{class:'check'},unreact,'Remove the role when the reaction is removed'),label('Required role',required),el('h3',{text:'Emoji and roles'}),rows,add,preview,el('p',{class:'muted',text:'The bot needs Manage Roles, and its role must be above every role listed here.'}),saveDraft,publish);
+  publish.onclick=NO.action(async()=>{
+    const o=values();
+    {const result=await NO.api(`${base}/plugins/reactionroles`,{draft:{...(draftId?{id:draftId}:{}),...o}},'PUT');draftId=result.savedDraft;await NO.api(`${base}/plugins/reactionroles`,{publishDraft:draftId},'PUT');}
+    await renderPlugin(guild,'reactionroles');NO.message('Reaction roles sent to Discord.');
   });
   draw();
-  return [!d.botReady?el('div',{class:'notice',text:'The bot must be online in this server to change reaction roles.'}):null,list,f];
+  return [drafts,!d.botReady?el('div',{class:'notice',text:'The bot must be online in this server to change reaction roles.'}):null,list,f];
 }
 $('serverSelect').onchange=()=>navigate($('serverSelect').value?'/dashboard/'+$('serverSelect').value:'/dashboard');
 $('menuToggle').onclick=()=>{const open=document.body.classList.toggle('nav-open');$('menuToggle').setAttribute('aria-expanded',String(open));};

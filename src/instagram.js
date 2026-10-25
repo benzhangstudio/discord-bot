@@ -61,7 +61,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
   function current(i,d) {
     const f=d.sourceId?store.get(i.guildId,'feed',d.sourceId):null;
     if(d.sourceId&&(!f||(f.settingsVersion||0)!==d.version))throw new UserError('This source changed while your menu was open. Open /instagram setup again to see the latest settings.');
-    if(f?.batch)throw new UserError('This roundup is being delivered or needs review. Check its channel and /settings status before changing its setup.');
+    if(f?.batch)throw new UserError('This roundup is being delivered or needs review. Check its channel and /settings status:true before changing its setup.');
     return f;
   }
   return async function instagram(i) {

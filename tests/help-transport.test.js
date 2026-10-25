@@ -8,7 +8,7 @@ import {createApp} from '../src/app.js';
 import {commands} from '../src/commands.js';
 const sdkConfirmation=(i,method,payload)=>method==='PATCH'?i.editReply(payload):i.followUp(payload);
 
-for(const command of commands)for(const sub of command.options||[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one public permission message`,{timeout:2000},async()=>{
+for(const command of commands)for(const sub of command.options?.some(o=>o.type===1)?command.options:[null])test(`real Discord SDK: member denied /${command.name}${sub?' '+sub.name:''} with one public permission message`,{timeout:2000},async()=>{
   const client=new Client({intents:[]}),store=new Store(':memory:'),requests=[];
   try {
     const app=createApp(client,store);
@@ -52,8 +52,8 @@ test('real Discord SDK sends an empty schedule as one immediate public callback'
 });
 
 const fastCases=[
-  ['settings','timezone',[{name:'zone',type:3,value:'Asia/Seoul'}]],['settings','view',[]],['settings','status',[]],
-  ['embed','create',[{name:'name',type:3,value:'Welcome'}]],['embed','list',[]],['embed','edit',[{name:'message',type:3,value:'saved'}]],['embed','remove-section',[{name:'message',type:3,value:'saved'},{name:'number',type:4,value:1}]],['embed','delete',[{name:'message',type:3,value:'saved'}]],
+  ['settings',null,[{name:'zone',type:3,value:'Asia/Seoul'}]],['settings',null,[]],['settings',null,[{name:'status',type:5,value:true}]],
+  ['embed','create',[{name:'name',type:3,value:'Welcome'}]],['embed','list',[]],['embed','edit',[{name:'message',type:3,value:'saved'}]],['embed','edit',[{name:'message',type:3,value:'saved'},{name:'remove-section',type:4,value:1}]],['embed','delete',[{name:'message',type:3,value:'saved'}]],
   ['instagram','setup',[]],['instagram','list',[]],['instagram','pause',[{name:'source',type:3,value:'saved'}]],['instagram','resume',[{name:'source',type:3,value:'saved'}]],['instagram','remove',[{name:'source',type:3,value:'saved'}]]
 ];
 for(const [name,sub,options] of fastCases)test(`real Discord SDK: /${name} ${sub} sends a complete initial reply`,{timeout:2000},async()=>{
@@ -66,7 +66,7 @@ for(const [name,sub,options] of fastCases)test(`real Discord SDK: /${name} ${sub
     client.rest.patch=async()=>{throw Error('Local replies must not rely on a second webhook request');};
     const i=new ChatInputCommandInteraction(client,{
       id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-interaction-token',version:1,guild_id:guild,channel:{id:'456789012345678901',type:0},
-      data:{id:'567890123456789012',name,type:1,options:[{type:1,name:sub,options}]},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
+      data:{id:'567890123456789012',name,type:1,options:sub?[{type:1,name:sub,options}]:options},member:{user:{id:'678901234567890123',username:'Tester',discriminator:'0',avatar:null},roles:[],permissions:'32'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
     await app.handle(i);assert.equal(requests.length,1);
     if(name==='embed'&&sub==='create'){assert.equal(requests[0].type,9);assert.equal(requests[0].data.components.length,5);}

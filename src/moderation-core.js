@@ -1,11 +1,11 @@
 import {UserError} from './user-error.js';
 import {withDeadline,safeError} from './responses.js';
-export const defaults={id:'main',modRole:null,privacyRole:null,retentionDays:365,automod:false,blockedWords:[],mentionLimit:8,spamLimit:6,blockInvites:true,appealContact:null,dmAppeals:true,dmMembers:true};
+export const defaults={id:'main',modRole:null,privacyRole:null,retentionDays:365,automod:false,blockedWords:[],mentionLimit:8,spamLimit:6,blockInvites:true,dmMembers:true};
 export const clean=value=>String(value??'').replace(/@/g,'＠').replace(/[`*_~|>\\]/g,'').slice(0,1000);
 export class Moderation {
  constructor(store,{timeoutMs=12000,now=Date.now}={}) {this.store=store;this.timeoutMs=timeoutMs;this.now=now;this.busy=new Set();this.windows=new Map();}
  // The retired `logChannel` key is dropped: the Mod Log (src/modlog.js) is configured separately.
- config(g){const {logChannel,...cfg}={...defaults,...this.store.get(g,'mod-config','main')};return cfg;}
+ config(g){const {logChannel,appealContact,dmAppeals,...cfg}={...defaults,...this.store.get(g,'mod-config','main')};return cfg;}
  saveConfig(g,patch){return this.store.put(g,'mod-config',{...this.config(g),...patch,id:'main'});}
  // Per-server sequential case numbers ("Case #12"). Existing cases without a number are
  // backfilled once in creation order; the counter never reuses numbers after retention sweeps.
@@ -28,6 +28,8 @@ export class Moderation {
   });
  }
  cases(g){return this.numbered(g).sort((a,b)=>b.created-a.created);}
+ /** User-facing numbers are never interpreted as Discord interaction IDs. */
+ getNumber(g,number){const c=Number.isSafeInteger(number)&&number>0&&this.numbered(g).find(row=>row.number===number);if(!c)throw new UserError('Case not found in this server.');return c;}
  /** Accepts a case number ("12" or "#12") or the original case ID. */
  get(g,ref){
   const key=String(ref??'').trim().replace(/^case\s*/i,'').replace(/^#/,'');
@@ -48,7 +50,7 @@ export class Moderation {
  async run({guild,id,actor,target,action,reason,effect,details={}}) {
   const prior=this.store.get(guild,'mod-case',id);if(prior)return prior;
   if(!reason?.trim())throw new UserError('A reason is required.');
-  if(this.cases(guild).some(c=>c.target===target&&['pending','uncertain'].includes(c.state)))throw new UserError('An earlier action for this target is uncertain. The server owner must inspect Discord and use /case resolve.');
+  if(this.cases(guild).some(c=>c.target===target&&['pending','uncertain'].includes(c.state)))throw new UserError('An earlier action for this target is uncertain. The server owner must inspect Discord and use /case number with outcome.');
   const key=guild+':'+target;if(this.busy.has(key))throw new UserError('Another action is in progress for this target.');
   this.busy.add(key);
   const c={id,guild,number:this.reserveNumber(guild,id),actor,target,action,reason:clean(reason),created:this.now(),state:'pending',events:[],details};
@@ -68,16 +70,6 @@ export class Moderation {
   return c;
  }
  reconcile(g,id,actor,outcome,reason){const c=this.get(g,id);if(!['pending','uncertain'].includes(c.state))throw new UserError('Only uncertain or interrupted cases need reconciliation.');c.state=outcome;this.append(g,c,'reconciled:'+outcome,actor,reason);return c;}
- appeal(g,id,actor,caseId,body,submittedBy=actor){
-  const c=this.get(g,caseId);caseId=c.id;if(c.target!==actor||c.state!=='succeeded')throw new UserError('Choose your own completed case in this server.');
-  const existing=this.store.list(g,'mod-appeal').find(a=>a.caseId===caseId&&a.actor===actor);
-  if(existing)throw new UserError('An appeal already exists for that case. Ask staff for its status.');
-  return this.store.transaction(()=>{
-   this.append(g,c,'appeal-opened',submittedBy,submittedBy===actor?'Member submitted an appeal':'Staff recorded an externally received appeal');
-   return this.store.put(g,'mod-appeal',{id,caseId,actor,submittedBy,body:clean(body),state:'open',created:this.now()});
-  });
- }
- review(g,id,actor,decision,reason){const a=this.store.get(g,'mod-appeal',id);if(!a||a.state!=='open')throw new UserError('Open appeal not found in this server.');const c=this.get(g,a.caseId);if(actor===a.actor||actor===c.actor)throw new UserError('A different moderator must review this appeal.');a.state=decision;a.reviewer=actor;a.reason=clean(reason);a.decided=this.now();return this.store.transaction(()=>{this.append(g,c,'appeal:'+decision,actor,reason);return this.store.put(g,'mod-appeal',a);});}
  filter(g,u,content,mentions){
   const cfg=this.config(g);if(!cfg.automod)return null;
   const key=g+':'+u,now=this.now(),window=(this.windows.get(key)||[]).filter(t=>t>now-10000);window.push(now);this.windows.set(key,window);
