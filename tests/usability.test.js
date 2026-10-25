@@ -33,7 +33,7 @@ test('dates with ordinary spaces and named colors work without special codes',()
   assert.throws(()=>parseColor('unknown'),/Choose a color/);
 });
 test('saved-item options use meaningful names and descriptions avoid backend terminology',()=>{
-  const descriptions=[];for(const c of commands){descriptions.push(c.description);for(const sub of c.options||[]){descriptions.push(sub.description);for(const opt of sub.options||[]){descriptions.push(opt.description);assert.notEqual(opt.name,'id');if(['message','event','source'].includes(opt.name))assert.equal(opt.autocomplete,true);}}}
+  const descriptions=[];for(const c of commands){descriptions.push(c.description);for(const sub of c.options||[]){descriptions.push(sub.description);for(const opt of sub.options||[]){descriptions.push(opt.description);if(['embed','schedule','instagram'].includes(c.name)){assert.notEqual(opt.name,'id');if(['message','event','source'].includes(opt.name))assert.equal(opt.autocomplete,true);}}}}
   assert.doesNotMatch(descriptions.join(' '),/IANA|ISO |recurrence|occurrences|hostname|schema|payload|saved item ID|user IDs/i);
 });
 test('users see helpful validation messages while unexpected backend errors stay in the console',async()=>{

@@ -1,5 +1,6 @@
 import {REST,Routes} from 'discord.js';
 import {commands} from './commands.js';
+import {validateCommandSchema} from './command-schema.js';
 
 function shape(command) {
   return {name:command.name,description:command.description,type:command.type??1,required:Boolean(command.required),autocomplete:Boolean(command.autocomplete),min_value:command.min_value??null,max_value:command.max_value??null,min_length:command.min_length??null,max_length:command.max_length??null,channel_types:command.channel_types||[],default_member_permissions:command.default_member_permissions??null,choices:(command.choices||[]).map(choice=>({name:choice.name,value:choice.value})),options:(command.options||[]).map(shape)};
@@ -16,6 +17,7 @@ async function replaceAndVerify(rest,route,log) {
 }
 
 export async function syncApplicationCommands({token,applicationId,testGuildId,rest=new REST({version:'10'}).setToken(token),log=console.log}) {
+  validateCommandSchema(commands);
   const app=await rest.get('/applications/@me');
   if(app.id!==applicationId)throw Error('DISCORD_APPLICATION_ID does not match the application that owns DISCORD_TOKEN.');
   if(app.interactions_endpoint_url)throw Error('Clear Interactions Endpoint URL in Discord Developer Portal, save, then start again.');
@@ -24,6 +26,7 @@ export async function syncApplicationCommands({token,applicationId,testGuildId,r
 }
 
 export async function registerCommands(rest,applicationId,testGuildId,log=console.log) {
+  validateCommandSchema(commands);
   if(testGuildId) {
     await replaceAndVerify(rest,Routes.applicationGuildCommands(applicationId,testGuildId),log);
     log(`Verified ${commands.length} commands in the test server. Global commands are unchanged while DISCORD_TEST_GUILD_ID is set.`);

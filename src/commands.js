@@ -55,4 +55,4 @@ export const commands = [
     sub('list','List sources and queued posts'),sub('preview','Preview the latest post',[id()]),
     sub('pause','Pause a source',[id()]),sub('resume','Resume a paused source',[id()]),sub('remove','Remove a source (posted messages stay)',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:{embed:'message',schedule:'event',instagram:'source'}[c.name]}:option)})),type:1,default_member_permissions:c.name==='access'?'32':null,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:({embed:'message',schedule:'event',instagram:'source'}[c.name]??option.name)}:option)})),type:1,default_member_permissions:c.name==='access'?'32':null,contexts:[0],integration_types:[0]}));
