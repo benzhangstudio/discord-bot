@@ -21,7 +21,7 @@
 
 - Do not add unsolicited DM fallbacks. Deliver command results through the original interaction.
 
-- Every slash command requires Administrator, Manage Server, or an explicit user grant made by the current Discord server owner. Grants are server-scoped. Only the current server owner may manage grants through /access; administrators and approved users cannot grant others. Do not infer access from custom staff roles. Deny unauthorized invocations (with a public reply) before options/data access; autocomplete must return no suggestions. Test every registered subcommand for both allowed permissions and denied users before pushing.
+- Every slash command requires Administrator, Manage Server, or an explicit user grant made by the current Discord server owner. Grants are server-scoped. Only the current server owner may manage grants through dashboard Access; administrators and approved users cannot grant others. Do not infer access from custom staff roles. Deny unauthorized invocations (with a public reply) before options/data access; autocomplete must return no suggestions. Test every registered subcommand for both allowed permissions and denied users before pushing.
 
 - /help must stay concise: category menu, commands, required inputs, and one-line summaries. Do not offer or send a DM manual; the feature was removed at the user’s request.
 

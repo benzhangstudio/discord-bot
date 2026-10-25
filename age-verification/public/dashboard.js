@@ -106,7 +106,17 @@ async function renderPlugin(guild,name){
   if(name==='scheduler')parts.push(el('div',{class:'card'},el('h2',{text:'Upcoming'}),el('p',{class:'muted',text:'Server timezone: '+d.timezone}),table(['Title','Starts','Type','Repeats','Channel','Status'],d.items.map(e=>[e.title,fmt(e.start),e.kind,e.repeat,ref(e.channel),e.needsAttention?'Needs attention':'OK']),'Nothing scheduled. Add an event with /schedule add.')));
   if(name==='instagram')parts.push(el('div',{class:'card'},el('h2',{text:'Sources'}),table(['Name','Channel','Delivery','Waiting','Status'],d.items.map(f=>[f.name,ref(f.channel),f.schedule,String(f.waiting),f.needsAttention?'Needs attention':f.paused?'Paused':'Active']),'No sources. Add one with /instagram setup.')));
   if(name==='reactionroles')parts.push(...reactionRoles(d,base,guild));
-  if(name==='access')parts.push(el('div',{class:'card'},el('h2',{text:'Granted members'}),el('p',{class:'muted',text:'Administrators and members with Manage Server always have access. Only the server owner can grant or revoke access, using /access.'}),table(['User ID','Granted by','Granted'],d.items.map(a=>[a.user,a.grantedBy,fmt(a.grantedAt)]),'No grants.')));
+  if(name==='access'){
+    const input=el('input',{id:'accessMember',required:'',inputmode:'numeric',pattern:'[0-9]{17,20}',minlength:17,maxlength:20,autocomplete:'off','aria-describedby':'accessHint'});
+    const form=el('form',{class:'card'},el('h2',{text:'Grant command access'}),el('p',{text:'Administrators and members with Manage Server already have access. Only the current server owner can grant or remove additional access.'}),el('label',{for:'accessMember',text:'Member’s Discord user ID'}),input,el('p',{id:'accessHint',class:'muted',text:'In Discord, enable Developer Mode under Advanced settings, then right-click the member and choose Copy User ID. The member must be a person in this server.'}),el('button',{class:'primary',text:'Grant access'}));
+    form.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/access`,{add:input.value.trim()},'PUT');await renderPlugin(guild,'access');NO.message('Command access granted.');});
+    const rows=d.items.map(a=>{
+      const remove=el('button',{type:'button',class:'danger',text:'Remove access','aria-label':`Remove command access for ${a.user}`});
+      remove.onclick=NO.action(async()=>{await NO.api(`${base}/plugins/access`,{remove:a.user},'PUT');await renderPlugin(guild,'access');NO.message('Owner-granted access removed. Discord Administrator and Manage Server permissions still apply.');});
+      return [a.user,a.grantedBy,fmt(a.grantedAt),remove];
+    });
+    parts.push(form,el('div',{class:'card'},el('h2',{text:'Granted members'}),el('p',{class:'muted',text:`${d.items.length} of ${d.limit} grants used. Removing a grant does not change the member’s Discord permissions.`}),table(['User ID','Granted by','Granted','Action'],rows,'No additional members have command access.')));
+  }
   if(name==='settings'){
     const f=el('form',{class:'card'},el('h2',{text:'Timezone'}),el('label',{for:'tz',text:'Timezone for new events (IANA name)'}),Object.assign(el('input',{id:'tz',required:'',maxlength:64,list:'tzList',autocomplete:'off'}),{value:d.timezone}),el('datalist',{id:'tzList'},...(Intl.supportedValuesOf?Intl.supportedValuesOf('timeZone'):[]).map(z=>el('option',{value:z}))),el('button',{class:'primary',text:'Save'}));
     f.onsubmit=NO.action(async()=>{await NO.api(`${base}/plugins/settings`,{timezone:$('tz').value.trim()},'PUT');NO.message('Timezone saved. Existing events keep their timezone.');});

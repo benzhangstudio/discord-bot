@@ -12,7 +12,7 @@ import {createInstagramSetup} from './instagram.js';
 import {commands,RETIRED_COMMANDS} from './commands.js';
 import {acknowledge,respond,updateResponse,showForm,reportFailure,safeError,step,cancelAcknowledgement} from './responses.js';
 import {helpMenu} from './help.js';
-import {createAccessCommands,isServerOwner} from './access.js';
+import {isServerOwner} from './access.js';
 import {suggestions,timezoneLabel} from './suggestions.js';
 import {portalMessage} from './portal.js';
 import {commandPluginEnabled} from './plugins.js';
@@ -101,7 +101,6 @@ function eventView(e) {
   ).setFooter({text:e.cancelled?'Cancelled':e.complete?'Finished':'Use /schedule show for the latest replies'})],components:e.cancelled||e.complete?[]:[{type:1,components:[['going','Going',1],['maybe','Maybe',2],['declined','Can’t make it',2]].map(([value,label,style])=>({type:2,style,label,custom_id:`rsvp:${e.id}:${e.start}:${value}`}))}],allowedMentions:{parse:[]}};
 }
 
-const accessCommands=createAccessCommands(store);
 const moderation=createModeration(client,store,{needStaff,timeoutMs:operationTimeoutMs});
 const reactionRoles=createReactionRoles({store,client});
 const reactionRoleCommands=createReactionRoleCommands(reactionRoles);
@@ -146,7 +145,6 @@ async function handle(i) {
   // Every reply in a server channel is public. Only DMs (appeal flow) are private by nature.
   i.privateResponse=false;
   if(await moderation.handle(i))return;
-  if(await accessCommands(i))return;
   if(await instagram(i))return;
   if(await reactionRoleCommands(i))return;
   if(i.customId?.startsWith('embed:')&&(i.isChannelSelectMenu?.()||i.isRoleSelectMenu?.()||i.isUserSelectMenu?.())) {

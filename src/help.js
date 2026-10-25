@@ -12,9 +12,8 @@ export const categories=[
   {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
   {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
   {value:'feeds',label:'Instagram',description:'Instagram feed sources and roundups',commands:['instagram']},
-  {value:'portal',label:'Dashboard',description:'Web dashboard link; moderation settings live there',commands:['dashboard']},
+  {value:'portal',label:'Dashboard',description:'Web dashboard, moderation settings and command access',commands:['dashboard']},
   {value:'setup',label:'Settings',description:'Settings overview, timezone, delivery status and help',commands:['settings','help']},
-  {value:'access',label:'Access',description:'Grant command access (server owner only)',commands:['access']},
 ];
 const plain=text=>String(text||'').trim().replace(/\.$/,'');
 export function commandLines(names) {

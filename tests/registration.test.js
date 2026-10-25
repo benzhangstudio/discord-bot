@@ -13,6 +13,16 @@ function fakeRest() {
     if(route==='/users/@me/guilds')return[{id:'one'},{id:'two'}];return structuredClone(data.get(route)||[]);
   }};
 }
+
+test('startup removes retired access commands from global and server registrations',async()=>{
+  const rest=fakeRest(),logs=[];
+  rest.data.set('/applications/app/commands',[...commands,{type:1,name:'access',description:'Old access commands'}]);
+  rest.data.set('/applications/app/guilds/one/commands',[{type:1,name:'access',description:'Old access commands'}]);
+  await registerCommands(rest,'app',undefined,line=>logs.push(line));
+  assert(!rest.data.get('/applications/app/commands').some(c=>c.name==='access'));
+  assert.deepEqual(rest.data.get('/applications/app/guilds/one/commands'),[]);
+  assert(logs.some(line=>line.includes('Removing retired commands: /access')));
+});
 test('startup sync replaces old global commands and removes verified server overrides',async()=>{
   const rest=fakeRest(),logs=[];await syncApplicationCommands({applicationId:'app',rest,log:s=>logs.push(s)});
   assert.deepEqual(rest.writes,[{route:'/applications/app/commands',body:commands},{route:'/applications/app/guilds/one/commands',body:[]}]);

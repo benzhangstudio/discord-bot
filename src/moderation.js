@@ -287,7 +287,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   }
   if(!local)await acknowledge(i);
   const {actor,bot}=local?interactionMembers(i):await members(i);needStaff(i);
-  // Explicit grants are bound to the current owner, as in /access.
+  // Explicit grants are bound to the current owner, as in dashboard Access.
   const grant=store.get(i.guildId,'access',i.user.id);
   must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy===i.guild.ownerId,'Your command access has expired. Ask the current owner.');
   const sub=routeAction;

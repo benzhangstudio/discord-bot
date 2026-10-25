@@ -19,12 +19,12 @@ const commandsFor={
   scheduler:['/schedule add','/schedule list','/schedule show','/schedule edit','/schedule cancel','/settings timezone'],
   instagram:['/instagram setup','/instagram list','/instagram preview','/instagram pause','/instagram resume','/instagram remove'],
   reactionroles:['/reaction-roles create','/reaction-roles attach','/reaction-roles add','/reaction-roles remove','/reaction-roles edit','/reaction-roles delete','/reaction-roles list'],
-  access:['/access'],settings:['/settings view','/settings timezone','/settings status','/help','/dashboard']
+  settings:['/settings view','/settings timezone','/settings status','/help','/dashboard']
 };
 const text=(value,max=200)=>String(value??'').slice(0,max);
 const only=(data,allowed)=>assert(data&&Object.keys(data).every(k=>allowed.includes(k)),400,'Unsupported fields for this plugin.');
 
-export function createDashboardApi({store,client=null,env=process.env,demo=false}={}) {
+export function createDashboardApi({store,client=null,env=process.env,demo=false,accessTimeoutMs=8000}={}) {
   const available=()=>assert(store,503,'Bot settings are unavailable on this dashboard instance. Use slash commands in Discord.');
   const cached=guild=>client?.guilds?.cache?.get?.(guild)||null;
   function hasBot(guild){
@@ -126,11 +126,38 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     }
     if(name==='instagram')return {...base,editable:false,items:store.list(guild,'feed').map(f=>({id:f.id,name:text(f.name,100),channel:label(guild,'channel',f.channel),paused:!!f.paused,schedule:f.paused?'Paused':text(deliveryLabel(f),120),waiting:f.pending?.length||0,needsAttention:!!f.error}))};
     if(name==='reactionroles')return {...base,editable:true,...rrView(guild)};
-    if(name==='access')return {...base,editable:false,ownerManaged:true,items:store.list(guild,'access').map(a=>({user:a.id,grantedBy:a.grantedBy||null,grantedAt:a.grantedAt||null}))};
+    if(name==='access')return {...base,editable:true,ownerManaged:true,limit:100,items:store.list(guild,'access').map(a=>({user:a.id,grantedBy:a.grantedBy||null,grantedAt:a.grantedAt||null}))};
     if(name==='settings'){const s=settings(guild);return {...base,editable:true,timezone:s.zone||DEFAULT_ZONE,logChannel:label(guild,'channel',s.logChannel)};}
     throw new Fault(404,'Unknown dashboard plugin.');
   }
   async function update(guild,name,data,identity){
+    if(name==='access'){
+      assert(identity.owner,403,'Only the current server owner can manage command access.');
+      only(data,['add','remove']);assert(Object.keys(data).length===1,400,'Choose one member to add or remove.');
+      const action='add' in data?'add':'remove',id=data[action];
+      assert(typeof id==='string'&&/^\d{17,20}$/.test(id),400,'Enter a valid Discord user ID.');
+      const g=cached(guild);assert(g,503,'The bot must be online and in this server to manage command access.');
+      // Bound lookups and recheck ownership after asynchronous work, before any write.
+      async function lookup(work){
+        let timer;
+        try{return await Promise.race([Promise.resolve().then(work),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Discord took too long. No access changes were saved.')),accessTimeoutMs);})]);}
+        catch(error){if(error instanceof Fault)throw error;throw new Fault(502,'Could not verify this server or member with Discord. No access changes were saved.');}
+        finally{clearTimeout(timer);}
+      }
+      if(action==='add'){
+        const member=await lookup(async()=>{try{return await g.members.fetch({user:id,force:true});}catch(error){if(error.code===10007||error.status===404)throw new Fault(400,'Choose a current human member of this server.');throw error;}});
+        assert(member?.id===id&&member.user&&!member.user.bot,400,'Choose a current human member of this server.');
+      }
+      const fresh=await lookup(()=>g.fetch());
+      assert(fresh.ownerId===identity.id,403,'Only the current server owner can manage command access.');
+      if(action==='remove')store.remove(guild,'access',id);
+      else{
+        assert(store.get(guild,'access',id)||store.list(guild,'access').length<100,400,'This server already has 100 approved members. Remove someone before adding another.');
+        const existing=store.get(guild,'access',id);
+        if(existing?.grantedBy!==identity.id)store.put(guild,'access',{id,grantedBy:identity.id,grantedAt:Date.now()});
+      }
+      return plugin(guild,name);
+    }
     if(name==='reactionroles'&&data&&!('enabled' in data)){
       only(data,['create','update','delete']);assert(Object.keys(data).length===1,400,'Make one change at a time.');
       const g=rrGuild(guild),actor={id:identity.id,owner:!!identity.owner};
@@ -200,6 +227,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       if(endpoint==='overview'){assert(method==='GET',405,'Method not allowed.');return overview(guild,{verification});}
       const name=endpoint.slice('plugins/'.length);
       assert(PLUGINS.includes(name)&&!['overview','verification'].includes(name),404,'Unknown dashboard plugin.');
+      if(name==='access')assert(identity.owner,403,'Only the current server owner can manage command access.');
       if(method==='GET')return plugin(guild,name);
       assert(method==='PUT',405,'Method not allowed.');
       return update(guild,name,data,identity);

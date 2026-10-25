@@ -32,7 +32,6 @@ function harness({manager=true,visible=true,privateChannel=false,guildId='server
 const scenarios={
   help:{},
   dashboard:{},
-  'access add':{user:'345678901234567890'},'access remove':{user:'345678901234567890'},'access list':{},
   'settings view':{},'settings timezone':{zone:'Asia/Seoul'},'settings status':{},
   'embed create':{name:'New announcement'},'embed edit':{message:'saved'},'embed list':{},'embed delete':{message:'saved'},'embed remove-section':{message:'saved',number:1},'embed send':{message:'saved'},
   'schedule add':{title:'New event',start:'2099-12-01 19:00'},'schedule list':{},'schedule show':{event:'saved'},'schedule edit':{event:'saved'},'schedule post':{event:'saved'},'schedule configure':{event:'saved',repeat:'weekly',duration:90,reminder:15},'schedule cancel':{event:'saved'},
@@ -57,36 +56,11 @@ for(const [name,values] of Object.entries(scenarios)) {
   });
 }
 
-test('only the server owner can grant, revoke or list added access',async()=>{
-  for(const sub of ['add','remove','list']) {
-    const h=harness(),i=h.interaction('access',sub,{user:'345678901234567890'});
-    await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/Only the server owner/);assert.deepEqual(h.store.list('server-a','access'),[]);h.store.close();
-  }
-  const h=harness(),target='345678901234567890';
-  const owner=(sub,values)=>{const i=h.interaction('access',sub,values);i.user={id:i.guild.ownerId};return i;};
-  await h.app.handle(owner('add',{user:target}));assert.ok(h.store.get('server-a','access',target));
-  const approved=h.interaction('help');approved.user={id:target};approved.memberPermissions=new PermissionsBitField([]);await h.app.handle(approved);assert.match(h.outputs.at(-1).embeds[0].toJSON().title,/^Help$/);
-  const escalating=h.interaction('access','add',{user:h.member.id});escalating.user={id:target};escalating.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(escalating);assert.match(textOf(h.outputs.at(-1)),/Only the server owner/);assert.equal(h.store.get('server-a','access',h.member.id),undefined);
-  await h.app.handle(owner('list',{}));assert.match(textOf(h.outputs.at(-1)),new RegExp(`<@${target}>`));
-  await h.app.handle(owner('remove',{user:target}));assert.equal(h.store.get('server-a','access',target),undefined);
-  const revoked=h.interaction('help');revoked.user={id:target};revoked.memberPermissions=new PermissionsBitField([]);await h.app.dispatch(revoked);assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);h.store.close();
-});
-
 test('added access is scoped to one server and cannot bypass channel permissions',async()=>{
   const h=harness({manager:false,visible:false});h.store.put('other-server','access',{id:h.member.id});
   await h.app.dispatch(h.interaction('help'));assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);
   h.store.put('server-a','access',{id:h.member.id});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
   await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(textOf(h.outputs.at(-1)),/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
-});
-
-test('owner access checks reject nonmembers, full grant lists, and ownership changes during lookups',async()=>{
-  for(const mode of ['missing member','full','owner changed']) {
-    const h=harness(),i=h.interaction('access','add',{user:'345678901234567890'});i.user={id:i.guild.ownerId};
-    if(mode==='missing member')i.guild.members.fetch=async()=>{throw Error('Unknown member');};
-    if(mode==='full')for(let n=0;n<100;n++)h.store.put('server-a','access',{id:String(n)});
-    if(mode==='owner changed')i.guild.members.fetch=async()=>{i.guild.ownerId='888888888888888888';return {id:'345678901234567890'};};
-    await h.app.dispatch(i);assert.equal(h.store.get('server-a','access','345678901234567890'),undefined);assert.match(textOf(h.outputs.at(-1)),/current member|100 approved|current server owner/);h.store.close();
-  }
 });
 
 test('help and retired manual buttons never send a DM and finish immediately',async()=>{
@@ -413,7 +387,7 @@ for(const sub of ['list','show','configure','cancel','post'])test(`staff schedul
   assert.equal(h.outputs.at(-1).flags,undefined);h.store.close();
 });
 
-test('owner-only access denial is a public explanation without a diagnostic code',async()=>{
+test('retired access commands direct users to the dashboard without granting access',async()=>{
   const h=harness();await h.app.dispatch(h.interaction('access','add',{user:'345678901234567890'}));
-  assert.equal(h.outputs[0].flags,undefined);assert.match(textOf(h.outputs[0]),/Only the server owner/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
+  assert.equal(h.outputs[0].flags,undefined);assert.match(textOf(h.outputs[0]),/dashboard.*Access/);assert.deepEqual(h.store.list('server-a','access'),[]);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });

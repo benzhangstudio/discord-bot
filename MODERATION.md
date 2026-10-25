@@ -7,7 +7,7 @@ This module runs inside the existing bot and uses its server-scoped SQLite store
 1. Keep the production branch at `main`, `AUTO_UPDATE=1`, startup file `src/index.js`, and Node 24.12 or newer. Back up `data/` before restarting after the GitHub checks pass. Keep the live database and private `.env` on Wispbyte.
 2. In Discord, put Number One above the members it must moderate. Give it View Channels, Send Messages, Moderate Members, Kick Members, Ban Members, Manage Messages and Read Message History as needed. Critical Emergency Mode additionally needs Manage Roles for channel overwrites. Administrator is not required. Server 2FA requirements still apply.
 3. Set up the **Mod log** on the dashboard (`/dashboard` → Moderation → Mod log): pick a channel, turn it on, choose which actions to record and use **Send test message**. A staff-only channel is recommended. See [Mod log](#mod-log).
-4. For staff without Administrator or Manage Server, the current owner first uses `/access add user:...`. The owner may then set **Moderator role** on the dashboard Moderation page. A role alone never bypasses Number One command authorization. A staff member also needs either the relevant native moderation permission or the configured moderation role. Manage Server alone does not confer moderation powers.
+4. For staff without Administrator or Manage Server, the current owner first grants the member command access on the dashboard **Access** page. The owner may then set **Moderator role** on the dashboard Moderation page. A role alone never bypasses Number One command authorization. A staff member also needs either the relevant native moderation permission or the configured moderation role. Manage Server alone does not confer moderation powers.
 5. Optional message filters need `MODERATION_MESSAGE_CONTENT=1` in Wispbyte and Message Content Intent enabled in the Discord Developer Portal, followed by a restart. Then turn automod on in the dashboard Automod page. Without that option, moderation slash commands work without privileged intents. No Guild Members intent is requested; individual members are fetched as needed.
 6. Set `blocked-words` (comma-separated literal phrases), `mention-limit`, `spam-limit`, `block-invites` and `retention-days` on the dashboard Automod page (retention is on the Moderation page). Defaults: filters off, mention limit 8, six messages per ten seconds, invites blocked when filters are enabled, retention 365 days. Set automod false to stop enforcement immediately.
 7. Post `/appeals panel channel:#appeals` for members still in the server. Banned, kicked and timed-out members get an **Appeal** button by DM automatically. Optionally set **Appeal contact** (link or email) on the dashboard Moderation page as a fallback for members whose DMs are closed.
@@ -142,8 +142,9 @@ Retired names are removed from Discord on the next startup (global bulk registra
 | `/emergency on/off/status` | `/lockdown on/off/status` |
 | `/portal open` / `/portal setup` | `/dashboard` |
 | `/events` | `/schedule list` |
+| `/access add` / `/access remove` / `/access list` | Dashboard → Access (current server owner only) |
 
-Unchanged: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/appeals ...`, `/schedule ...`, `/embed ...`, `/instagram ...`, `/access ...`, `/settings ...`, `/reaction-roles ...`, `/help`.
+Unchanged: `/ban`, `/unban`, `/kick`, `/warn`, `/timeout`, `/untimeout`, `/purge`, `/appeals ...`, `/schedule ...`, `/embed ...`, `/instagram ...`, `/settings ...`, `/reaction-roles ...`, `/help`.
 
 
 ## Mod log

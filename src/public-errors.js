@@ -147,7 +147,6 @@ export const PUBLIC_ERROR_MESSAGES=Object.freeze({
   "This source still has posts waiting. Keep its feed link until the roundup is delivered, or add a separate source.": "Posts are still waiting. Let the roundup finish or add a separate source.",
   "This target is protected.": "This member can’t be moderated with this command.",
   "Unknown moderation action.": "That command isn’t available. Use /help to choose another.",
-  "Use /access add, /access remove, or /access list.": "Use /access add, /access remove, or /access list.",
   "Use /dashboard inside your server.": "Use /dashboard inside your server.",
   "Use this command in a server.": "Use this command in a server.",
   "Use a duration such as 10m, 1h, 1d or 1w (up to 28 days).": "Use a duration such as 10m, 1h, 1d or 1w (up to 28 days).",

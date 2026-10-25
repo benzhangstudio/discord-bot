@@ -12,17 +12,13 @@ const role = {type:8,name:'role',description:'Optional role to notify'};
 // Retired command names -> replacement. Startup sync replaces the global command set, so these
 // disappear from Discord; clients that still show a cached copy get this guidance instead.
 export const RETIRED_COMMANDS=Object.freeze({
+  access:'the dashboard (Access)',
   mute:'/timeout',unmute:'/untimeout',delwarn:'/warnings remove',modlogs:'the dashboard (Moderation › Mod log)',reason:'/case reason',
   'mod-reconcile':'/case resolve','mod-settings':'the dashboard (Moderation, Automod) or /settings view',emergency:'/lockdown',portal:'/dashboard',events:'/schedule list'
 });
 export const commands = [
   ...moderationCommands,
   reactionRoleCommand,
-  {name:'access',description:'Manage command access (server owner only)',options:[
-    sub('add','Allow a member to use commands',[{type:6,name:'user',description:'Member',required:true}]),
-    sub('remove','Remove a member’s command access',[{type:6,name:'user',description:'Member',required:true}]),
-    sub('list','List members with command access',[integer('page','Page number',1,100)])
-  ]},
   {name:'help',description:'Show available commands'},
   {name:'dashboard',description:'Get this server’s web dashboard link'},
   {name:'settings',description:'Server timezone and delivery status',default_member_permissions:'32',options:[
@@ -55,4 +51,4 @@ export const commands = [
     sub('list','List sources and queued posts'),sub('preview','Preview the latest post',[id()]),
     sub('pause','Pause a source',[id()]),sub('resume','Resume a paused source',[id()]),sub('remove','Remove a source (posted messages stay)',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:({embed:'message',schedule:'event',instagram:'source'}[c.name]??option.name)}:option)})),type:1,default_member_permissions:c.name==='access'?'32':null,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:({embed:'message',schedule:'event',instagram:'source'}[c.name]??option.name)}:option)})),type:1,default_member_permissions:null,contexts:[0],integration_types:[0]}));
