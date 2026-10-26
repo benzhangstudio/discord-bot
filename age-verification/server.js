@@ -43,14 +43,14 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
     for(const guild of session.guilds){
       let owner=guild.owner===true,manageable=false;
       const present=plugins?plugins.hasBot(guild.id):null;
-      if(owner||plugins?.dashboardCandidate(guild.id,session.id)){
+      if(owner||guild.manageable||plugins?.dashboardCandidate(guild.id,session.id)){
         if(present===false){manageable=owner;}
         else{
           try{const identity=await identityFor(guild.id,session,true);owner=identity.owner;manageable=identity.dashboard;}
           catch(error){if(error.status!==403)throw error;owner=false;}
         }
       }
-      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'approved'):null,botPresent:present,inviteUrl:owner&&c.mode==='discord'?invite(guild.id):null});
+      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'manager'):null,botPresent:present,inviteUrl:owner&&c.mode==='discord'?invite(guild.id):null});
     }
     return rows;
   }
@@ -124,7 +124,7 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
       catch(error){if(error.status===403)return send(res,{error:'Number One must be installed and you must still belong to this server. Add the bot if you manage this server, then sign in again.',inviteUrl:invite(guild)},403);throw error;}
       const reviewer=()=>assert(identity.reviewer,403,'Server owner or this server’s configured reviewer role required.');
       identity.reauthorize=async()=>{const fresh=await identityFor(guild,session);assert(fresh.dashboard,403,'Your dashboard access was removed.');return fresh;};
-      const manager=()=>assert(identity.dashboard,403,'Only the server owner or members they approve can configure this server.');
+      const manager=()=>assert(identity.dashboard,403,'Only the server owner or members with management permissions can configure this server.');
       const owner=()=>assert(identity.owner,403,'Only the current server owner can access privacy and audit administration.');
       const enabled=()=>assert(store.settings()?.enabled,409,'Verification is not open for this server. Its owner can enable it here.');
       if(req.method==='GET'){
