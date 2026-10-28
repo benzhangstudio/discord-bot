@@ -66,7 +66,7 @@ const Verification=(()=>{
     guild=id;const scope={guild:id,generation:++generation};reset();
     try{
       const info=await serverApi(scope,'context');if(!current(scope))return false;
-      const [queue,admin,settings]=await Promise.all([info.reviewer?serverApi(scope,'queue'):null,info.owner?serverApi(scope,'admin'):null,info.manager?serverApi(scope,'settings'):null]);
+      const [queue,admin,settings]=await Promise.all([info.reviewer?serverApi(scope,'queue'):null,info.owner?serverApi(scope,'admin'):null,info.owner?serverApi(scope,'settings'):null]);
       if(!current(scope))return false;
       $('serverName').textContent=info.name;$('share').value=info.shareUrl;
       $('availability').textContent=info.enabled?'Verification is open in this server.':info.manager?'Complete setup below to open verification.':'Verification is not open in this server yet.';
@@ -101,7 +101,7 @@ const Verification=(()=>{
         if(!admin.audit.length)$('audit').textContent='No recent verification activity.';
         for(const entry of admin.audit){const actor=entry.actor==='system'?'Number One':entry.actorName||(!entry.actor?'Anonymous':'User '+entry.actor);NO.row($('audit'),`${date(entry.at)} · ${auditLabel(entry.action)} · ${actor}${entry.caseId?' · Case '+entry.caseId.slice(0,8):''}`);}
       }
-      if(info.manager){options('reviewerRole',settings.roles,settings.settings?.reviewerRole);options('verifiedRole',settings.roles.filter(r=>r.canVerify),settings.settings?.verifiedRole);$('enabled').checked=!!settings.settings?.enabled;$('vSettings').hidden=false;}
+      if(info.owner){options('reviewerRole',settings.roles,settings.settings?.reviewerRole);options('verifiedRole',settings.roles.filter(r=>r.canVerify),settings.settings?.verifiedRole);$('enabled').checked=!!settings.settings?.enabled;$('vSettings').hidden=false;}
       return true;
     }catch(error){if(!current(scope))return false;throw error;}
   }

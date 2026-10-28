@@ -83,6 +83,10 @@ function normalizeOptions(o,base={}){
 
 export function createReactionRoles({store,client,log=console,now=()=>Date.now(),publishTimeoutMs=8000}){
   const read=work=>withDeadline(Promise.resolve().then(work),publishTimeoutMs,RR.lookupTimeout);
+  function verificationRole(guild,id){
+    const policy=store.verificationRolePolicy?.(guild);
+    return !!policy?.includes(id);
+  }
   async function me(guild){return guild.members.me||await read(()=>guild.members.fetchMe());}
   async function channelFor(guild,id){
     const ch=guild.channels.cache.get(id)||await read(()=>guild.channels.fetch(id));
@@ -95,6 +99,7 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
     return bot;
   }
   async function checkRole(guild,roleId,actor){
+    must(!verificationRole(guild.id,roleId),RR.role);
     const role=guild.roles.cache.get(roleId)||await read(()=>guild.roles.fetch(roleId));
     must(role&&role.id!==guild.id&&!role.managed,RR.role);
     const bot=await me(guild);
@@ -138,6 +143,11 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
         if(plan.denied){log.log(`Reaction role not given (${plan.denied}) in server ${guild.id}.`);if(plan.removeReaction)await read(()=>reaction.users.remove(user.id)).catch(()=>{});return;}
         const missing=[...plan.add,...plan.remove].filter(r=>!guild.roles.cache.has(r));
         if(missing.length){api.markBroken(guild.id,g=>g.id===group.id,'A role on this message was deleted.');return;}
+        // Check again at delivery: a role can become protected after publication.
+        if([...plan.add,...plan.remove].some(id=>verificationRole(guild.id,id))){
+          log.warn('Reaction role update blocked for a verification role.');
+          await read(()=>reaction.users.remove(user.id)).catch(()=>{});return;
+        }
         if(plan.remove.length)await read(()=>member.roles.remove(plan.remove,'Reaction roles'));
         if(plan.add.length)await read(()=>member.roles.add(plan.add,'Reaction roles'));
         for(const r of plan.remove)store.remove(guild.id,'rr-temp',`${user.id}-${r}`);

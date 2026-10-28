@@ -5,6 +5,7 @@ import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Store,assert,DEMO_GUILDS} from './core.js';
 import {Discord} from './discord.js';
+import {VerificationWorkflow} from './workflow.js';
 import {createDashboardApi} from '../src/dashboard-api.js';
 import {Store as BotStore} from '../src/store.js';
 const here=dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,9 @@ export function config(env=process.env){
   return c;
 }
 export function application(c,root,discord=new Discord(c),plugins=null,onCommit=null){
-  const sessions=new Map(),states=new Map(),rates=new Map(),inFlight=new Set();
+  const sessions=new Map(),states=new Map(),rates=new Map();
+  const workflow=new VerificationWorkflow({root,discord,mode:c.mode,authorize:identityFor,timeout:c.workflowTimeout??8000});
+  plugins?.bindVerification?.(root);
   const cookieName=c.mode==='discord'?'__Host-age':'age',secure=c.mode==='discord'?'; Secure':'';
   function setSession(res,identity){const sid=token();sessions.set(sid,{...identity,csrf:token(),expires:Date.now()+3600000});res.setHeader('Set-Cookie',`${cookieName}=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${secure}`);}
   async function body(req,limit=1024){
@@ -33,7 +36,9 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
   const invite=guild=>'https://discord.com/oauth2/authorize?'+new URLSearchParams({client_id:c.clientId||'',scope:'bot applications.commands',permissions:'268553408',...(guild?{guild_id:guild,disable_guild_select:'true'}:{})});
   async function identityFor(guild,session,dashboardOnly=false){
     const settings=root.forGuild(guild).settings();
-    const raw=c.mode==='discord'?await (dashboardOnly&&discord.dashboardIdentity?discord.dashboardIdentity(guild,session.id):discord.identity(guild,session.id,settings)):{id:session.id,name:DEMO_GUILDS.find(g=>g.id===guild)?.name,owner:session.id==='owner',ownerId:'owner',manager:['owner','manager'].includes(session.id),reviewer:session.id==='owner'||!!settings&&['reviewer','reviewer2'].includes(session.id)};
+    assert(!session.expires||session.expires>Date.now(),401,'Your session expired. Sign in again.');
+    const raw=c.mode==='discord'?await workflow.bounded(()=>(dashboardOnly&&discord.dashboardIdentity?discord.dashboardIdentity(guild,session.id):discord.identity(guild,session.id,settings))):{id:session.id,name:DEMO_GUILDS.find(g=>g.id===guild)?.name,owner:session.id==='owner',ownerId:'owner',manager:['owner','manager'].includes(session.id),reviewer:session.id==='owner'||!!settings&&['reviewer','reviewer2'].includes(session.id)};
+    if(!raw.owner&&settings&&plugins?.verificationRoleConflicts?.(guild,[settings.reviewerRole]))raw.reviewer=false;
     return plugins?plugins.dashboardIdentity(guild,raw):{...raw,dashboard:!!raw.owner,manager:!!raw.owner};
   }
   async function guildList(session,verification=false){
@@ -43,29 +48,16 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
     for(const guild of session.guilds){
       let owner=guild.owner===true,manageable=false;
       const present=plugins?plugins.hasBot(guild.id):null;
-      if(owner||guild.manageable||plugins?.dashboardCandidate(guild.id,session.id)){
+      if(owner||plugins?.dashboardCandidate(guild.id,session.id)){
         if(present===false){manageable=owner;}
         else{
           try{const identity=await identityFor(guild.id,session,true);owner=identity.owner;manageable=identity.dashboard;}
           catch(error){if(error.status!==403)throw error;owner=false;}
         }
       }
-      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'manager'):null,botPresent:present,inviteUrl:owner&&c.mode==='discord'?invite(guild.id):null});
+      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'approved'):null,botPresent:present,inviteUrl:owner&&c.mode==='discord'?invite(guild.id):null});
     }
     return rows;
-  }
-  async function deliver(store,id){
-    const item=store.get(id);if(!item)return;inFlight.add(id);
-    try{
-      if(item.roleState==='pending'){
-        store.delivery(id,'roleState','uncertain');
-        try{if(c.mode==='discord')await discord.role(store.guild,item.member,item.roleId);store.delivery(id,'roleState',c.mode==='demo'?'simulated':'delivered');}catch{store.delivery(id,'roleState','uncertain');}
-      }
-      if(item.dmState==='pending'){
-        store.delivery(id,'dmState','uncertain');
-        try{if(c.mode==='discord')await discord.dm(store.guild,item.member,item.status);store.delivery(id,'dmState',c.mode==='demo'?'simulated':'delivered');}catch{store.delivery(id,'dmState','uncertain');}
-      }
-    }finally{inFlight.delete(id);}
   }
   const server=createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');
@@ -124,14 +116,14 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
       catch(error){if(error.status===403)return send(res,{error:'Number One must be installed and you must still belong to this server. Add the bot if you manage this server, then sign in again.',inviteUrl:invite(guild)},403);throw error;}
       const reviewer=()=>assert(identity.reviewer,403,'Server owner or this server’s configured reviewer role required.');
       identity.reauthorize=async()=>{const fresh=await identityFor(guild,session);assert(fresh.dashboard,403,'Your dashboard access was removed.');return fresh;};
-      const manager=()=>assert(identity.dashboard,403,'Only the server owner or members with management permissions can configure this server.');
+      const manager=()=>assert(identity.dashboard,403,'Only the server owner or members they approve can configure this server.');
       const owner=()=>assert(identity.owner,403,'Only the current server owner can access privacy and audit administration.');
       const enabled=()=>assert(store.settings()?.enabled,409,'Verification is not open for this server. Its owner can enable it here.');
       if(req.method==='GET'){
-        if(endpoint==='context'){store.purge();const item=store.mine(identity.id);return send(res,{...identity,guild,configured:!!settings,enabled:!!settings?.enabled,shareUrl:c.origin+'/verify?guild='+guild,case:item?{id:item.id,status:item.status,roleState:item.roleState,dmState:item.dmState}:null});}
+        if(endpoint==='context'){store.purge();const item=store.mine(identity.id);return send(res,{...identity,guild,configured:!!settings,enabled:!!settings?.enabled,capabilities:{submit:!!settings?.enabled&&!item&&!store.deletionPending(identity.id),review:!!identity.reviewer,configure:!!identity.owner,privacyAdmin:!!identity.owner,realAgeVerification:false},shareUrl:c.origin+'/verify?guild='+guild,case:item?{id:item.id,status:item.status,roleState:item.roleState,dmState:item.dmState}:null});}
         if(endpoint==='settings'){manager();return send(res,{settings,roles:c.mode==='discord'?await discord.roleOptions(guild):[{id:'333333333333333333',name:'Demo reviewers',canVerify:false},{id:'444444444444444444',name:'Beta test verified',canVerify:true}]});}
         if(endpoint==='queue'){reviewer();return send(res,store.list());}
-        if(endpoint==='evidence'){reviewer();return send(res,store.evidence(url.searchParams.get('id'),identity.id));}
+        if(endpoint==='evidence'){reviewer();return send(res,workflow.evidence(store,url.searchParams.get('id'),identity.id));}
         if(endpoint==='privacy/export')return send(res,store.export(identity.id));
         if(endpoint==='admin'){owner();return send(res,{requests:store.requests(),audit:store.audits()});}
       }
@@ -142,32 +134,27 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
       }
       assert(req.method==='POST',404,'Route not found.');
       if(endpoint==='settings'){
-        manager();keys(data,['reviewerRole','verifiedRole','enabled','betaAcknowledged']);assert(snowflake(data.reviewerRole)&&snowflake(data.verifiedRole)&&typeof data.enabled==='boolean'&&data.betaAcknowledged===true,400,'Select both roles and acknowledge the synthetic-only Beta.');
+        assert(identity.owner,403,'Only the current server owner can choose verification roles and open submissions.');keys(data,['reviewerRole','verifiedRole','enabled','betaAcknowledged']);assert(snowflake(data.reviewerRole)&&snowflake(data.verifiedRole)&&typeof data.enabled==='boolean'&&data.betaAcknowledged===true,400,'Select both roles and acknowledge the synthetic-only Beta.');
         assert(data.reviewerRole!==data.verifiedRole&&data.reviewerRole!==guild&&data.verifiedRole!==guild,400,'Choose different custom roles, excluding @everyone.');
-        if(c.mode==='discord')await discord.validateRoles(guild,data.reviewerRole,data.verifiedRole);
+        if(c.mode==='discord')await workflow.bounded(()=>discord.validateRoles(guild,data.reviewerRole,data.verifiedRole));
         else assert(data.reviewerRole==='333333333333333333'&&data.verifiedRole==='444444444444444444',400,'Choose the available demo roles.');
         // Recheck management after the asynchronous role validation.
-        await identity.reauthorize();
+        assert((await identityFor(guild,session)).owner,403,'Only the current server owner can choose verification roles and open submissions.');
+        assert(!plugins?.verificationRoleConflicts?.(guild,[data.reviewerRole,data.verifiedRole]),409,'Choose dedicated verification roles that are not offered by reaction-role messages or temporary role assignments.');
         store.configure(identity.id,data.reviewerRole,data.verifiedRole,data.enabled);return send(res,{ok:true});
       }
       if(endpoint==='submit'){keys(data,['fixture','consent']);return send(res,{id:store.submit(identity.id,data.fixture,data.consent)},201);}
-      if(endpoint==='claim'){reviewer();enabled();keys(data,['id']);store.claim(data.id,identity.id);return send(res,{ok:true});}
+      if(endpoint==='claim'){reviewer();enabled();keys(data,['id']);workflow.claim(store,data.id,identity.id);return send(res,{ok:true});}
       if(endpoint==='decision'){
-        reviewer();enabled();keys(data,['id','decision']);const item=store.get(data.id);assert(item,404,'Case not found in this server.');
-        if(data.decision==='approved'&&c.mode==='discord')await discord.validateVerified(guild,item.roleId);
-        if(c.mode==='discord')assert((await discord.identity(guild,session.id,store.settings())).reviewer,403,'Your reviewer permission was removed.');
-        enabled();store.decide(data.id,identity.id,data.decision);await deliver(store,data.id);return send(res,store.list().find(x=>x.id===data.id));
+        reviewer();enabled();keys(data,['id','decision']);assert(store.get(data.id),404,'Case not found in this server.');
+        return send(res,await workflow.decide(store,data.id,session,data.decision));
       }
       if(endpoint==='privacy'){keys(data,['kind']);return send(res,{id:store.request(identity.id,data.kind)});}
       if(endpoint==='admin/delete'){
-        owner();keys(data,['requestId']);const p=store.deletion(data.requestId);assert(p,404,'Open deletion request not found in this server.');const item=store.mine(p.member);
-        assert(!item||(!inFlight.has(item.id)&&!['pending','uncertain'].includes(item.roleState)),409,'Role delivery is active or uncertain. Inspect Discord and reconcile it first.');
-        if(item)inFlight.add(item.id);
-        try{if(c.mode==='discord'&&item?.status==='approved')await discord.removeRole(guild,p.member,item.roleId);store.erase(p.member);return send(res,{ok:true});}finally{if(item)inFlight.delete(item.id);}
+        owner();keys(data,['requestId']);return send(res,await workflow.erase(store,data.requestId,session));
       }
       if(endpoint==='admin/reconcile'){
-        owner();keys(data,['id']);const item=store.get(data.id);assert(item?.status==='approved'&&item.roleState==='uncertain'&&!inFlight.has(item.id),409,'No completed uncertain role delivery in this server.');inFlight.add(item.id);
-        try{const member=c.mode==='discord'?await discord.member(guild,item.member):{roles:[]};store.delivery(item.id,'roleState',member.roles.includes(item.roleId)?'delivered':'not_delivered');return send(res,{ok:true});}finally{inFlight.delete(item.id);}
+        owner();keys(data,['id']);return send(res,await workflow.reconcile(store,data.id,session));
       }
       assert(false,404,'Route not found.');
     }catch(error){if(!res.headersSent)send(res,{error:error.status?error.message:'Unable to complete request. Check the server settings and try again.'},error.status||500);else res.end();}

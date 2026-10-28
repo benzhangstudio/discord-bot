@@ -38,6 +38,24 @@ function world({botPerms=[P.ManageRoles],clock}={}){
   return {store,rr,guild,channel,messages,member,members,me,roles,react,logs,sent,client,tick:ms=>{t+=ms;}};
 }
 
+test('verification role protection is shared by dashboard setup and existing gateway handlers',async t=>{
+  const w=world(),root=new AgeStore();t.after(()=>{w.store.close();root.db.close();});
+  const api=createDashboardApi({store:w.store,client:w.client});api.bindVerification(root);
+  const group=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}]},null);
+  assert.equal(api.verificationRoleConflicts(G,[R1,R2]),true);
+  assert.equal(api.verificationRoleConflicts(DEMO_GUILDS[1].id,[R1,R2]),false);
+  root.forGuild(G).configure('owner',R1,R2,true);
+  for(const role of [R1,R2])await assert.rejects(w.rr.addEntry(w.guild,group.id,{emoji:'🎲',role},null));
+  const member=w.member('500000000000000001'),event=w.react(group.message,'🎮',member.id);
+  await w.rr.onReaction(event.r,event.user,true);
+  assert.equal(member.roles.cache.has(R1),false);assert.deepEqual(event.r.removed,[member.id]);
+  // The resolver is live: a later settings change also protects its new verified role.
+  root.forGuild(G).submit('applicant','adult',true);
+  root.forGuild(G).configure('owner',R1,R3,false);
+  await assert.rejects(w.rr.addEntry(w.guild,group.id,{emoji:'🎲',role:R3},null));
+  await assert.rejects(w.rr.addEntry(w.guild,group.id,{emoji:'🎲',role:R2},null));
+});
+
 test('emoji, duration and message link parsing',()=>{
   assert.deepEqual(parseEmoji('🎮'),{key:'🎮',display:'🎮',custom:false});
   assert.equal(parseEmoji('❤️').key,'❤');

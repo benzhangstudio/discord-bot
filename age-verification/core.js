@@ -30,11 +30,31 @@ export class Store {
   }
   forGuild(guild){assert(typeof guild==='string'&&guild.length>0,500,'A server scope is required.');return new Store(null,guild,this.db);}
   scope(){assert(this.guild,500,'A server scope is required.');return this.guild;}
+  transaction(work){
+    this.db.exec('BEGIN IMMEDIATE');
+    try{const result=work();this.db.exec('COMMIT');return result;}
+    catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   recover(){this.db.exec("UPDATE age_cases SET roleState='uncertain' WHERE roleState='pending'; UPDATE age_cases SET dmState='uncertain' WHERE dmState='pending';");}
   settings(){return this.db.prepare('SELECT reviewerRole,verifiedRole,enabled FROM age_settings WHERE guild=?').get(this.scope()) || null;}
   configure(actor,reviewerRole,verifiedRole,enabled){
-    this.db.prepare('INSERT INTO age_settings VALUES(?,?,?,?,?,?) ON CONFLICT(guild) DO UPDATE SET reviewerRole=excluded.reviewerRole,verifiedRole=excluded.verifiedRole,enabled=excluded.enabled,updatedBy=excluded.updatedBy,updated=excluded.updated').run(this.scope(),reviewerRole,verifiedRole,Number(enabled),actor,Date.now());
-    this.audit(null,actor,enabled?'settings_enabled':'settings_paused');
+    assert(reviewerRole!==verifiedRole,400,'Reviewer and verified roles must differ.');
+    // A previously granted verification role must never become a reviewer credential.
+    assert(!this.db.prepare("SELECT 1 FROM age_cases WHERE guild=? AND roleId=? AND status IN ('pending','approved') LIMIT 1").get(this.scope(),reviewerRole),409,'This role is attached to verification cases. Choose a separate reviewer role.');
+    return this.transaction(()=>{
+      this.db.prepare('INSERT INTO age_settings VALUES(?,?,?,?,?,?) ON CONFLICT(guild) DO UPDATE SET reviewerRole=excluded.reviewerRole,verifiedRole=excluded.verifiedRole,enabled=excluded.enabled,updatedBy=excluded.updatedBy,updated=MAX(age_settings.updated+1,excluded.updated)').run(this.scope(),reviewerRole,verifiedRole,Number(enabled),actor,Date.now());
+      this.audit(null,actor,enabled?'settings_enabled':'settings_paused');
+    });
+  }
+  revision(){return this.db.prepare('SELECT updated FROM age_settings WHERE guild=?').get(this.scope())?.updated??null;}
+  protectedRoles(){
+    const settings=this.settings();
+    return [...new Set([settings?.reviewerRole,settings?.verifiedRole,...this.db.prepare("SELECT DISTINCT roleId FROM age_cases WHERE guild=? AND status IN ('pending','approved')").all(this.scope()).map(row=>row.roleId)].filter(Boolean))];
+  }
+  deletionPending(member){return !!this.db.prepare("SELECT 1 FROM age_privacy WHERE guild=? AND member=? AND kind='delete' AND state='open' LIMIT 1").get(this.scope(),member);}
+  reviewable(id,actor){
+    const c=this.get(id);assert(c&&c.status==='pending'&&c.member!==actor,409,'Case unavailable or your own submission.');
+    assert(!this.deletionPending(c.member),409,'This member requested deletion. Review is closed.');return c;
   }
   audit(id,actor,action){this.db.prepare('INSERT INTO age_audit(guild,caseId,actor,action,at) VALUES(?,?,?,?,?)').run(this.scope(),id,actor,action,Date.now());}
   get(id){return this.db.prepare('SELECT * FROM age_cases WHERE guild=? AND id=?').get(this.scope(),id);}
@@ -52,30 +72,44 @@ export class Store {
     const settings=this.settings();assert(settings?.enabled,409,'This server has not opened verification. Ask its owner or a server manager to finish setup on this website.');
     assert(consent===true,400,'Confirm the synthetic-data privacy notice.');const evidence=processSynthetic(fixture);
     assert(!this.mine(member),409,'You already have a case in this server. Request deletion before submitting again.');
-    const id=randomUUID();this.db.prepare("INSERT INTO age_cases VALUES(?,?,?,'pending',?,?,?,NULL,0,'not_requested','not_requested',?,?)").run(id,this.scope(),member,evidence.dob,evidence.portrait,Date.now()+86400000,settings.verifiedRole,Date.now());
-    this.audit(id,member,'synthetic_submitted');return id;
+    assert(!this.deletionPending(member),409,'Your deletion request is still open. Wait for it to be completed before submitting.');
+    return this.transaction(()=>{
+      const id=randomUUID();this.db.prepare("INSERT INTO age_cases VALUES(?,?,?,'pending',?,?,?,NULL,0,'not_requested','not_requested',?,?)").run(id,this.scope(),member,evidence.dob,evidence.portrait,Date.now()+86400000,settings.verifiedRole,Date.now());
+      this.audit(id,member,'synthetic_submitted');return id;
+    });
   }
   list(){this.purge();return this.db.prepare('SELECT id,status,claimant,claimUntil,roleState,dmState,created FROM age_cases WHERE guild=? ORDER BY created').all(this.scope());}
   claim(id,actor){
-    const r=this.db.prepare("UPDATE age_cases SET claimant=?,claimUntil=? WHERE guild=? AND id=? AND status='pending' AND member<>? AND (claimant IS NULL OR claimant=? OR claimUntil<=?)").run(actor,Date.now()+600000,this.scope(),id,actor,actor,Date.now());
-    assert(r.changes===1,409,'Case unavailable, your own submission, or claimed by another reviewer.');this.audit(id,actor,'claimed');
+    return this.transaction(()=>{
+      this.reviewable(id,actor);
+      const r=this.db.prepare("UPDATE age_cases SET claimant=?,claimUntil=? WHERE guild=? AND id=? AND status='pending' AND member<>? AND (claimant IS NULL OR claimant=? OR claimUntil<=?)").run(actor,Date.now()+600000,this.scope(),id,actor,actor,Date.now());
+      assert(r.changes===1,409,'Case unavailable, your own submission, or claimed by another reviewer.');this.audit(id,actor,'claimed');
+    });
   }
   evidence(id,actor){
-    this.purge();const c=this.get(id);assert(c&&c.status==='pending'&&c.member!==actor&&c.claimant===actor&&c.claimUntil>Date.now(),409,'Claim this pending case first.');
+    this.purge();const c=this.get(id);assert(c&&c.status==='pending'&&c.member!==actor&&c.claimant===actor&&c.claimUntil>Date.now(),409,'Claim this pending case first.');this.reviewable(id,actor);
     assert(c.dob&&c.portrait===PORTRAIT,422,'Evidence expired or unverified. Review is blocked.');this.audit(id,actor,'evidence_viewed');return {dob:c.dob,portrait:c.portrait,synthetic:true};
   }
   decide(id,actor,decision){
-    assert(['approved','denied'].includes(decision),400,'Choose approve or deny.');const e=this.evidence(id,actor);
-    assert(decision!=='approved'||adult(e.dob),422,'Under 18: approval blocked. An authorized reviewer must manually deny.');
-    this.db.prepare("UPDATE age_cases SET status=?,dob=NULL,portrait=NULL,roleState=?,dmState='pending',claimant=NULL,claimUntil=0 WHERE guild=? AND id=?").run(decision,decision==='approved'?'pending':'not_requested',this.scope(),id);this.audit(id,actor,decision);
+    return this.transaction(()=>{
+      assert(['approved','denied'].includes(decision),400,'Choose approve or deny.');const e=this.evidence(id,actor);
+      assert(decision!=='approved'||adult(e.dob),422,'Under 18: approval blocked. An authorized reviewer must manually deny.');
+      const result=this.db.prepare("UPDATE age_cases SET status=?,dob=NULL,portrait=NULL,roleState=?,dmState='pending',claimant=NULL,claimUntil=0 WHERE guild=? AND id=? AND status='pending' AND claimant=? AND claimUntil>?").run(decision,decision==='approved'?'pending':'not_requested',this.scope(),id,actor,Date.now());
+      assert(result.changes===1,409,'This case changed. Refresh the review queue.');this.audit(id,actor,decision);
+    });
   }
   delivery(id,column,value){
     assert(['roleState','dmState'].includes(column),500,'Invalid delivery field.');assert(this.get(id),404,'Case not found in this server.');
-    this.db.prepare(`UPDATE age_cases SET ${column}=? WHERE guild=? AND id=?`).run(value,this.scope(),id);this.audit(id,'system',column+':'+value);
+    assert(['pending','uncertain','failed','delivered','simulated','not_delivered','not_requested'].includes(value),500,'Invalid delivery state.');
+    return this.transaction(()=>{
+      this.db.prepare(`UPDATE age_cases SET ${column}=? WHERE guild=? AND id=?`).run(value,this.scope(),id);this.audit(id,'system',column+':'+value);
+    });
   }
   request(member,kind){
     assert(['export','delete'].includes(kind),400,'Unknown privacy request.');const existing=this.db.prepare("SELECT id FROM age_privacy WHERE guild=? AND member=? AND kind=? AND state='open'").get(this.scope(),member,kind);if(existing)return existing.id;
-    const id=randomUUID();this.db.prepare("INSERT INTO age_privacy VALUES(?,?,?,?,'open',?)").run(id,this.scope(),member,kind,Date.now());this.audit(null,member,'privacy_'+kind);return id;
+    return this.transaction(()=>{
+      const id=randomUUID();this.db.prepare("INSERT INTO age_privacy VALUES(?,?,?,?,'open',?)").run(id,this.scope(),member,kind,Date.now());this.audit(null,member,'privacy_'+kind);return id;
+    });
   }
   requests(){return this.db.prepare('SELECT id,member,kind,state,created FROM age_privacy WHERE guild=? ORDER BY created DESC').all(this.scope());}
   deletion(id){return this.db.prepare("SELECT * FROM age_privacy WHERE guild=? AND id=? AND kind='delete' AND state='open'").get(this.scope(),id);}

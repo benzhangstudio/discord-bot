@@ -44,7 +44,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   const features=createDashboardFeatures({store,client,authorize:reauthorize});
   const delegated=(guild,id,ownerId)=>!!ownerId&&store?.get(guild,'dashboard-access',id)?.grantedBy===ownerId;
   function dashboardIdentity(guild,identity){
-    const dashboard=!!identity.owner||!!identity.manager||delegated(guild,identity.id,identity.ownerId);
+    const dashboard=!!identity.owner||delegated(guild,identity.id,identity.ownerId);
     return {...identity,dashboard,manager:dashboard};
   }
   async function reauthorize(guild,identity){
@@ -56,7 +56,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         Promise.all([g.fetch(),g.members.fetch({user:identity.id,force:true})]),
         new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Discord took too long. No changes were saved.')),accessTimeoutMs);})
       ]);
-      assert(member?.id===identity.id&&(fresh.ownerId===identity.id||member.permissions.has('Administrator')||member.permissions.has('ManageGuild')||delegated(guild,identity.id,fresh.ownerId)),403,'Your dashboard access was removed.');
+      assert(member?.id===identity.id&&(fresh.ownerId===identity.id||delegated(guild,identity.id,fresh.ownerId)),403,'Your dashboard access was removed.');
     }catch(error){if(error instanceof Fault)throw error;throw new Fault(403,'Could not confirm your dashboard access. Sign in again.');}
     finally{clearTimeout(timer);}
   }
@@ -264,11 +264,18 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   }
   return {
     hasBot,
+    // All bot role handlers share this Store instance. Read the live verification
+    // policy instead of maintaining a second, potentially stale role registry.
+    bindVerification(root){store.verificationRolePolicy=guild=>root.forGuild(guild).protectedRoles();},
+    verificationRoleConflicts(guild,roles){
+      return store.list(guild,'reaction-role').some(group=>(group.entries||[]).some(entry=>roles.includes(entry.role)))||
+        store.list(guild,'rr-temp').some(entry=>roles.includes(entry.role));
+    },
     dashboardIdentity,
     dashboardCandidate(guild,id){return cached(guild)?.ownerId===id||!!store?.get(guild,'dashboard-access',id);},
     async handle({method,endpoint,data,guild,identity,verification}){
       if(endpoint!=='overview'&&!endpoint.startsWith('plugins/'))return undefined;
-      assert(identity.owner||identity.dashboard,403,'Administrator or Manage Server permission is required to manage this dashboard.');
+      assert(identity.owner||identity.dashboard,403,'Only the server owner or members they approve can manage this dashboard.');
       available();
       if(endpoint==='overview'){assert(method==='GET',405,'Method not allowed.');return overview(guild,{verification,identity});}
       const name=endpoint.slice('plugins/'.length);

@@ -4,11 +4,13 @@ Members and configured reviewers use **https://number-one.wispbyte.app/verify** 
 
 Authorized command users can use `/dashboard` for server settings and a shareable Verification button. This command uses the bot's existing slash-command permissions; opening the link does not grant dashboard or reviewer access. There is no per-community enablement by the bot operator.
 
+The [verification core](CORE.md) documents the access matrix, transaction and concurrency guarantees, dedicated role protections, and remaining production boundary. Deletion requests immediately close a case to review. Owner-approved dashboard access cannot change reviewer roles or open submissions.
+
 ## Public workflow
 
 1. Open the server's verification link and sign in with Discord. OAuth requests `identify guilds` to confirm membership; no email is requested. The dashboard server list separately shows owned servers and explicit owner-approved dashboard grants.
 2. Open the intended community. Number One must already be installed there and the account must still belong to it. Its owner can install the bot from the dashboard. A newly joined server becomes available after signing out and back in.
-3. A current server owner or explicitly approved dashboard member selects the reviewer role and a dedicated **Beta test verified** role on the website, acknowledges synthetic-only testing, and opens that server's Beta. The roles must differ and cannot be @everyone or managed integration roles. The verified role must be below Number One and must not grant administrative/moderation permissions. Number One requires Manage Roles.
+3. Only the current server owner selects the reviewer role and a dedicated **Beta test verified** role on the website, acknowledges synthetic-only testing, and opens that server's Beta. The roles must differ and cannot be @everyone or managed integration roles. The verified role must be below Number One and must not grant administrative/moderation permissions. Number One requires Manage Roles.
 4. Copy the generated member link, `https://number-one.wispbyte.app/verify?guild=SERVER_ID`, and share it in that community. The server ID is part of the link, not an application-wide environment setting.
 5. Members sign in, see that community's status, consent to the test notice, and choose an invented adult, minor or unverified fixture. Each member may have one active case per server, independently of other servers.
 6. The server owner and members of its configured reviewer role see only that server's private review queue. Dashboard approval and Discord management permissions alone do not grant reviewer access. A reviewer claims a case for ten minutes, views only its synthetic portrait and full date of birth, then manually approves or denies. Self-review is blocked. Under-18 approval is blocked; denial is always an explicit human decision.
