@@ -28,8 +28,8 @@ test('port conflict fails clearly and releases resources',async()=>{
 });
 const roleData=[{id:'g',permissions:'0',position:0,name:'everyone'},{id:'bot-role',permissions:String(1n<<28n),position:10,name:'bot'},{id:'reviewer',permissions:'0',position:9,name:'reviewer'},{id:'verified',permissions:'0',position:1,name:'test'},{id:'admin',permissions:'8',position:2,name:'admin'},{id:'managed',permissions:'0',position:2,managed:true,name:'managed'},{id:'above',permissions:'0',position:11,name:'above'}];
 function fakeAPI(stage,calls=[]){return async(url)=>{
-  const step=url.endsWith('/token/revoke')?'revoke':url.endsWith('/oauth2/token')?'token':url.includes('/users/@me/guilds?')?'guild-list':url.endsWith('/users/@me')?'user':url.endsWith('/guilds/g')?'guild':url.endsWith('/roles')?'roles':url.endsWith('/members/bot')?'bot-member':url.endsWith('/members/u')?'member':url.includes('/roles/')?'role':url.endsWith('/users/@me/channels')?'dm-create':'dm-send';calls.push(step);if(step===stage)return new Promise(()=>{});
-  const values={token:{access_token:'transient'},user:{id:'u'},'guild-list':[{id:'g',name:'Community',permissions:'32',owner:false}],guild:{owner_id:'owner',name:'Community'},roles:roleData,'bot-member':{roles:['bot-role']},member:{roles:['reviewer']},revoke:{},role:{},'dm-create':{id:'dm'},'dm-send':{id:'message'}};return {ok:true,status:200,json:async()=>values[step]};
+  const step=url.endsWith('/token/revoke')?'revoke':url.endsWith('/oauth2/token')?'token':url.includes('/users/@me/guilds?')?'guild-list':url.endsWith('/users/@me')?'user':url.endsWith('/guilds/g')?'guild':url.endsWith('/guilds/g/channels')?'channels':url.endsWith('/roles')?'roles':url.endsWith('/members/bot')?'bot-member':url.endsWith('/members/u')?'member':url.includes('/roles/')?'role':url.endsWith('/users/@me/channels')?'dm-create':'dm-send';calls.push(step);if(step===stage)return new Promise(()=>{});
+  const values={token:{access_token:'transient'},user:{id:'u'},'guild-list':[{id:'g',name:'Community',permissions:'32',owner:false}],guild:{owner_id:'owner',name:'Community'},roles:roleData,channels:[],'bot-member':{roles:['bot-role']},member:{roles:['reviewer']},revoke:{},role:{},'dm-create':{id:'dm'},'dm-send':{id:'message'}};return {ok:true,status:200,json:async()=>values[step]};
 };}
 for(const stage of ['token','user','guild-list','revoke','guild','member','roles','bot-member','role','dm-create','dm-send'])test(`Discord ${stage}: hanging request ends without retry`,async()=>{
   const calls=[],api=new Discord({clientId:'bot',origin:'https://test.example',requestTimeout:15},fakeAPI(stage,calls));let operation;
@@ -45,10 +45,21 @@ test('server role setup rejects elevated, managed, everyone, identical and unass
   for(const role of ['admin','managed','above','g','missing','reviewer'])await assert.rejects(api.validateRoles('g','reviewer',role));
   const roles=await api.roleOptions('g');assert(!roles.some(r=>r.id==='managed'||r.id==='g'));assert.equal(roles.find(r=>r.id==='above').canVerify,false);
 });
+
+test('verification cannot award command permissions through a role or a channel overwrite',async()=>{
+  for(const elevated of [16n,8192n]){
+    for(const overwrite of [false,true]){
+      const roles=roleData.map(role=>({...role,...(role.id==='verified'&&!overwrite?{permissions:String(elevated)}:{})}));
+      const api=new Discord({clientId:'bot'},async url=>({ok:true,status:200,json:async()=>url.endsWith('/roles')?roles:url.endsWith('/channels')?(overwrite?[{permission_overwrites:[{id:'verified',allow:String(elevated),type:0}]}]:[]):{roles:['bot-role']}}));
+      assert.equal((await api.roleOptions('g')).find(role=>role.id==='verified').canVerify,false);
+      await assert.rejects(api.validateVerified('g','verified'));
+    }
+  }
+});
 test('OAuth guild pagination preserves all servers and never stores bearer tokens',async()=>{
   let pages=0;const calls=[];const api=new Discord({origin:'https://test.example'},async(url,options)=>{
     calls.push(url);if(url.includes('/users/@me/guilds?')){pages++;return {ok:true,status:200,json:async()=>pages===1?Array.from({length:200},(_,i)=>({id:String(i+1),name:'Community',permissions:'0',owner:false})):[{id:'201',name:'Last',permissions:'32'}]};}return fakeAPI()(url,options);
-  });const identity=await api.exchange('x');assert.equal(identity.guilds.length,201);assert.equal(identity.guilds.at(-1).manageable,false);assert.equal(identity.guilds.at(-1).owner,false);assert(!JSON.stringify(identity).includes('transient'));assert(calls.some(x=>x.endsWith('after=200')));
+  });const identity=await api.exchange('x');assert.equal(identity.guilds.length,201);assert.equal(identity.guilds.at(-1).manageable,true);assert.equal(identity.guilds.at(-1).owner,false);assert(!JSON.stringify(identity).includes('transient'));assert(calls.some(x=>x.endsWith('after=200')));
 });
 
 test('OAuth retains explicit ownership without inferring dashboard access from admin or Manage Server',async()=>{
@@ -56,10 +67,10 @@ test('OAuth retains explicit ownership without inferring dashboard access from a
     if(url.includes('/users/@me/guilds?'))return {ok:true,status:200,json:async()=>[{id:'owned',owner:true,permissions:'0'},{id:'admin',owner:false,permissions:'8'},{id:'managed',owner:false,permissions:'32'}]};
     return fakeAPI()(url,options);
   });
-  const result=await api.exchange('x');assert.deepEqual(result.guilds.map(g=>[g.id,g.owner,g.manageable]),[['owned',true,true],['admin',false,false],['managed',false,false]]);
+  const result=await api.exchange('x');assert.deepEqual(result.guilds.map(g=>[g.id,g.owner,g.manageable]),[['owned',true,true],['admin',false,true],['managed',false,true]]);
 });
 
 test('dashboard picker authorization verifies membership and owner without fetching role catalogues',async()=>{
   const calls=[],api=new Discord({clientId:'bot'},fakeAPI(undefined,calls));
-  const identity=await api.dashboardIdentity('g','u');assert.equal(identity.owner,false);assert.equal(identity.ownerId,'owner');assert.deepEqual(calls.sort(),['guild','member']);
+  const identity=await api.dashboardIdentity('g','u');assert.equal(identity.owner,false);assert.equal(identity.ownerId,'owner');assert.deepEqual(calls.sort(),['guild','member','roles']);
 });

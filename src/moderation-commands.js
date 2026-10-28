@@ -1,4 +1,5 @@
 import {proofOptions as proof} from './mod-proof.js';
+import {commandPermission} from './permissions.js';
 const text=(name,description,required=true)=>({type:3,name,description,required,max_length:500});
 const user={type:6,name:'user',description:'Member',required:true};
 const reason=text('reason','Reason for this action');
@@ -28,7 +29,7 @@ export const moderationCommands=[
   {type:5,name:'locked',description:'True to lock, false to unlock; omit both inputs to view status'},
   optionalReason,...proof,
  ]},
-].map(c=>({...c,type:1,default_member_permissions:null,contexts:[0],integration_types:[0]}));
+].map(c=>({...c,type:1,default_member_permissions:String(commandPermission(c.name)),contexts:[0],integration_types:[0]}));
 
 // Resolve the user's optional inputs without exposing internal action names.
 export function moderationAction(name,sub,options,hasImages=false) {

@@ -56,7 +56,7 @@ async function harness(t,{mode='demo',discord,configure=true}={}){
 test('public onboarding: owner selects verification roles; members and Discord managers need approval to configure',async t=>{
   const {root,login}=await harness(t,{configure:false}),member=await login('member'),manager=await login('manager'),owner=await login('owner');
   assert.equal((await member('context')).data.enabled,false);assert.equal((await member('submit',{fixture:'adult',consent:true})).status,409);
-  assert.equal((await member('settings',settings)).status,403);assert.equal((await manager('settings')).status,403);
+  assert.equal((await member('settings',settings)).status,403);assert.equal((await manager('settings')).status,200);
   assert.equal((await owner('settings',{...settings,betaAcknowledged:false})).status,400);assert.equal((await owner('settings',{...settings,verifiedRole:R})).status,400);
   assert.equal((await owner('settings',settings)).status,200);assert.equal((await member('context')).data.enabled,true);assert.equal((await member('context',null,B)).data.enabled,false);
   assert.equal((await manager('queue')).status,403);assert.equal((await owner('queue')).status,200);assert.equal(root.forGuild(A).settings().verifiedRole,V);

@@ -1,7 +1,7 @@
 import {errorPayload} from './error-embed.js';
 import {UserError} from './user-error.js';
 import {createModeration} from './moderation.js';
-import {canManageServer,MANAGEMENT_ONLY_MESSAGE} from './permissions.js';
+import {canUseCommand,interactionCommand,NATIVE_ACCESS_MESSAGE} from './permissions.js';
 import {PermissionFlagsBits as P,MessageFlags,RESTEvents,ModalBuilder,TextInputBuilder,TextInputStyle,ActionRowBuilder,EmbedBuilder} from 'discord.js';
 import {DateTime} from 'luxon';
 import {DEFAULT_ZONE,zone,parseTime,parseColor,validateEmbed,webUrl,rotationMember} from './domain.js';
@@ -25,20 +25,19 @@ const reply=content=>({content,allowedMentions:{parse:[]}});
 const settings=g=>store.get(g,'settings','main') || {id:'main',zone:DEFAULT_ZONE};
 const selected=i=>i.options.getString({embed:'message',schedule:'event',instagram:'source'}[i.commandName]) || i.options.getString('id');
 function staff(i) {
-  if (canManageServer(i.memberPermissions)) {
-    return true;
-  } else if (isServerOwner(i)) {
-    return true;
-  } else if (i.guildId && i.guild?.ownerId && i.user?.id && store.get(i.guildId,'access',i.user.id)?.grantedBy===i.guild?.ownerId) {
-    return true;
-  } else {
-    return false;
-  }
+  return canUseCommand(i,interactionCommand(i));
 }
 function needStaff(i) {
   if (!staff(i)) {
-    throw new UserError(MANAGEMENT_ONLY_MESSAGE);
+    throw new UserError(NATIVE_ACCESS_MESSAGE);
   }
+}
+async function reauthorizeWrite(i){
+  await step(i,()=>i.guild.fetch());
+  await step(i,()=>i.guild.roles.fetch());
+  const member=await step(i,()=>i.guild.members.fetch({user:i.user.id,force:true}));
+  if(member?.id!==i.user.id||!canUseCommand({...i,memberPermissions:member?.permissions},interactionCommand(i)))throw new UserError(NATIVE_ACCESS_MESSAGE);
+  i.member=member;
 }
 function item(i,kind,id) {const v=store.get(i.guildId,kind,id);if(!v) throw new UserError('That saved item is no longer available. Choose another from the name suggestions, or create a new one.');return v;}
 async function destination(i,id,{writing=true,privateOnly=false}={}) {
@@ -47,7 +46,7 @@ async function destination(i,id,{writing=true,privateOnly=false}={}) {
   return checkDestination(i,channel,{writing,privateOnly});
 }
 function checkDestination(i,channel,{writing=true,privateOnly=false}={}) {
-  if(!channel || ![0,5].includes(channel.type)) throw new UserError('Choose a text or announcement channel in this server.');
+  if(!channel || ![0,5].includes(channel.type)||channel.guildId&&channel.guildId!==i.guildId||channel.guild?.id&&channel.guild.id!==i.guildId) throw new UserError('Choose a text or announcement channel in this server.');
   if(!channel.permissionsFor(i.member)?.has([P.ViewChannel,...(writing?[P.SendMessages]:[])])) throw new UserError(writing?'Choose a channel you can view and send messages in.':'You cannot view this event’s channel. Ask a staff member if you need access.');
   if(writing && !channel.permissionsFor(i.guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks])) throw new UserError('The bot needs View Channel, Send Messages, and Embed Links there.');
   if(privateOnly && channel.permissionsFor(i.guild.roles.everyone)?.has(P.ViewChannel)) throw new UserError('Choose a staff-only channel for meetings and rotations. It must be hidden from @everyone.');
@@ -102,14 +101,14 @@ function eventView(e) {
 
 const moderation=createModeration(client,store,{needStaff,timeoutMs:operationTimeoutMs});
 const reactionRoles=createReactionRoles({store,client});
-const instagram=createInstagramSetup({store,settings,needStaff,destination,pingRole,load:feedLoader});
+const instagram=createInstagramSetup({store,settings,needStaff,reauthorizeWrite,destination,pingRole,load:feedLoader});
 
 async function publishEmbed(i,id,channelId,roleId,user) {
   if(!channelId)throw new UserError('Choose a channel below before publishing.');
   await acknowledge(i);
   const channel=await destination(i,channelId),role=await pingRole(i,roleId,channel);
   if(user)await step(i,i.guild.members.fetch(user)).catch(error=>{if(error.name==='UserError')throw error;throw new UserError('Choose a current member of this server to notify.');});
-  needStaff(i);const ready=item(i,'embed',id);validateEmbed(ready);
+  await reauthorizeWrite(i);checkDestination(i,channel);const ready=item(i,'embed',id);validateEmbed(ready);
   const message=await step(i,()=>channel.send({content:[role?`<@&${role}>`:'',user?`<@${user}>`:'',ready.content].filter(Boolean).join(' '),embeds:[new EmbedBuilder(ready.embed)],allowedMentions:{parse:[],roles:role?[role]:[],users:user?[user]:[]},...(i.id?{nonce:i.id,enforceNonce:true}:{})}),{uncertain:true});
   console.log('Embed published; sending its confirmation.');
   return respond(i,reply(`Message sent. ${message.url}`),{editTimeoutMs:replyEditTimeoutMs});
@@ -133,8 +132,12 @@ async function handle(i) {
       return i.respond(suggestions(store,i,{canManage:true,canConfigure:true}));
     }
   }
-  if(i.customId?.startsWith('mod-appeal'))return respond(i,errorPayload('Moderation appeals are no longer available. Contact your server staff.',{title:'Feature unavailable'}));
   if(!i.inGuild()) throw new UserError('Use this command in a server.');
+  // Apply the same gate before reading any command, button, select or form data.
+  // In particular, public help/RSVP controls never grant ordinary members access.
+  needStaff(i);
+  if(i.customId?.startsWith('mod-appeal'))return respond(i,errorPayload('Moderation appeals are no longer available. Contact your server staff.',{title:'Feature unavailable'}));
+  if(!commandPluginEnabled(store,i.guildId,interactionCommand(i)))throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');
   if (i.isChatInputCommand()) {
     needStaff(i);
     if(!commandPluginEnabled(store,i.guildId,i.commandName)){throw new UserError('This feature is turned off for this server. A server manager can turn it on in the dashboard.');}
@@ -217,6 +220,7 @@ async function handle(i) {
     }
     if(kind==='rsvp') {
       let e=item(i,'event',id);await destination(i,e.channel,{writing:false});
+      await reauthorizeWrite(i);
       // Other members may RSVP while the permission lookup is in progress.
       e=item(i,'event',id);
       if(e.cancelled || e.complete || e.start!==Number(action) || Date.now()>e.start+e.duration*60000) throw new UserError('This event is no longer accepting replies, or its time has changed. Open /schedule show and choose the event again.');
@@ -251,6 +255,7 @@ async function handle(i) {
     }
     if(kind==='eventform') {
       let e=item(i,'event',id);await destination(i,e.channel,{privateOnly:e.kind!=='event'});
+      await reauthorizeWrite(i);
       e=item(i,'event',id);
       if(e.cancelled || e.complete) throw new UserError('Create a new event instead of editing a cancelled or completed event.');
       const start=parseTime(read('start'),e.zone);if(start<=Date.now())throw new UserError('Choose a future start time.');
@@ -273,7 +278,7 @@ async function handle(i) {
       for(const f of store.list(i.guildId,'feed'))if(f.error)issues.push(`• ${f.name} needs attention. Check its feed link and the bot’s channel permissions.`);
       return respond(i,listEmbed('Delivery status',opt.getString('zone')?[{name:'Timezone saved',value:timezoneLabel(s.zone)+' (new events)'}]:null,null,issues.length?[...new Set(issues)].join('\n').slice(0,4000):'No recent reminder or Instagram delivery problems.'));
     }
-    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Administrator, Manage Server, or approval from the server owner'},...(!opt.getString('zone')?[{name:'Moderation',value:moderation.settingsSummary(i.guildId).slice(0,1000)},{name:'Change settings',value:'Moderation, automod and command access settings are on the dashboard (/dashboard).'}]:[])]));
+    store.put(i.guildId,'settings',s);return respond(i,listEmbed('Server settings',[{name:'Timezone',value:`${timezoneLabel(s.zone)} (new events; existing events keep theirs)`},{name:'Command access',value:'Native Discord permissions for each action'},...(!opt.getString('zone')?[{name:'Moderation',value:moderation.settingsSummary(i.guildId).slice(0,1000)},{name:'Change settings',value:'Moderation, automod and command access settings are on the dashboard (/dashboard).'}]:[])]));
   }
   if(name==='embed') {
     needStaff(i);
@@ -303,7 +308,7 @@ async function handle(i) {
       for(const id of assignees)await step(i,i.guild.members.fetch(id)).catch(error=>{if(error.name==='UserError')throw error;throw new UserError('One of the people in this rotation is not a member of this server. Check the mentions and try again.');});
       const duration=opt.getInteger('duration')||60;
       if((repeat==='daily' && duration>=1440)||(repeat==='weekly' && duration>=10080))throw new UserError('This event must finish before the next one begins. Shorten its duration or choose a less frequent repeat.');
-      const role=await pingRole(i,opt.getRole('role')?.id,channel);needStaff(i);
+      const role=await pingRole(i,opt.getRole('role')?.id,channel);await reauthorizeWrite(i);checkDestination(i,channel,{privateOnly:kind!=='event'});
       if(store.list(i.guildId,'event').filter(e=>!e.complete&&!e.cancelled).length>=200)throw new UserError('You already have 200 upcoming schedules. Cancel one before adding another.');
       const e=store.put(i.guildId,'event',{title:opt.getString('title'),description:opt.getString('description')||'',location:opt.getString('location')||'',channel:channel.id,start,zone:timezone,kind,repeat,duration,reminder:opt.getInteger('reminder')??30,role,assignees,rotationIndex:0,rsvps:{}});
       return respond(i,eventView(e));
@@ -311,7 +316,7 @@ async function handle(i) {
     let e=item(i,'event',selected(i));
     if(sub==='edit')checkDestination(i,i.guild.channels.cache?.get(e.channel),{privateOnly:e.kind!=='event'});
     else await destination(i,e.channel,{privateOnly:e.kind!=='event'});
-    e=item(i,'event',e.id);needStaff(i);
+    await reauthorizeWrite(i);e=item(i,'event',e.id);needStaff(i);
     if(sub==='post') {await acknowledge(i);const channel=await destination(i,e.channel);e=item(i,'event',e.id);if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');const sent=await step(i,channel.send(eventView(e)),{uncertain:true});return respond(i,reply(`Event card posted: ${sent.url}`));}
     if(sub==='edit'&&[opt.getString('repeat'),opt.getInteger('duration'),opt.getInteger('reminder')].some(value=>value!=null)) {
       if(e.cancelled||e.complete)throw new UserError('This event is no longer active.');

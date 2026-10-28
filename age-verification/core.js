@@ -124,7 +124,9 @@ export class Store {
   erase(member){
     const c=this.mine(member);this.db.exec('BEGIN IMMEDIATE');
     try{
-      this.db.prepare('DELETE FROM age_audit WHERE guild=? AND (actor=? OR caseId=?)').run(this.scope(),member,c?.id ?? '');
+      // A reviewer's personal deletion must not erase the audit of decisions
+      // they made on other members' cases. Those records keep normal retention.
+      this.db.prepare("DELETE FROM age_audit WHERE guild=? AND (caseId=? OR (actor=? AND action IN ('synthetic_submitted','privacy_export','privacy_delete')))").run(this.scope(),c?.id ?? '',member);
       this.db.prepare('DELETE FROM age_cases WHERE guild=? AND member=?').run(this.scope(),member);
       this.db.prepare('DELETE FROM age_privacy WHERE guild=? AND member=?').run(this.scope(),member);
       this.audit(null,null,'privacy_deletion_completed');this.db.exec('COMMIT');

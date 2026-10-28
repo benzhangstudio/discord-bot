@@ -22,9 +22,9 @@ test('hard deletion removes all related records in only the selected server and 
 test('legacy removed records are deleted before history and dashboard counts are returned',async()=>{
   const store=new Store(':memory:');try{
     fixture(store,'one','old',{voided:true});fixture(store,'one','also-old',{number:13,state:'removed'});
-    const api=createDashboardApi({store});const overview=await api.handle({method:'GET',endpoint:'overview',guild:'one',identity:{manager:true,dashboard:true}});
+    const api=createDashboardApi({store});const overview=await api.handle({method:'GET',endpoint:'overview',guild:'one',identity:{owner:true,manager:true,dashboard:true}});
     assert.equal(overview.stats.moderationCases,0);
-    const page=await api.handle({method:'GET',endpoint:'plugins/moderation',guild:'one',identity:{manager:true,dashboard:true}});assert.deepEqual(page.recentCases,[]);
+    const page=await api.handle({method:'GET',endpoint:'plugins/moderation',guild:'one',identity:{owner:true,manager:true,dashboard:true}});assert.deepEqual(page.recentCases,[]);
     for(const kind of ['mod-case','mod-log','mod-appeal','mod-number'])assert.deepEqual(store.list('one',kind),[]);
     assert.equal(new Moderation(store).reserveNumber('one','next'),14);
   }finally{store.close();}

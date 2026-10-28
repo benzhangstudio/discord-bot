@@ -1,5 +1,7 @@
 # Verification core and release boundary
 
+Current access policy: [native Discord permissions](../ACCESS_POLICY.md). Ordinary members can only use their own verification submission/status/privacy portal. Legacy per-user bot grants do not authorize access. The [whole-bot access review](../ACCESS_REVIEW.md) records coverage and release limits. This policy supersedes older access descriptions below.
+
 The HTTP routes use `VerificationWorkflow` for claims, evidence access, decisions,
 Discord delivery, reconciliation and deletion. Storage remains in the existing
 guild-scoped SQLite database; this update does not replace live data or change

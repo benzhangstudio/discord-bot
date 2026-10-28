@@ -14,14 +14,15 @@ const convert=fn=>{try{return fn();}catch(e){if(e?.name==='UserError')throw new 
 
 export function createDashboardFeatures({store,client=null,authorize=null,load=loadFeed,timeoutMs=8000,now=Date.now}={}){
   const cached=id=>client?.guilds?.cache?.get?.(id);
+  const visible=(guild,id,identity)=>!!(identity?.owner||identity?.securityAdmin||identity?.demo||identity?.member&&cached(guild)?.channels?.cache?.get?.(id)?.permissionsFor?.(identity.member)?.has(P.ViewChannel));
   const timezone=guild=>store.get(guild,'settings','main')?.zone||DEFAULT_ZONE;
   const channels=guild=>[...(cached(guild)?.channels?.cache?.values?.()||[])].filter(c=>[0,5].includes(c.type)).map(c=>({id:c.id,name:String(c.name).slice(0,100)}));
   const label=(guild,id)=>id?{id,name:cached(guild)?.channels?.cache?.get?.(id)?.name||null}:null;
   const get=(guild,kind,id)=>{assert(typeof id==='string'&&id.length<=100,400,'Choose a saved item.');const saved=store.get(guild,kind,id);assert(saved,404,'That saved item is no longer available in this server.');return saved;};
-  function view(guild,name){
+  function view(guild,name,identity){
     if(name==='embeds')return {editable:true,limit:100,items:store.list(guild,'embed').map(d=>({id:d.id,name:String(d.name||'Untitled').slice(0,80),content:d.content||'',embed:d.embed||{},title:d.embed?.title||'',updatedAt:d.updatedAt||null}))};
-    if(name==='scheduler')return {editable:true,limit:200,timezone:timezone(guild),channels:channels(guild),items:store.list(guild,'event').filter(e=>!e.cancelled&&!e.complete&&e.start+e.duration*60000>now()).sort((a,b)=>a.start-b.start).map(e=>({id:e.id,title:e.title,description:e.description||'',location:e.location||'',start:e.start,startLocal:DateTime.fromMillis(e.start,{zone:e.zone}).toFormat("yyyy-MM-dd'T'HH:mm"),zone:e.zone,kind:e.kind||'event',repeat:e.repeat||'none',duration:e.duration,reminder:e.reminder??30,channel:label(guild,e.channel),assignees:e.assignees||[],needsAttention:!!e.error}))};
-    if(name==='instagram')return {editable:true,limit:10,timezone:timezone(guild),channels:channels(guild),items:store.list(guild,'feed').map(f=>({id:f.id,name:f.name,channel:label(guild,f.channel),paused:!!f.paused,schedule:deliveryLabel(f),waiting:f.pending?.length||0,needsAttention:!!f.error,delivery:f.delivery||'weekly',zone:f.zone||DEFAULT_ZONE,time:f.time||'00:00',weekday:f.weekday||7,showPreviews:!!f.showPreviews,hasNotifications:!!f.role,inProgress:!!f.batch}))};
+    if(name==='scheduler')return {editable:true,limit:200,timezone:timezone(guild),channels:channels(guild).filter(c=>visible(guild,c.id,identity)),items:store.list(guild,'event').filter(e=>visible(guild,e.channel,identity)&&!e.cancelled&&!e.complete&&e.start+e.duration*60000>now()).sort((a,b)=>a.start-b.start).map(e=>({id:e.id,title:e.title,description:e.description||'',location:e.location||'',start:e.start,startLocal:DateTime.fromMillis(e.start,{zone:e.zone}).toFormat("yyyy-MM-dd'T'HH:mm"),zone:e.zone,kind:e.kind||'event',repeat:e.repeat||'none',duration:e.duration,reminder:e.reminder??30,channel:label(guild,e.channel),assignees:e.assignees||[],needsAttention:!!e.error}))};
+    if(name==='instagram')return {editable:true,limit:10,timezone:timezone(guild),channels:channels(guild).filter(c=>visible(guild,c.id,identity)),items:store.list(guild,'feed').filter(f=>visible(guild,f.channel,identity)).map(f=>({id:f.id,name:f.name,channel:label(guild,f.channel),paused:!!f.paused,schedule:deliveryLabel(f),waiting:f.pending?.length||0,needsAttention:!!f.error,delivery:f.delivery||'weekly',zone:f.zone||DEFAULT_ZONE,time:f.time||'00:00',weekday:f.weekday||7,showPreviews:!!f.showPreviews,hasNotifications:!!f.role,inProgress:!!f.batch}))};
     return null;
   }
   async function update(guild,name,data,identity){
@@ -29,6 +30,8 @@ export function createDashboardFeatures({store,client=null,authorize=null,load=l
     assert(identity?.owner||identity?.dashboard,403,'Dashboard access is required to manage this server.');
     object(data,name==='embeds'?['save','copy','delete']:name==='scheduler'?['save','cancel']:['save','pause','resume','remove']);
     assert(Object.keys(data).length===1,400,'Make one change at a time.');
+    const existingId=data.save?.id||data.cancel||data.pause||data.resume||data.remove;
+    if(name!=='embeds'&&existingId){const saved=get(guild,name==='scheduler'?'event':'feed',existingId);assert(visible(guild,saved.channel,identity),403,'You cannot access this saved item’s channel.');}
     const deadline=now()+timeoutMs;
     async function bounded(work){
       let timer;
@@ -115,7 +118,7 @@ export function createDashboardFeatures({store,client=null,authorize=null,load=l
         store.put(guild,'feed',f);
       }
     }
-    return view(guild,name);
+    return view(guild,name,identity);
   }
   return {view,update};
 }

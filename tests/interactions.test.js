@@ -10,10 +10,10 @@ import {commands} from '../src/commands.js';
 function harness({manager=true,visible=true,privateChannel=false,guildId='server-a',replyEditTimeoutMs=8000,operationTimeoutMs=15000}={}) {
   const store=new Store(':memory:'),client=new EventEmitter(),app=createApp(client,store,{replyEditTimeoutMs,operationTimeoutMs,feedLoader:async()=>[{key:'post',title:'Latest post',link:'https://example.com/post'}]}),outputs=[],sent=[];
   const member={id:'123456789012345678',roles:{cache:new Map()}};
-  const perms=new PermissionsBitField(manager?[P.ManageGuild,P.MentionEveryone]:[]);
+  const perms=new PermissionsBitField(manager?[P.ManageGuild,P.MentionEveryone]:[]);member.permissions=perms;
   const channel={id:'234567890123456789',type:0,permissionsFor:target=>new PermissionsBitField(target==='everyone'?(privateChannel?[]:[P.ViewChannel]):target===member&&!visible?[]:[P.ViewChannel,P.SendMessages,P.EmbedLinks,P.MentionEveryone]),send:async p=>{sent.push(p);return {id:'posted',url:'https://discord.com/channels/server/channel/message'};}};
-  const guild={id:guildId,ownerId:'999999999999999999',channels:{cache:new Map([[channel.id,channel]]),fetch:async id=>id===channel.id?channel:null},members:{me:'bot',fetch:async()=>member},roles:{everyone:'everyone',fetch:async id=>({id,mentionable:true,managed:false})}};
-  channel.guild=guild;
+  const guild={id:guildId,ownerId:'999999999999999999',channels:{cache:new Map([[channel.id,channel]]),fetch:async id=>id===channel.id?channel:null},members:{me:'bot',fetch:async input=>({...member,id:typeof input==='object'?input.user:input})},roles:{everyone:'everyone',fetch:async id=>({id,mentionable:true,managed:false})}};
+  guild.fetch=async()=>guild;channel.guild=guild;
   const interaction=(name,sub,values={})=>{
     if(name==='settings'&&['view','status','timezone'].includes(sub)){if(sub==='status')values={...values,status:true};sub=undefined;}
     if(name==='schedule'&&sub==='configure')sub='edit';
@@ -49,22 +49,22 @@ test('every registered subcommand has a complete reply or modal scenario',()=>{
 
 for(const [name,values] of Object.entries(scenarios)) {
   if(name.startsWith('access '))continue;
-  test(`owner-approved member can use /${name} without Administrator or Manage Server`,{timeout:2000},async()=>{
+  test(`legacy grants cannot authorize ordinary members for /${name}`,{timeout:2000},async()=>{
     const h=harness({manager:false});
     h.store.put('server-a','access',{id:h.member.id,grantedBy:'999999999999999999'});
     h.store.put('server-a','embed',{id:'saved',name:'Saved',embed:{description:'Hello',fields:[{name:'Info',value:'Details'}]}});
     h.store.put('server-a','event',{id:'saved',title:'Meeting',channel:h.channel.id,start:Date.now()+3600000,duration:60,repeat:'none',zone:'UTC',kind:'event',rsvps:{}});
     h.store.put('server-a','feed',{id:'saved',name:'Posts',url:'https://example.com/rss',channel:h.channel.id});
     const [command,sub]=name.split(' '),i=h.interaction(command,sub,values);
-    await h.app.handle(i);assert.ok(h.outputs.length);assert.doesNotMatch(JSON.stringify(h.outputs),/permission to use this command/);h.store.close();
+    await assert.rejects(h.app.handle(i),/Discord permission/);assert.equal(h.outputs.length,0);assert.equal(h.sent.length,0);h.store.close();
   });
 }
 
 test('added access is scoped to one server and cannot bypass channel permissions',async()=>{
   const h=harness({manager:false,visible:false});h.store.put('other-server','access',{id:h.member.id});
-  await h.app.dispatch(h.interaction('help'));assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);
+  await h.app.dispatch(h.interaction('help'));assert.match(textOf(h.outputs.at(-1)),/Discord permission/);
   h.store.put('server-a','access',{id:h.member.id,grantedBy:'999999999999999999'});h.store.put('server-a','embed',{id:'saved',name:'Private',embed:{description:'Hello'}});
-  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(textOf(h.outputs.at(-1)),/channel you can view/);assert.equal(h.sent.length,0);h.store.close();
+  await h.app.dispatch(h.interaction('embed','send',{message:'saved'}));assert.match(textOf(h.outputs.at(-1)),/Discord permission/);assert.equal(h.sent.length,0);h.store.close();
 });
 
 test('help and retired manual buttons never send a DM and finish immediately',async()=>{
@@ -110,11 +110,11 @@ test('unknown saved names across commands get immediate useful replies without n
 test('regular members get immediate permission replies for every registered slash command',async()=>{
   for(const [name,values] of Object.entries(scenarios)) {
     const h=harness({manager:false}),[command,sub]=name.split(' '),i=h.interaction(command,sub,values);
-    await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/You don’t have permission/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
+    await h.app.dispatch(i);assert.match(textOf(h.outputs[0]),/Discord permission/);assert.equal(i.replied,true);assert.ok(!i.deferred);assert.equal(h.sent.length,0);h.store.close();
   }
 });
 
-for(const access of ['moderator','legacy staff role','missing permissions'])test(`${access} cannot invoke any slash command or mutate saved data`,async()=>{
+for(const access of ['legacy staff role','missing permissions'])test(`${access} cannot invoke any slash command or mutate saved data`,async()=>{
   for(const [name,values] of Object.entries(scenarios)) {
     const h=harness({manager:false});
     h.store.put('server-a','settings',{id:'main',staff:'helpers',zone:'Asia/Seoul'});
@@ -125,7 +125,7 @@ for(const access of ['moderator','legacy staff role','missing permissions'])test
     i.options=new Proxy({}, {get:()=>{throw Error('Unauthorized options must not be processed');}});
     const before=h.store.db.prepare('SELECT * FROM records').all();
     await h.app.dispatch(i);
-    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,undefined);assert.equal(messageOf(h.outputs[0]),'You don’t have permission to use this command. Ask a server admin for access.');assert.deepEqual(h.outputs[0].components,[]);
+    assert.equal(h.outputs.length,1);assert.equal(h.outputs[0].flags,undefined);assert.equal(messageOf(h.outputs[0]),'You need the Discord permission for this action. Ask a server administrator to review your roles.');assert.deepEqual(h.outputs[0].components,[]);
     assert.deepEqual(h.store.db.prepare('SELECT * FROM records').all(),before);assert.equal(h.sent.length,0);h.store.close();
   }
 });
@@ -219,8 +219,8 @@ test('missing publishing destinations and invalid form submissions preserve save
   assert.equal(h.store.get('server-a','embed','saved').name,'Original');assert.equal(h.store.get('server-a','embed','saved').embed.description,'Keep this');h.store.close();
 });
 test('members cannot create embeds or open help',async()=>{
-  const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Manage Server/);
-  await assert.rejects(h.app.handle(h.interaction('help',null)),/Administrator or Manage Server/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
+  const h=harness({manager:false});await assert.rejects(h.app.handle(h.interaction('embed','create',{name:'Test'})),/Discord permission/);
+  await assert.rejects(h.app.handle(h.interaction('help',null)),/Discord permission/);assert.equal(h.store.list('server-a','embed').length,0);h.store.close();
 });
 test('embed form saves edits and publication only permits explicit mentions',async()=>{
   const h=harness();await h.app.handle(h.interaction('embed','create',{name:'Welcome'}));
@@ -242,9 +242,9 @@ test('staff meetings require a private channel and future local time',async()=>{
 test('private schedule details are withheld and RSVP requires channel access',async()=>{
   const h=harness({manager:false,visible:false,privateChannel:true});
   const event={id:'meeting',title:'Private',channel:h.channel.id,start:Date.now()+600000,duration:60,rsvps:{}};h.store.put('server-a','event',event);
-  await assert.rejects(h.app.handle(h.interaction('schedule','show',{event:'meeting'})),/Manage Server/);
+  await assert.rejects(h.app.handle(h.interaction('schedule','show',{event:'meeting'})),/Discord permission/);
   const button=h.interaction();Object.assign(button,{isButton:()=>true,isChatInputCommand:()=>false,customId:`rsvp:meeting:${event.start}:going`});
-  await assert.rejects(h.app.handle(button),/cannot view/);assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{});h.store.close();
+  await assert.rejects(h.app.handle(button),/Discord permission/);assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{});h.store.close();
 });
 test('RSVP rejects obsolete occurrences and cancel marks future delivery inactive',async()=>{
   const h=harness();const start=Date.now()+600000;h.store.put('server-a','event',{id:'meeting',title:'Test',kind:'event',channel:h.channel.id,start,duration:60,rsvps:{}});
@@ -277,7 +277,7 @@ test('forms remain the initial response and do not defer before showModal',async
 });
 test('the production dispatcher replies to permission failures instead of swallowing them',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('embed','create',{name:'Test'}));
-  assert.match(textOf(h.outputs[0]),/You don’t have permission/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
+  assert.match(textOf(h.outputs[0]),/Discord permission/);assert.doesNotMatch(textOf(h.outputs[0]),/Reference:/);h.store.close();
 });
 
 test('clearing the only embed content is rejected without corrupting its saved template',async()=>{
@@ -293,10 +293,10 @@ test('simultaneous RSVPs retain both members after asynchronous permission check
   await Promise.all([h.app.handle(first),h.app.handle(second)]);
   assert.deepEqual(h.store.get('server-a','event','meeting').rsvps,{[first.user.id]:'going',[second.user.id]:'going'});h.store.close();
 });
-test('help dropdown updates the original menu without requiring staff access',async()=>{
+test('help dropdown denies ordinary members without opening its menu',async()=>{
   const h=harness({manager:false});const i=h.interaction();
   Object.assign(i,{isChatInputCommand:()=>false,isStringSelectMenu:()=>true,customId:'help:topic',values:['events']});
-  await h.app.dispatch(i);assert.ok(!i.deferred&&i.replied);assert.match(h.outputs[0].embeds[0].toJSON().title,/./);assert.equal(h.outputs[0].components[0].components[0].type,3);h.store.close();
+  await h.app.dispatch(i);assert.ok(!i.deferred&&i.replied);assert.match(messageOf(h.outputs[0]),/Discord permission/);assert.deepEqual(h.outputs[0].components,[]);h.store.close();
 });
 test('command autocomplete responds with saved names without deferring or exposing another server',async()=>{
   const h=harness();h.store.put('server-a','embed',{id:'ours',name:'Welcome'});h.store.put('other','embed',{id:'secret',name:'Secret'});
@@ -358,7 +358,7 @@ test('production dispatcher routes Instagram setup and channel/role pickers to t
 test('a legacy staff role does not bypass Administrator or Manage Server requirements',async()=>{
   const h=harness({manager:false});await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);
   h.store.put('server-a','settings',{id:'main',zone:'Europe/Paris',staff:'helpers'});h.member.roles.cache.set('helpers',{});
-  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(textOf(h.outputs.at(-1)),/You don’t have permission/);h.store.close();
+  await h.app.dispatch(h.interaction('instagram','setup'));assert.equal(h.store.list('server-a','instagram-draft').length,0);assert.match(textOf(h.outputs.at(-1)),/Discord permission/);h.store.close();
 });
 
 test('retired /feed returns current-command guidance and missing channels do not prevent removal',async()=>{

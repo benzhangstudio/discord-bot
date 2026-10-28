@@ -4,8 +4,18 @@ import assert from 'node:assert/strict';
 import {Store} from '../src/store.js';
 import {deliver} from '../src/worker.js';
 import {nextDigest,digestParts,processFeeds} from '../src/weekly-feeds.js';
+import {setPluginEnabled} from '../src/plugins.js';
 const time=s=>Date.parse(s);
 const post=n=>({key:String(n),title:`Post ${n}`,link:`https://example.com/posts/${n}`});
+
+test('disabled Instagram blocks collection and delivery, including disablement during feed loading',async()=>{
+  for(const duringLoad of [false,true]){
+    const h=setup();let loads=0;
+    if(!duringLoad)setPluginEnabled(h.store,'g','instagram',false,'admin');
+    await processFeeds(h.client,h.store,time('2026-10-25T00:00:00-04:00'),{send:deliver,load:async()=>{loads++;setPluginEnabled(h.store,'g','instagram',false,'admin');return [post(1)];}});
+    assert.equal(loads,duringLoad?1:0);assert.equal(h.sent.length,0);assert.deepEqual(h.store.get('g','feed','f').pending,[]);h.store.close();
+  }
+});
 function setup(start='2026-10-19T12:00:00-04:00') {
   const now=time(start),store=new Store(':memory:'),sent=[];
   store.put('g','feed',{id:'f',name:'Rosé',url:'https://example.com/rss',channel:'c',seen:['old'],pending:[],checked:now,nextCheck:now+86400000,nextDigest:nextDigest(now)});

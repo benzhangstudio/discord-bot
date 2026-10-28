@@ -3,6 +3,7 @@
 // Errors use the dashboard's Fault type (HTTP status + website copy); they never reach Discord.
 import {randomUUID} from 'node:crypto';
 import {IANAZone} from 'luxon';
+import {PermissionFlagsBits as P} from 'discord.js';
 import {Fault,assert} from '../age-verification/core.js';
 import {Moderation,defaults as modDefaults} from './moderation-core.js';
 import {DEFAULT_ZONE} from './domain.js';
@@ -12,6 +13,7 @@ import {modlogConfig,saveModlog,missingPermissions,enabledEmbed,MODLOG_EVENTS,EV
 import {createReactionRoles,RR_LIMITS} from './reaction-roles.js';
 import {actionName,statusOf} from './mod-format.js';
 import {createDashboardFeatures} from './dashboard-features.js';
+import {dashboardAccess,canManageServer} from './permissions.js';
 
 export const PLUGINS=Object.freeze(['overview','moderation','automod','embeds','scheduler','instagram','reactionroles','verification','access','settings']);
 const commandsFor={
@@ -42,13 +44,15 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
   const modConfig=guild=>({...modDefaults,...store.get(guild,'mod-config','main')});
   const reactionRoles=createReactionRoles({store,client});
   const features=createDashboardFeatures({store,client,authorize:reauthorize});
-  const delegated=(guild,id,ownerId)=>!!ownerId&&store?.get(guild,'dashboard-access',id)?.grantedBy===ownerId;
-  function dashboardIdentity(guild,identity){
-    const dashboard=!!identity.owner||delegated(guild,identity.id,identity.ownerId);
-    return {...identity,dashboard,manager:dashboard};
-  }
+  const dashboardIdentity=(guild,identity)=>dashboardAccess(identity);
   async function reauthorize(guild,identity){
-    if(identity.reauthorize)return identity.reauthorize();
+    if(identity.reauthorize){
+      let timer;
+      try{
+        const fresh=dashboardAccess(await Promise.race([identity.reauthorize(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Dashboard access could not be checked. No changes were saved.')),accessTimeoutMs);})]));
+        assert(fresh.id===identity.id&&fresh.dashboard,403,'Your dashboard access was removed.');return fresh;
+      }finally{clearTimeout(timer);}
+    }
     const g=cached(guild);assert(g,503,'The bot must be online and in this server to save changes.');
     let timer;
     try{
@@ -56,19 +60,21 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         Promise.all([g.fetch(),g.members.fetch({user:identity.id,force:true})]),
         new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Discord took too long. No changes were saved.')),accessTimeoutMs);})
       ]);
-      assert(member?.id===identity.id&&(fresh.ownerId===identity.id||delegated(guild,identity.id,fresh.ownerId)),403,'Your dashboard access was removed.');
+      assert(member?.id===identity.id&&!member.user?.bot&&(fresh.ownerId===identity.id||canManageServer(member.permissions)),403,'Your dashboard access was removed.');
+      return dashboardAccess({id:identity.id,owner:fresh.ownerId===identity.id,administrator:member.permissions?.has?.('Administrator')===true,manager:canManageServer(member.permissions)});
     }catch(error){if(error instanceof Fault)throw error;throw new Fault(403,'Could not confirm your dashboard access. Sign in again.');}
     finally{clearTimeout(timer);}
   }
   // Shared validation throws UserError with reviewed copy; surface it as a 400 on the website.
   async function rr(work){try{return await work();}catch(error){if(error?.name==='UserError')throw new Fault(400,error.message);throw new Fault(502,'Discord did not accept the change. Check the bot’s permissions and try again.');}}
   function rrGuild(guild){const g=cached(guild);assert(g,503,'The bot must be online and in this server to change reaction roles.');return g;}
-  function rrView(guild){
+  function visible(guild,id,identity){return !!(identity?.securityAdmin||identity?.owner||identity?.demo||identity?.member&&cached(guild)?.channels?.cache?.get(id)?.permissionsFor(identity.member)?.has(P.ViewChannel));}
+  function rrView(guild,identity){
     const g=cached(guild),me=g?.members?.me;
-    const channels=g?[...g.channels.cache.values()].filter(c=>[0,5].includes(c.type)).map(c=>({id:c.id,name:text(c.name,100)})):[];
+    const channels=g?[...g.channels.cache.values()].filter(c=>[0,5].includes(c.type)&&visible(guild,c.id,identity)).map(c=>({id:c.id,name:text(c.name,100)})):[];
     const roles=g?[...g.roles.cache.values()].filter(r=>r.id!==g.id&&!r.managed).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:text(r.name,100),assignable:!!me&&r.position<me.roles.highest.position})):[];
-    return {limits:RR_LIMITS,channels,roles,botReady:!!g,drafts:store.list(guild,'reaction-role-draft'),
-      items:store.list(guild,'reaction-role').map(x=>({id:x.id,title:text(x.title||'Reaction roles',256),description:text(x.description,2000),channel:label(guild,'channel',x.channel),message:x.message,owned:!!x.owned,mode:x.mode,maxRoles:x.maxRoles||0,duration:x.duration||0,removeOnUnreact:x.removeOnUnreact!==false,requiredRole:label(guild,'role',x.requiredRole),
+    return {limits:RR_LIMITS,channels,roles,botReady:!!g,drafts:store.list(guild,'reaction-role-draft').filter(d=>!d.channel||visible(guild,d.channel,identity)),
+      items:store.list(guild,'reaction-role').filter(x=>visible(guild,x.channel,identity)).map(x=>({id:x.id,title:text(x.title||'Reaction roles',256),description:text(x.description,2000),channel:label(guild,'channel',x.channel),message:x.message,owned:!!x.owned,mode:x.mode,maxRoles:x.maxRoles||0,duration:x.duration||0,removeOnUnreact:x.removeOnUnreact!==false,requiredRole:label(guild,'role',x.requiredRole),
         entries:x.entries.map(e=>({emoji:text(e.display,64),role:label(guild,'role',e.role)})),broken:x.broken?text(x.broken,120):null,link:`https://discord.com/channels/${guild}/${x.channel}/${x.message}`}))};
   }
   const automodAvailable=()=>env.MODERATION_MESSAGE_CONTENT==='1';
@@ -94,9 +100,10 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       missingPermissions:ch?missingPermissions(ch,g.members?.me):[],
       auditLog:g?.members?.me?.permissions?.has?.(128n)??null};
   }
-  function modlogChannel(guild,id){
+  function modlogChannel(guild,id,identity){
     const g=cached(guild);assert(g,409,'The bot is not in this server.');
     const ch=g.channels.cache.get(id);assert(ch&&[0,5].includes(ch.type),400,'Choose a text or announcement channel.');
+    assert(identity?.owner||identity?.securityAdmin||identity?.demo||ch.permissionsFor(identity?.member)?.has([P.ViewChannel,P.SendMessages]),403,'Choose a log channel you can view and send messages in.');
     const missing=missingPermissions(ch,g.members?.me);
     assert(!missing.length,400,`The bot needs ${missing.join(', ')} in #${text(ch.name,100)}.`);
     return ch;
@@ -106,18 +113,18 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     only(m,['channel','enabled','events','test']);
     if(m.test){
       const cfg=modlogConfig(store,guild),id=m.channel??cfg.channel;assert(typeof id==='string'&&/^\d{17,20}$/.test(id),400,'Choose a mod log channel first.');
-      const ch=modlogChannel(guild,id);
+      const ch=modlogChannel(guild,id,identity);
       try{await Promise.race([ch.send({embeds:[{...enabledEmbed(cfg,identity.id),title:'Mod log test message',description:'The bot can post moderation records in this channel.'}],allowedMentions:{parse:[]}}),new Promise((_,r)=>setTimeout(()=>r(Object.assign(new Error('timeout'),{name:'TimeoutError'})),8000).unref?.())]);}
       catch(error){console.warn(`Mod log test message failed (${error.status||error.name}).`);throw new Fault(502,'Discord did not confirm the test message. Check the channel before trying again.');}
       return;
     }
     const patch={};
-    if('channel' in m){assert(m.channel===null||typeof m.channel==='string'&&/^\d{17,20}$/.test(m.channel),400,'Choose a channel.');if(m.channel)modlogChannel(guild,m.channel);patch.channel=m.channel;}
+    if('channel' in m){assert(m.channel===null||typeof m.channel==='string'&&/^\d{17,20}$/.test(m.channel),400,'Choose a channel.');if(m.channel)modlogChannel(guild,m.channel,identity);patch.channel=m.channel;}
     if('enabled' in m){assert(typeof m.enabled==='boolean',400,'Choose on or off.');patch.enabled=m.enabled;}
     if('events' in m){assert(m.events&&typeof m.events==='object'&&Object.entries(m.events).every(([k,v])=>EVENT_KEYS.includes(k)&&typeof v==='boolean'),400,'Invalid mod log actions.');patch.events=m.events;}
     const next={...modlogConfig(store,guild),...patch};
     assert(!next.enabled||next.channel,400,'Choose a mod log channel before turning it on.');
-    if(next.enabled&&!('channel' in patch))modlogChannel(guild,next.channel);
+    if(next.enabled&&!('channel' in patch))modlogChannel(guild,next.channel,identity);
     const cur=modlogConfig(store,guild);
     // Entries for actions taken while the log was off are never posted later.
     if(next.enabled&&!cur.enabled)for(const row of store.list(guild,'mod-log'))if(row.state==='queued')store.put(guild,'mod-log',{...row,state:'skipped'});
@@ -128,57 +135,27 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     const base={plugin:name,enabled,toggleable:TOGGLEABLE_PLUGINS.includes(name),commands:commandsFor[name]||[]};
     if(name==='moderation'){
       const cfg=modConfig(guild);
-      const {channels,roles}=rrView(guild);
-      return {...base,editable:true,ownerOnly:true,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false},
-        recentCases:new Moderation(store).cases(guild).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),actionLabel:actionName(c.action),targetLabel:text(c.details?.memberName||cached(guild)?.members?.cache?.get?.(c.target)?.displayName||client?.users?.cache?.get?.(c.target)?.username||'Member',100),moderatorLabel:text(client?.users?.cache?.get?.(c.actor)?.username||'Moderator',100),statusLabel:statusOf(c),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
+      const {channels,roles}=rrView(guild,identity);
+      return {...base,editable:true,ownerOnly:false,channels,roles,config:{modRole:label(guild,'role',cfg.modRole),privacyRole:label(guild,'role',cfg.privacyRole),retentionDays:cfg.retentionDays,dmMembers:cfg.dmMembers!==false},
+        recentCases:(identity.moderationAccess?new Moderation(store).cases(guild):[]).slice(0,15).map(c=>({id:text(c.id,40),number:c.number||null,proof:(Array.isArray(c.details?.proof)?c.details.proof:[]).slice(0,10).map(p=>({type:p.type==='image'?'image':'link',url:/^https:\/\//.test(String(p.storedUrl||p.url))?text(p.storedUrl||p.url,600):null,logMessage:p.logMessage&&/^https:\/\/discord\.com\//.test(p.logMessage)?text(p.logMessage,200):null})).filter(p=>p.url),action:text(c.action,40),actionLabel:actionName(c.action),targetLabel:text(c.details?.memberName||cached(guild)?.members?.cache?.get?.(c.target)?.displayName||client?.users?.cache?.get?.(c.target)?.username||'Member',100),moderatorLabel:text(client?.users?.cache?.get?.(c.actor)?.username||'Moderator',100),statusLabel:statusOf(c),target:text(c.target,40),actor:text(c.actor,40),state:text(c.state,20),created:c.created})),
         locks:store.list(guild,'mod-lock').length,modlog:modlogView(guild)};
     }
     if(name==='automod'){
       const cfg=modConfig(guild);
-      return {...base,editable:true,ownerOnly:true,messageContentAvailable:automodAvailable(),config:{automod:!!cfg.automod,blockInvites:!!cfg.blockInvites,mentionLimit:cfg.mentionLimit,spamLimit:cfg.spamLimit,blockedWords:(cfg.blockedWords||[]).map(w=>text(w,100))}};
+      return {...base,editable:true,ownerOnly:false,messageContentAvailable:automodAvailable(),config:{automod:!!cfg.automod,blockInvites:!!cfg.blockInvites,mentionLimit:cfg.mentionLimit,spamLimit:cfg.spamLimit,blockedWords:(cfg.blockedWords||[]).map(w=>text(w,100))}};
     }
-    if(['embeds','scheduler','instagram'].includes(name))return {...base,...features.view(guild,name)};
-    if(name==='reactionroles')return {...base,editable:true,...rrView(guild)};
-    if(name==='access'){
-      const ownerId=identity?.owner?identity.id:cached(guild)?.ownerId;
-      const grants=kind=>store.list(guild,kind).filter(a=>a.grantedBy===ownerId).map(a=>({user:a.id,grantedBy:a.grantedBy,grantedAt:a.grantedAt||null}));
-      return {...base,editable:true,ownerManaged:true,limit:100,dashboardLimit:100,items:grants('access'),dashboardItems:grants('dashboard-access')};
-    }
+    if(['embeds','scheduler','instagram'].includes(name))return {...base,...features.view(guild,name,identity)};
+    if(name==='reactionroles')return {...base,editable:true,...rrView(guild,identity)};
+    if(name==='access')return {...base,editable:false,nativePermissions:true,items:[],dashboardItems:[],policy:[{role:'Server owner / Administrator',access:'Bot administration and security settings'},{role:'Manage Server',access:'Routine dashboard settings and content'},{role:'Moderator',access:'Commands matching their Discord moderation permissions'},{role:'Ordinary member',access:'Own verification submission portal only'}]};
     if(name==='settings'){const s=settings(guild);return {...base,editable:true,timezone:s.zone||DEFAULT_ZONE,logChannel:label(guild,'channel',s.logChannel)};}
     throw new Fault(404,'Unknown dashboard plugin.');
   }
   async function update(guild,name,data,identity){
-    if(name==='access'){
-      assert(identity.owner,403,'Only the current server owner can manage access.');
-      only(data,['add','remove','dashboardAdd','dashboardRemove']);assert(Object.keys(data).length===1,400,'Choose one member to add or remove.');
-      const key=Object.keys(data)[0],action=['add','dashboardAdd'].includes(key)?'add':'remove',id=data[key],kind=key.startsWith('dashboard')?'dashboard-access':'access';
-      assert(typeof id==='string'&&/^\d{17,20}$/.test(id),400,'Enter a valid Discord user ID.');
-      const g=cached(guild);assert(g,503,'The bot must be online and in this server to manage access.');
-      // Bound lookups and recheck ownership after asynchronous work, before any write.
-      async function lookup(work){
-        let timer;
-        try{return await Promise.race([Promise.resolve().then(work),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Discord took too long. No access changes were saved.')),accessTimeoutMs);})]);}
-        catch(error){if(error instanceof Fault)throw error;throw new Fault(502,'Could not verify this server or member with Discord. No access changes were saved.');}
-        finally{clearTimeout(timer);}
-      }
-      if(action==='add'){
-        const member=await lookup(async()=>{try{return await g.members.fetch({user:id,force:true});}catch(error){if(error.code===10007||error.status===404)throw new Fault(400,'Choose a current human member of this server.');throw error;}});
-        assert(member?.id===id&&member.user&&!member.user.bot,400,'Choose a current human member of this server.');
-      }
-      const fresh=await lookup(()=>g.fetch());
-      assert(fresh.ownerId===identity.id,403,'Only the current server owner can manage access.');
-      if(action==='remove')store.remove(guild,kind,id);
-      else{
-        assert(store.get(guild,kind,id)||store.list(guild,kind).filter(a=>a.grantedBy===identity.id).length<100,400,'This server already has 100 approved members. Remove someone before adding another.');
-        const existing=store.get(guild,kind,id);
-        if(existing?.grantedBy!==identity.id)store.put(guild,kind,{id,grantedBy:identity.id,grantedAt:Date.now()});
-      }
-      return plugin(guild,name,identity);
-    }
+    if(name==='access')throw new Fault(409,'Manage access through Discord server roles and permissions. Bot access grants are retired.');
     if(['embeds','scheduler','instagram'].includes(name)&&Object.keys(data||{}).some(key=>key!=='enabled')){
       assert(!('enabled' in data),400,'Save feature settings separately from the plugin switch.');
       await features.update(guild,name,data,identity);
-      return plugin(guild,name);
+      return plugin(guild,name,identity);
     }
     if(name==='reactionroles'&&data&&!('enabled' in data)){
       only(data,['create','update','delete','draft','deleteDraft','publishDraft']);assert(Object.keys(data).length===1,400,'Make one change at a time.');
@@ -194,26 +171,26 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         assert(draft.id||store.list(guild,'reaction-role-draft').length<50,400,'This server already has 50 drafts. Remove one before saving another.');
         const id=draft.id||randomUUID();
         store.put(guild,'reaction-role-draft',{...draft,id,updatedBy:identity.id,updatedAt:Date.now()});
-        return {...plugin(guild,name),savedDraft:id};
+        return {...plugin(guild,name,identity),savedDraft:id};
       }
-      if(data.deleteDraft){assert(typeof data.deleteDraft==='string',400,'Choose a saved draft.');store.remove(guild,'reaction-role-draft',data.deleteDraft);return plugin(guild,name);}
-      const g=rrGuild(guild),actor={id:identity.id,owner:!!identity.owner};
+      if(data.deleteDraft){assert(typeof data.deleteDraft==='string',400,'Choose a saved draft.');store.remove(guild,'reaction-role-draft',data.deleteDraft);return plugin(guild,name,identity);}
+      const g=rrGuild(guild),actor={id:identity.id,owner:!!identity.owner,reauthorize:()=>reauthorize(guild,identity)};
       if(data.publishDraft){
         assert(typeof data.publishDraft==='string',400,'Choose a saved draft.');
         const draft=store.get(guild,'reaction-role-draft',data.publishDraft);assert(draft,404,'Saved draft not found in this server.');
         const {id,target,updatedBy,updatedAt,...options}=draft;
-        if(target){const {channel,message,entries,...settings}=options;await rr(async()=>{await reactionRoles.edit(g,target,settings);if(entries)await reactionRoles.setEntries(g,target,entries,actor);});}
+        if(target){const {channel,message,entries,...settings}=options;await rr(async()=>{await reactionRoles.edit(g,target,settings,actor);if(entries)await reactionRoles.setEntries(g,target,entries,actor);});}
         else await rr(()=>reactionRoles.create(g,{...options,requestId:'draft-'+id},actor));
-        store.remove(guild,'reaction-role-draft',id);return plugin(guild,name);
+        store.remove(guild,'reaction-role-draft',id);return plugin(guild,name,identity);
       }
       const opts=o=>{only(o,['id','channel','message','title','description','mode','maxRoles','duration','removeOnUnreact','requiredRole','entries']);
         for(const k of ['channel','message','requiredRole','id'])assert(o[k]==null||(typeof o[k]==='string'&&o[k].length<=200),400,'Invalid field.');
         assert(o.entries===undefined||Array.isArray(o.entries)&&o.entries.every(e=>e&&typeof e.emoji==='string'&&e.emoji.length<=64&&/^\d{17,20}$/.test(e.role)),400,'Each row needs an emoji and a role.');
         const {id,entries,channel,message,...rest}=o;return {id,entries,channel,message,rest};};
       if(data.create){const o=opts(data.create);await rr(()=>reactionRoles.create(g,{channel:o.channel,message:o.message||null,entries:o.entries||[],...o.rest},actor));}
-      if(data.update){const o=opts(data.update);assert(o.id,400,'Choose a reaction-role message.');await rr(async()=>{await reactionRoles.edit(g,o.id,o.rest);if(o.entries)await reactionRoles.setEntries(g,o.id,o.entries,actor);});}
-      if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete));}
-      return plugin(guild,name);
+      if(data.update){const o=opts(data.update);assert(o.id,400,'Choose a reaction-role message.');await rr(async()=>{await reactionRoles.edit(g,o.id,o.rest,actor);if(o.entries)await reactionRoles.setEntries(g,o.id,o.entries,actor);});}
+      if(data.delete){assert(typeof data.delete==='string',400,'Choose a reaction-role message.');await rr(()=>reactionRoles.remove(g,data.delete,actor));}
+      return plugin(guild,name,identity);
     }
     only(data,name==='automod'?['enabled','automod','blockInvites','mentionLimit','spamLimit','blockedWords']:name==='moderation'?['enabled','modRole','privacyRole','retentionDays','dmMembers','modlog']:name==='settings'?['timezone']:['enabled']);
     if('enabled' in data&&name!=='automod'){
@@ -224,10 +201,10 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
       assert(typeof data.timezone==='string'&&data.timezone.length<=64&&IANAZone.isValidZone(data.timezone),400,'Choose a valid IANA timezone, such as America/New_York.');
       store.put(guild,'settings',{...settings(guild),id:'main',zone:data.timezone});
     }
-    if(name==='moderation'&&'modlog' in data){assert(Object.keys(data).length===1,400,'Save mod log settings separately.');await modlogUpdate(guild,data,identity);return plugin(guild,name);}
+    if(name==='moderation'&&'modlog' in data){assert(Object.keys(data).length===1,400,'Save mod log settings separately.');await modlogUpdate(guild,data,identity);return plugin(guild,name,identity);}
     if(name==='moderation'&&Object.keys(data).some(k=>k!=='enabled')){
       // Moderation policy (formerly /mod-settings): only the current owner configures it; each change is a case.
-      assert(identity.owner,403,'Only the current server owner can change moderation settings.');
+      assert(identity.manager,403,'Manage Server permission is required to change moderation settings.');
       const g=cached(guild),cfg=modConfig(guild),patch={},snow=v=>v===null||typeof v==='string'&&/^\d{17,20}$/.test(v);
       for(const key of ['modRole','privacyRole'])if(key in data){
         assert(snow(data[key]),400,'Choose a role.');
@@ -245,7 +222,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
     }
     if(name==='automod'){
       // Only the current owner configures moderation policy. only the current owner configures moderation policy.
-      assert(identity.owner,403,'Only the current server owner can change automod settings.');
+      assert(identity.manager,403,'Manage Server permission is required to change automod settings.');
       const patch={};
       if('enabled' in data)data={...data,automod:data.enabled};
       if('automod' in data){assert(typeof data.automod==='boolean',400,'Choose on or off.');patch.automod=data.automod;}
@@ -260,7 +237,7 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         assert(result.state==='succeeded',500,'Automod settings could not be saved.');
       }
     }
-    return plugin(guild,name);
+    return plugin(guild,name,identity);
   }
   return {
     hasBot,
@@ -272,17 +249,30 @@ export function createDashboardApi({store,client=null,env=process.env,demo=false
         store.list(guild,'rr-temp').some(entry=>roles.includes(entry.role));
     },
     dashboardIdentity,
-    dashboardCandidate(guild,id){return cached(guild)?.ownerId===id||!!store?.get(guild,'dashboard-access',id);},
+    dashboardCandidate(guild,id){const g=cached(guild);return g?.ownerId===id||canManageServer(g?.members?.cache?.get?.(id)?.permissions);},
     async handle({method,endpoint,data,guild,identity,verification}){
       if(endpoint!=='overview'&&!endpoint.startsWith('plugins/'))return undefined;
-      assert(identity.owner||identity.dashboard,403,'Only the server owner or members they approve can manage this dashboard.');
+      identity=dashboardAccess(identity);
+      assert(identity.dashboard,403,'Administrator or Manage Server permission is required to manage this dashboard.');
       available();
+      if(demo)identity.demo=true;
       if(endpoint==='overview'){assert(method==='GET',405,'Method not allowed.');return overview(guild,{verification,identity});}
       const name=endpoint.slice('plugins/'.length);
       assert(PLUGINS.includes(name)&&!['overview','verification'].includes(name),404,'Unknown dashboard plugin.');
-      if(name==='access')assert(identity.owner,403,'Only the current server owner can manage access.');
+      // Reading the native policy exposes no member/grant records. Keep the owner
+      // gate for any legacy write; update() rejects all retired grant mutations.
+      if(name==='access'&&method!=='GET')assert(identity.owner,403,'Only the current server owner can manage access.');
+      if(!demo&&!identity.securityAdmin&&['moderation','scheduler','instagram','reactionroles'].includes(name)){
+        const g=cached(guild);assert(g,503,'The bot must be online to check channel access.');let timer;
+        try{identity.member=await Promise.race([g.members.fetch({user:identity.id,force:true}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Fault(504,'Channel access could not be checked. No changes were saved.')),accessTimeoutMs);})]);}
+        finally{clearTimeout(timer);}
+        assert(identity.member?.id===identity.id&&!identity.member.user?.bot&&canManageServer(identity.member.permissions),403,'Your dashboard access was removed.');
+      }
       if(method==='GET')return plugin(guild,name,identity);
       assert(method==='PUT',405,'Method not allowed.');
+      // Recheck every write, including synchronous toggles/deletes and mod-log sends.
+      if(!demo){const member=identity.member;identity={...await reauthorize(guild,identity),member};}
+      if(name==='reactionroles')assert(identity.owner||identity.securityAdmin||identity.manageRoles,403,'Manage Roles permission is required to configure reaction roles.');
       return update(guild,name,data,identity);
     }
   };

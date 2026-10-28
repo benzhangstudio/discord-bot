@@ -23,7 +23,7 @@ function world({botPerms=[P.ManageRoles],clock}={}){
   let n=0;
   const channel={id:CH,type:0,permissionsFor:()=>new PermissionsBitField([P.ViewChannel,P.SendMessages,P.EmbedLinks,P.AddReactions,P.ReadMessageHistory]),send:async p=>{sent.push(p);return message('9'+String(++n).padStart(17,'0'),channel);},messages:{fetch:async id=>{const m=messages.get(id);if(!m)throw Object.assign(Error('Unknown Message'),{code:10008});return m;}}};
   const members=new Map();
-  const member=(id,held=[],highest=15)=>{const m={id,roles:{cache:new Map(held.map(r=>[r,roles.get(r)])),highest:{position:highest},add:async ids=>{for(const r of [].concat(ids))m.roles.cache.set(r,roles.get(r));},remove:async ids=>{for(const r of [].concat(ids))m.roles.cache.delete(r);}}};members.set(id,m);return m;};
+  const member=(id,held=[],highest=15)=>{const m={id,permissions:new PermissionsBitField([P.ManageGuild]),roles:{cache:new Map(held.map(r=>[r,roles.get(r)])),highest:{position:highest},add:async ids=>{for(const r of [].concat(ids))m.roles.cache.set(r,roles.get(r));},remove:async ids=>{for(const r of [].concat(ids))m.roles.cache.delete(r);}}};members.set(id,m);return m;};
   const guild={id:G,ownerId:'999999999999999999',roles:{cache:roles,fetch:async id=>roles.get(id)||null},channels:{cache:new Map([[CH,channel]]),fetch:async id=>id===CH?channel:null},members:{me,fetchMe:async()=>me,fetch:async id=>{const m=members.get(typeof id==='object'?id.user:id);if(!m)throw Object.assign(Error('Unknown Member'),{code:10007});return m;}}};
   channel.guild=guild;
   const client=Object.assign(new EventEmitter(),{user:{id:'bot'},isReady:()=>true,guilds:{cache:new Map([[G,guild]])},channels:{fetch:async()=>channel}});
@@ -54,6 +54,14 @@ test('verification role protection is shared by dashboard setup and existing gat
   root.forGuild(G).configure('owner',R1,R3,false);
   await assert.rejects(w.rr.addEntry(w.guild,group.id,{emoji:'🎲',role:R3},null));
   await assert.rejects(w.rr.addEntry(w.guild,group.id,{emoji:'🎲',role:R2},null));
+});
+
+test('ordinary members cannot use reaction-role controls even on an existing published message',async t=>{
+  const w=world();t.after(()=>w.store.close());
+  const group=await w.rr.create(w.guild,{channel:CH,entries:[{emoji:'🎮',role:R1}]},null);
+  const member=w.member('500000000000000001');member.permissions=new PermissionsBitField([]);
+  const event=w.react(group.message,'🎮',member.id),before=w.sent.length;
+  await w.rr.onReaction(event.r,event.user,true);assert.equal(member.roles.cache.has(R1),false);assert.deepEqual(event.r.removed,[member.id]);assert.equal(w.sent.length,before);
 });
 
 test('emoji, duration and message link parsing',()=>{
@@ -190,7 +198,7 @@ test('dashboard API: owners create, edit and delete with CSRF; unapproved manage
   const url='/api/guilds/'+G+'/plugins/reactionroles';
   const member=await login('member');assert.equal((await member(url)).status,403);
   assert.equal((await member(url,{method:'PUT',data:{create:{channel:CH}}})).status,403);
-  const unapproved=await login('manager');assert.equal((await unapproved(url)).status,403);
+  const unapproved=await login('reviewer');assert.equal((await unapproved(url)).status,403);
   const manager=await login('owner');
   const view=await (await manager(url)).json();assert.equal(view.enabled,true);assert.ok(view.channels.some(x=>x.id===CH));assert.equal(view.roles.find(x=>x.id===HIGH).assignable,false);
   assert.equal((await manager(url,{method:'PUT',data:{create:{channel:CH}},csrf:''})).status,403);assert.equal(w.store.list(G,'reaction-role').length,0);
@@ -209,11 +217,11 @@ test('dashboard API: owners create, edit and delete with CSRF; unapproved manage
 test('dashboard drafts save incomplete work without Discord calls, survive reopening, copy and publish explicitly',async()=>{
  const w=world();try{
   const api=createDashboardApi({store:w.store,client:w.client});
-  const call=(method,data,guild=G)=>api.handle({method,endpoint:'plugins/reactionroles',guild,identity:{id:'owner',owner:true,manager:true},data});
+  const call=(method,data,guild=G)=>api.handle({method,endpoint:'plugins/reactionroles',guild,identity:{id:'owner',owner:true,manager:true,reauthorize:async()=>({id:'owner',owner:true,manager:true,securityAdmin:true})},data});
   const partial=await call('PUT',{draft:{title:'My saved roles',entries:[{emoji:'🎮',role:''}]}});
   assert.equal(w.sent.length,0);assert.equal(partial.drafts.length,1);
   const saved=partial.savedDraft;
-  const reopened=await createDashboardApi({store:w.store,client:w.client}).handle({method:'GET',endpoint:'plugins/reactionroles',guild:G,identity:{id:'owner',owner:true,manager:true}});
+  const reopened=await createDashboardApi({store:w.store,client:w.client}).handle({method:'GET',endpoint:'plugins/reactionroles',guild:G,identity:{id:'owner',owner:true,manager:true,reauthorize:async()=>({id:'owner',owner:true,manager:true,securityAdmin:true})}});
   assert.equal(reopened.drafts[0].title,'My saved roles');assert.deepEqual(reopened.commands,[]);
   await assert.rejects(call('PUT',{draft:{id:saved,title:'Other server'}},DEMO_GUILDS[1].id),/not found/);
   const copy=await call('PUT',{draft:{title:'Copy of roles',entries:[{emoji:'🎮',role:R1}]}});assert.notEqual(copy.savedDraft,saved);assert.equal(copy.drafts.length,2);

@@ -21,7 +21,8 @@ export class VerificationWorkflow {
   open(store){assert(store.settings()?.enabled,409,'Verification is not open for this server. Its owner can enable it here.');}
   async fresh(store,session,permission){
     const identity=await this.bounded(()=>this.authorize(store.guild,session));
-    assert(identity?.id===session.id&&identity[permission]===true,403,permission==='owner'?'Only the current server owner can manage verification privacy.':'Your reviewer permission was removed.');
+    const allowed=permission==='owner'?(identity?.owner===true||identity?.securityAdmin===true):identity?.[permission]===true;
+    assert(identity?.id===session.id&&allowed,403,permission==='owner'?'Only the server owner or an administrator can manage verification privacy.':'Your reviewer permission was removed.');
     return identity;
   }
   claim(store,id,actor){this.idle(store,id);this.open(store);store.claim(id,actor);}

@@ -1,5 +1,7 @@
 # Number One: GitHub → Wispbyte
 
+Current access policy: [native Discord permissions](ACCESS_POLICY.md). Ordinary members can only use their own verification submission/status/privacy portal. Legacy per-user bot grants do not authorize access. The [whole-bot access review](ACCESS_REVIEW.md) records coverage and release limits. This policy supersedes older access descriptions below.
+
 The existing Rose folder is the repository root. GitHub stores code and tests; Wispbyte runs the live bot. Your laptop is used only for development and optional temporary testing.
 
 ## One-time connection
@@ -36,7 +38,7 @@ GitHub Actions tests code; Wispbyte's configured auto-update performs deployment
 
 The existing `src/index.js` starts both the bot and the public multi-server dashboard. Keep this startup file unchanged. Wispbyte's subdomain serves `https://number-one.wispbyte.app`; Node listens on **0.0.0.0:16243** behind its HTTPS proxy. `AGE_PORT` overrides `SERVER_PORT`, which otherwise overrides the default 16243. Requests require the public Host header and `X-Forwarded-Proto: https`; plain HTTP fails closed. Dashboard errors are logged separately while the bot can continue.
 
-The dashboard workflow is **Discord sign-in → choose an owned or owner-approved server → configure its features**. Ordinary membership, Administrator and Manage Server do not grant dashboard access. Only the current owner can approve dashboard members under Access; dashboard grants are separate from slash-command grants and stop authorizing access after an ownership transfer. Members and configured reviewers use the separate shared Verification link. Only the owner and configured reviewers can review cases. Only the current owner can access that server's audit and privacy administration. Members never need developer, GitHub or Wispbyte access.
+The dashboard workflow is **Discord sign-in → choose an owned or native-permission server → configure its features**. Ordinary membership, Administrator and Manage Server do not grant dashboard access. Only the current owner can approve dashboard members under Access; dashboard grants are separate from slash-command grants and stop authorizing access after an ownership transfer. Members and configured reviewers use the separate shared Verification link. Only the owner and configured reviewers can review cases. Only the current owner can access that server's audit and privacy administration. Members never need developer, GitHub or Wispbyte access.
 
 ### Operator setup, once for the whole bot
 
@@ -54,7 +56,7 @@ With a nonempty client secret present, hosted startup automatically chooses Disc
 
 1. Wait for checks on main to pass, then manually restart/refresh Wispbyte using the established auto-update-on-start workflow. Publishing GitHub code does not itself restart Wispbyte.
 2. Leave startup at `src/index.js`. Look for `Number One dashboard listening on 0.0.0.0:16243; public verification synthetic-only with Discord sign-in.` and the normal successful bot startup. A locked message means the application secret is missing or maintenance mode is enabled. A different port means check `SERVER_PORT` or privately set `AGE_PORT=16243` to match the subdomain allocation.
-3. Open `https://number-one.wispbyte.app/dashboard`. No new environment variables are needed for this update. Sign in with Discord; only owned or explicitly owner-approved servers should appear. If Number One is absent, its owner can use Add bot to install it. Confirm that an ordinary member or an administrator without a dashboard grant cannot open server settings, including by entering a server URL directly.
+3. Open `https://number-one.wispbyte.app/dashboard`. No new environment variables are needed for this update. Sign in with Discord; only owned or explicitly native-permission servers should appear. If Number One is absent, its owner can use Add bot to install it. Confirm that an ordinary member or an administrator without a dashboard grant cannot open server settings, including by entering a server URL directly.
 4. On that website, choose the community's reviewer and test verified roles, acknowledge synthetic-only testing, and enable its Beta. The bot needs Manage Roles and a role above the test verified role. Use a test role that does not unlock age-restricted content; synthetic cases cannot prove real age.
 5. Share the generated member verification link. Use a second member/reviewer account to test claims, decisions, role grant, closed-DM behavior and privacy requests. Confirm that verification does not expose other dashboard tabs. Approve and remove a dashboard member under Access, and check that removal blocks the next protected request. Repeat in another community and confirm data/settings remain separate. Removing membership/reviewer rights must revoke subsequent access.
 

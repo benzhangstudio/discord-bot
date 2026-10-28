@@ -1,5 +1,7 @@
 import {DateTime} from 'luxon';
 import {loadFeed} from './feeds.js';
+import {pluginEnabled} from './plugins.js';
+import {withDeadline} from './responses.js';
 export const DIGEST_ZONE='America/New_York';
 const DAY=86400000;
 
@@ -35,7 +37,7 @@ export function digestParts(feed,items) {
 export async function processFeeds(client,store,now,{load=loadFeed,send}) {
   for(const saved of store.all('feed')) {
     let feed=store.get(saved.guild,'feed',saved.id);
-    if(!feed || feed.paused)continue;
+    if(!feed || feed.paused || !pluginEnabled(store,saved.guild,'instagram'))continue;
     feed.nextDigest ??= nextDigest(now,feed);
     feed.pending ??= [];
     feed.nextCheck ??= (feed.checked || 0)+DAY;
@@ -44,9 +46,9 @@ export async function processFeeds(client,store,now,{load=loadFeed,send}) {
     if(now>=feed.nextCheck || (due&&feed.digestCheckedFor!==feed.nextDigest)) {
       const version=feed.settingsVersion||0;
       try {
-        const items=await load(feed.url);
+        const items=await withDeadline(load(feed.url),15000,'Feed loading timed out.');
         const current=store.get(saved.guild,'feed',feed.id);
-        if(!current || current.paused || (current.settingsVersion||0)!==version)continue;
+        if(!current || current.paused || !pluginEnabled(store,saved.guild,'instagram') || (current.settingsVersion||0)!==version)continue;
         feed=current;
         const seen=new Set(feed.seen || []),pending=new Map((feed.pending || []).map(item=>[item.key,item]));
         for(const item of [...items].reverse())if(!seen.has(item.key)){pending.set(item.key,item);seen.add(item.key);}
@@ -68,11 +70,11 @@ export async function processFeeds(client,store,now,{load=loadFeed,send}) {
         store.put(saved.guild,'feed',feed);
       }
       if(feed.batch) {
-        const channel=await client.channels.fetch(feed.channel);
+        const channel=await withDeadline(client.channels.fetch(feed.channel),8000,'Roundup channel check timed out.');
         if(!channel || channel.guildId!==saved.guild || !channel.isTextBased())throw Error('Weekly batch channel unavailable.');
         while(feed.batch.part<feed.batch.parts.length) {
           const current=store.get(saved.guild,'feed',feed.id);
-          if(!current || current.paused)break;
+          if(!current || current.paused || !pluginEnabled(store,saved.guild,'instagram'))break;
           feed=current;
           const key=`digest:${saved.guild}:${feed.id}:${feed.batch.slot}:${feed.batch.part}`;
           try {

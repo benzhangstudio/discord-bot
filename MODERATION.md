@@ -1,5 +1,7 @@
 # Moderation
 
+Current access policy: [native Discord permissions](ACCESS_POLICY.md). Ordinary members can only use their own verification submission/status/privacy portal. Legacy per-user bot grants do not authorize access. The [whole-bot access review](ACCESS_REVIEW.md) records coverage and release limits. This policy supersedes older access descriptions below.
+
 Number One uses familiar member actions with required inputs first and optional inputs on the same command. Server settings, command access, automod and reaction-role setup live on the dashboard. Moderation appeals are unavailable; verification remains a separate dashboard feature.
 
 ## Commands
@@ -25,7 +27,7 @@ The short number in `Case #12` identifies that exact record in this server. It i
 
 Use `/case number:12` to view details, or `/case number:12 reason:Additional context image:...` to add a note and an optional image. Supplying an image without a note also adds it to that case; there is no separate image command. Adding context requires an explicit case number, so the bot never silently chooses the latest case. If both member and number are supplied, they must match.
 
-Only the current owner can set `outcome:Completed` or `outcome:Not completed`, with a reason, after checking an uncertain action in Discord. This updates the record; it never repeats the action.
+Only the current owner or an Administrator can set `outcome:Completed` or `outcome:Not completed`, with a reason, after checking an uncertain action in Discord. This updates the record; it never repeats the action.
 
 ### Images and links
 
@@ -43,7 +45,7 @@ The `dm` option overrides the dashboard’s default member-notice setting. Notic
 2. Place the bot above members it must moderate. Grant only needed permissions: View Channel, Send Messages, Moderate Members, Kick Members, Ban Members, Manage Messages, Read Message History, and Manage Roles for lockdown restoration.
 3. Configure the log channel under Dashboard → Moderation → Mod log. View Channel, Send Messages, Embed Links and Attach Files are used. Give View Audit Log if you want to capture bans, unbans, kicks and timeouts done outside Number One.
 4. The current server owner grants additional command access under Dashboard → Access. Administrator or Manage Server already grants general command access. Approved users cannot grant access to others or bypass channel permissions.
-5. Moderation also checks each action’s relevant native permission or the configured moderator role. Manage Server alone does not confer moderation powers. Configure the moderator/protected roles and retention on the dashboard.
+5. Moderation also checks each action’s relevant native permission. Manage Server alone does not confer moderation powers. Configure the moderator/protected roles and retention on the dashboard.
 6. Automod is off by default. Message filters require `MODERATION_MESSAGE_CONTENT=1` and Message Content Intent, then dashboard configuration. Normal moderation does not require that intent.
 
 Owner, bot, administrator, configured-moderator and role-hierarchy protections apply. Discord mutations refresh permissions before execution. Local warnings, case history, notes and warning removals use complete signed interaction data without redundant REST preflight. Missing role data fails closed.

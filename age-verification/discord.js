@@ -1,4 +1,5 @@
 import {assert,Fault} from './core.js';
+import {MODERATOR_PERMISSIONS} from '../src/permissions.js';
 export async function boundedFetch(url,options={},fetcher=fetch,timeout=8000){
   const controller=new AbortController();let timer;
   try{return await Promise.race([
@@ -9,7 +10,7 @@ export async function boundedFetch(url,options={},fetcher=fetch,timeout=8000){
 }
 const ADMIN=8n,MANAGE_SERVER=32n,MANAGE_ROLES=1n<<28n;
 // Test roles must not grant global moderation/administration capabilities.
-const ELEVATED=ADMIN|MANAGE_SERVER|MANAGE_ROLES|2n|4n|(1n<<29n)|(1n<<40n);
+const ELEVATED=ADMIN|MANAGE_SERVER|MANAGE_ROLES|MODERATOR_PERMISSIONS|(1n<<29n)|(1n<<33n)|(1n<<34n);
 export function permissions(roles,member){return roles.filter(r=>member.roles.includes(r.id)||r.everyone).reduce((p,r)=>p|BigInt(r.permissions),0n);}
 export class Discord{
   constructor(config,fetcher=fetch){this.c=config;this.fetcher=fetcher;}
@@ -24,7 +25,7 @@ export class Discord{
       const user=await call('https://discord.com/api/v10/users/@me',options);const guilds=[];let after='0';
       for(let page=0;page<20;page++){
         const batch=await call('https://discord.com/api/v10/users/@me/guilds?limit=200&after='+after,options);assert(Array.isArray(batch),502,'Discord server list is unavailable. Sign in again.');
-        guilds.push(...batch.map(g=>({id:g.id,name:g.name,icon:typeof g.icon==='string'&&/^(a_)?[a-f0-9]{32}$/.test(g.icon)?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`:null,owner:g.owner===true,manageable:g.owner===true})));
+        guilds.push(...batch.map(g=>({id:g.id,name:g.name,icon:typeof g.icon==='string'&&/^(a_)?[a-f0-9]{32}$/.test(g.icon)?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`:null,owner:g.owner===true,manageable:g.owner===true||(BigInt(g.permissions||'0')&(ADMIN|MANAGE_SERVER))!==0n})));
         if(batch.length<200)return {id:user.id,name:typeof (user.global_name||user.username)==='string'?(user.global_name||user.username).slice(0,64):null,avatar:typeof user.avatar==='string'&&/^(a_)?[a-f0-9]{32}$/.test(user.avatar)?`https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`:null,guilds};
         assert(batch.at(-1).id!==after,502,'Discord server pagination failed. Sign in again.');after=batch.at(-1).id;
       }
@@ -37,19 +38,24 @@ export class Discord{
   async identity(guild,id,settings){
     const [g,member,raw]=await Promise.all([this.api('/guilds/'+guild),this.api(`/guilds/${guild}/members/${id}`),this.api(`/guilds/${guild}/roles`)]);
     const roles=raw.map(r=>({...r,everyone:r.id===guild}));const owner=g.owner_id===id;
-    return {id,name:g.name,owner,ownerId:g.owner_id,manager:owner||(permissions(roles,member)&(ADMIN|MANAGE_SERVER))!==0n,reviewer:owner||!!settings&&member.roles.includes(settings.reviewerRole)};
+    const bits=permissions(roles,member);
+    assert(!member.user?.bot,403,'Sign in using a human Discord account.');
+    return {id,name:g.name,owner,ownerId:g.owner_id,administrator:owner||(bits&ADMIN)!==0n,manager:owner||(bits&(ADMIN|MANAGE_SERVER))!==0n,manageRoles:owner||(bits&(ADMIN|MANAGE_ROLES))!==0n,moderationAccess:owner||(bits&(ADMIN|(1n<<40n)))!==0n,reviewer:owner||!!settings&&member.roles.includes(settings.reviewerRole)};
   }
   async dashboardIdentity(guild,id){
-    // The server picker only needs current ownership and membership, not the role catalogue.
-    const [g]=await Promise.all([this.api('/guilds/'+guild),this.member(guild,id)]);
-    return {id,name:g.name,owner:g.owner_id===id,ownerId:g.owner_id};
+    // OAuth permissions only select candidates; current roles authorize access.
+    const [g,member,roles]=await Promise.all([this.api('/guilds/'+guild),this.member(guild,id),this.api(`/guilds/${guild}/roles`)]);
+    assert(!member.user?.bot,403,'Sign in using a human Discord account.');
+    const owner=g.owner_id===id,bits=permissions(roles.map(r=>({...r,everyone:r.id===guild})),member);
+    return {id,name:g.name,owner,ownerId:g.owner_id,administrator:owner||(bits&ADMIN)!==0n,manager:owner||(bits&(ADMIN|MANAGE_SERVER))!==0n};
   }
   async roleOptions(guild){
-    const [roles,bot]=await Promise.all([this.api(`/guilds/${guild}/roles`),this.api(`/guilds/${guild}/members/${this.c.clientId}`)]);
+    const [roles,bot,channels]=await Promise.all([this.api(`/guilds/${guild}/roles`),this.api(`/guilds/${guild}/members/${this.c.clientId}`),this.api(`/guilds/${guild}/channels`)]);
+    assert(Array.isArray(channels),502,'Discord channel permissions could not be checked.');
     const effective=permissions(roles.map(r=>({...r,everyone:r.id===guild})),bot);
     assert((effective&(ADMIN|MANAGE_ROLES))!==0n,409,'Number One needs Manage Roles permission in this server. Update its Discord role, then try again.');
     const highest=roles.filter(r=>bot.roles.includes(r.id)).reduce((p,r)=>Math.max(p,r.position),0);
-    return roles.filter(r=>r.id!==guild&&!r.managed).map(r=>({id:r.id,name:r.name,canVerify:r.position<highest&&(BigInt(r.permissions)&ELEVATED)===0n}));
+    return roles.filter(r=>r.id!==guild&&!r.managed).map(r=>({id:r.id,name:r.name,canVerify:r.position<highest&&(BigInt(r.permissions)&ELEVATED)===0n&&!channels.some(ch=>(ch.permission_overwrites||[]).some(overwrite=>overwrite.id===r.id&&(BigInt(overwrite.allow||'0')&ELEVATED)!==0n))}));
   }
   async validateRoles(guild,reviewerRole,verifiedRole){
     assert(reviewerRole!==verifiedRole,400,'Choose different reviewer and Beta test verified roles.');const roles=await this.roleOptions(guild);

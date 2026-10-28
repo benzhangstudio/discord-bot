@@ -7,7 +7,7 @@ import {createDashboardApi} from '../src/dashboard-api.js';
 import {Fault} from '../age-verification/core.js';
 
 const G='111111111111111111',OTHER='222222222222222222',C='333333333333333333',U='444444444444444444',PERSON='555555555555555555';
-const identity={id:U,owner:true,dashboard:true},now=()=>Date.UTC(2026,9,25,12);
+const identity={id:U,owner:true,dashboard:true,reauthorize:async()=>({id:U,owner:true,manager:true,dashboard:true})},now=()=>Date.UTC(2026,9,25,12);
 function setup(t,options={}){
   const store=new Store(':memory:');t.after(()=>store.close());
   const everyone={id:G},bot={id:'bot'},member={id:U};
@@ -113,6 +113,6 @@ test('dashboard API integrates editors, retains plugin metadata and rejects comb
   assert.equal(saved.plugin,'embeds');assert.equal(saved.enabled,true);assert.equal(saved.toggleable,true);assert.equal(saved.editable,true);assert.equal(saved.items[0].name,'From dashboard');
   await assert.rejects(call({enabled:false,delete:saved.items[0].id}),e=>e.status===400);
   assert.equal(store.get(G,'dashboard-plugins','main'),undefined);assert.equal(store.list(G,'embed').length,1);
-  await assert.rejects(api.handle({guild:G,identity:{id:U,manager:true},method:'GET',endpoint:'plugins/embeds'}),e=>e.status===403);
+  await assert.rejects(api.handle({guild:G,identity:{id:U,manager:false},method:'GET',endpoint:'plugins/embeds'}),e=>e.status===403);
   const toggled=await call({enabled:false});assert.equal(toggled.enabled,false);assert.equal(toggled.items.length,1);
 });

@@ -6,6 +6,7 @@ import {UserError} from './user-error.js';
 import {RR} from './reaction-role-messages.js';
 import {pluginEnabled} from './plugins.js';
 import {withDeadline} from './responses.js';
+import {canManageServer} from './permissions.js';
 
 export const RR_LIMITS=Object.freeze({groups:50,entries:20,durationMinutes:43200});
 export const RR_MODES=Object.freeze(['normal','unique']);
@@ -87,10 +88,19 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
     const policy=store.verificationRolePolicy?.(guild);
     return !!policy?.includes(id);
   }
+  async function checkActor(guild,channel,actor){
+    if(!actor?.reauthorize)return;
+    const fresh=await read(()=>actor.reauthorize());
+    must(fresh?.id===actor.id&&(fresh.owner||fresh.securityAdmin||fresh.manager&&fresh.manageRoles),RR.staffAccess);
+    if(!fresh.owner&&!fresh.securityAdmin){
+      const member=await read(()=>guild.members.fetch({user:actor.id,force:true}));
+      must(channel.permissionsFor(member)?.has([P.ViewChannel,P.SendMessages]),RR.staffAccess);
+    }
+  }
   async function me(guild){return guild.members.me||await read(()=>guild.members.fetchMe());}
   async function channelFor(guild,id){
     const ch=guild.channels.cache.get(id)||await read(()=>guild.channels.fetch(id));
-    must(ch&&[0,5].includes(ch.type),RR.channel);return ch;
+    must(ch&&[0,5].includes(ch.type)&&(!ch.guildId||ch.guildId===guild.id)&&(!ch.guild?.id||ch.guild.id===guild.id),RR.channel);return ch;
   }
   async function checkBot(guild,channel){
     const bot=await me(guild);
@@ -105,7 +115,7 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
     const bot=await me(guild);
     must(role.position<bot.roles.highest.position,RR.roleAboveBot);
     if(actor&&!actor.owner&&actor.id!==guild.ownerId){
-      const member=actor.roles?actor:await read(()=>guild.members.fetch(actor.id));
+      const member=actor.roles?actor:await read(()=>guild.members.fetch({user:actor.id,force:true}));
       must(member&&role.position<member.roles.highest.position,RR.roleAboveYou);
     }
     return role;
@@ -137,7 +147,11 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
         if(!pluginEnabled(store,guild.id,'reactionroles'))return;
         const group=store.list(guild.id,'reaction-role').find(g=>g.message===reaction.message.id);if(!group)return;
         const key=reactionKey(reaction.emoji);if(!group.entries.some(e=>e.key===key))return;
+        await read(()=>guild.roles.fetch());
         const member=await read(()=>guild.members.fetch({user:user.id,force:true}));
+        if(member.id!==guild.ownerId&&!canManageServer(member.permissions)){
+          await read(()=>reaction.users.remove(user.id)).catch(()=>{});return;
+        }
         const roles=new Set(member.roles.cache.keys());
         const plan=planReaction(group,key,roles,added);
         if(plan.denied){log.log(`Reaction role not given (${plan.denied}) in server ${guild.id}.`);if(plan.removeReaction)await read(()=>reaction.users.remove(user.id)).catch(()=>{});return;}
@@ -176,6 +190,7 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
       if(group.requiredRole)await checkRole(guild,group.requiredRole,null);
       must(entries.length<=RR_LIMITS.entries,RR.entryLimit);
       for(const x of entries){assertActive();group.entries.push(await entryFrom(guild,group,x,actor));}
+      await checkActor(guild,ch,actor);
       assertActive();
       let msg;
       if(ref){
@@ -201,6 +216,7 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
       const group=get(guild.id,id);must(group.entries.length<RR_LIMITS.entries,RR.entryLimit);
       const msg=await fetchMessage(guild,group);await checkBot(guild,msg.channel);
       const entry=await entryFrom(guild,group,{emoji,role},actor);
+      await checkActor(guild,msg.channel,actor);
       await react(msg,entry);group.entries.push(entry);await refresh(guild,group,msg);return save(guild.id,group);
     },
     async removeEntry(guild,id,emoji){
@@ -216,17 +232,19 @@ export function createReactionRoles({store,client,log=console,now=()=>Date.now()
       const next={...group,entries:[]};
       for(const x of entries)next.entries.push(await entryFrom(guild,next,x,actor));
       const msg=await fetchMessage(guild,group);await checkBot(guild,msg.channel);
+      await checkActor(guild,msg.channel,actor);
       for(const e of next.entries)if(!group.entries.some(o=>o.key===e.key))await react(msg,e);
       for(const o of group.entries)if(!next.entries.some(e=>e.key===o.key))await msg.reactions.cache.get(o.key)?.users.remove(client.user.id).catch(()=>{});
       await refresh(guild,next,msg);return save(guild.id,next);
     },
-    async edit(guild,id,options){
+    async edit(guild,id,options,actor){
       const group=normalizeOptions(options,get(guild.id,id));
       if(options.requiredRole)await checkRole(guild,group.requiredRole,null);
+      await checkActor(guild,await channelFor(guild,group.channel),actor);
       await refresh(guild,group);return save(guild.id,group);
     },
-    async remove(guild,id){
-      const group=get(guild.id,id);store.remove(guild.id,'reaction-role',id);
+    async remove(guild,id,actor){
+      const group=get(guild.id,id);await checkActor(guild,await channelFor(guild,group.channel),actor);store.remove(guild.id,'reaction-role',id);
       for(const t of store.list(guild.id,'rr-temp'))if(t.group===id)store.remove(guild.id,'rr-temp',t.id);
       if(group.owned){const msg=await fetchMessage(guild,group).catch(()=>null);await msg?.delete().catch(()=>{});}
       return group;

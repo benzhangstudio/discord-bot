@@ -5,7 +5,7 @@ import {UserError} from './user-error.js';
 // Every registered command belongs to exactly one category (enforced by tests).
 // Command lines are generated from the registered definitions so help stays in sync.
 export const categories=[
-  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case history',commands:['warn','unwarn','timeout','untimeout','kick','ban','unban','purge','case'],note:'**Images:** add optional `image`, `image2`, `image3` or `message-link` inputs to the same command. Images are never sent in member DMs.\n**History:** `/case user:@member` lists all moderation records, 10 per page. Use `page` for older records.\n**Remove a warning:** `/unwarn user:@member warning:12` uses the short Case #12 shown in that member’s history.\n**Update a case:** `/case number:12 reason:... image:...`; omit note and image to view it. Only the owner can supply `outcome` after checking Discord.\n**DMs:** set `dm:false` to skip the member notice.\n**Mod log:** set up recording on the dashboard: {dashboard}'},
+  {value:'mod',label:'Moderation',description:'Warn, timeout, kick, ban and case history',commands:['warn','unwarn','timeout','untimeout','kick','ban','unban','purge','case'],note:'**Images:** add optional `image`, `image2`, `image3` or `message-link` inputs to the same command. Images are never sent in member DMs.\n**History:** `/case user:@member` lists all moderation records, 10 per page. Use `page` for older records.\n**Remove a warning:** `/unwarn user:@member warning:12` uses the short Case #12 shown in that member’s history.\n**Update a case:** `/case number:12 reason:... image:...`; omit note and image to view it. Only the owner or an administrator can supply `outcome` after checking Discord.\n**DMs:** set `dm:false` to skip the member notice.\n**Mod log:** set up recording on the dashboard: {dashboard}'},
   {value:'lockdown',label:'Lockdown',description:'Lock and unlock channels',commands:['lockdown']},
   {value:'embeds',label:'Embeds',description:'Create, edit and send embed messages',commands:['embed']},
   {value:'events',label:'Scheduler',description:'Events, meetings, reminders and rotations',commands:['schedule']},
@@ -20,7 +20,7 @@ export function commandLines(names) {
     return subs.length?subs.map(s=>`\`/${c.name} ${s.name}\` – ${plain(s.description)}`):[`\`/${c.name}\` – ${plain(c.description)}`];
   });
 }
-const FOOTER='Some commands require Manage Server or staff access.';
+const FOOTER='Commands require the matching Discord permissions.';
 const dashboardLink=guildId=>{const origin=process.env.AGE_ORIGIN||'https://number-one.wispbyte.app';try{const u=new URL(origin);if(u.protocol==='https:'&&u.origin===origin)return new URL(guildId?`/dashboard/${encodeURIComponent(guildId)}/moderation`:'/dashboard',u).href;}catch{}return 'use /dashboard';};
 export function helpMenu({page='home',guildId}={}) {
   const topic=page==='home'?null:categories.find(c=>c.value===page);

@@ -6,6 +6,12 @@ import {PROOF} from './mod-proof.js';
 export const GENERIC_ERROR='Something went wrong. Try again later.';
 export const UNCERTAIN_ACTION='Could not confirm that action. Check the result before trying again.';
 export const PUBLIC_ERROR_MESSAGES=Object.freeze({
+  'You need the Discord permission for this action. Ask a server administrator to review your roles.':'You need the Discord permission for this action. Ask a server administrator to review your roles.',
+  'Only the owner or an administrator can reconcile uncertain actions after checking Discord.':'Only the server owner or an administrator can resolve this action.',
+  'Message delivery was not confirmed.':'Could not confirm that action. Check the result before trying again.',
+  'Event channel check timed out.':'Could not check the event channel. Try again later.',
+  'Roundup channel check timed out.':'Could not check the roundup channel. Try again later.',
+  'Feed loading timed out.':'The source took too long to respond. Try again later.',
   "Choose a member to view history, or enter a case number from their history.": "Choose a member to view history, or enter a case number from their history.",
   "Enter the case number from history before adding a note, image, or outcome.": "Enter the case number from history before adding a note, image, or outcome.",
   "That case does not belong to this member. Check their history with /case user.": "That case does not belong to this member. Check their history with /case user.",

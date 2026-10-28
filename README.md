@@ -1,5 +1,7 @@
 # Number One
 
+Current access policy: [native Discord permissions](ACCESS_POLICY.md). Ordinary members can only use their own verification submission/status/privacy portal. Legacy per-user bot grants do not authorize access. The [whole-bot access review](ACCESS_REVIEW.md) records coverage and release limits. This policy supersedes older access descriptions below.
+
 Moderation actions, case history, timeouts, automod and reversible channel lockdown are documented in [MODERATION.md](MODERATION.md). Optional images and message links stay on the action command. Member DMs are optional notices without appeal buttons. Reaction roles and command access are managed on the dashboard; reaction-role drafts can be saved, resumed and copied. Moderation appeals are not available. Verification remains a separate dashboard feature.
 
 The dashboard now starts alongside the bot from the same `src/index.js`, with Wispbyte defaults for `https://number-one.wispbyte.app` on port 16243.
@@ -40,7 +42,7 @@ Normal successes and actionable errors appear publicly in the channel. Error ref
 
 ## Server portal
 
-`/dashboard` replies publicly with two buttons: **Open dashboard** (server settings) and **Verification** (the member portal, ready to share). It is a global command, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an owner-approved command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied (publicly) before options or data access.
+`/dashboard` replies publicly with two buttons: **Open dashboard** (server settings) and **Verification** (the member portal, ready to share). It is a global command, available wherever Number One is installed after command registration on startup. Administrator, Manage Server, the current server owner, or an native-permission command grant is required, using the same runtime rules as other commands. Unauthorized requests are denied (publicly) before options or data access.
 
 Each community's owner signs in with Discord and opens the web dashboard (`/dashboard`) to configure its features and verification roles. The owner can explicitly approve other current members for dashboard access under Access. No per-server enablement by the bot operator is required, and the commands themselves change no settings or permissions. Dashboard grants are server-scoped, are checked against the current owner, and are separate from slash-command grants and verification reviewer rights. Members use the shared verification link without needing dashboard or slash-command access. Real-ID uploads remain disabled.
 
@@ -88,7 +90,7 @@ Choose a channel, title, description and emoji/role pairs. Normal mode allows se
 
 Use **Save** to keep unfinished work without posting. **Continue** resumes it after reloading or signing in again. **Copy** starts a new setup from an existing one; text and emoji fields accept normal copy/paste. **Send to Discord** is explicit. Drafts are saved per server, and an uncertain publication cannot automatically send the same draft twice.
 
-Existing reaction-role messages, member selections and temporary-role expirations continue to work after slash commands are removed. The bot needs Manage Roles, Add Reactions and Read Message History; offered roles must be below its highest role. Delete removes the setup, not the member roles already granted.
+Existing reaction-role messages remain stored; only authorized staff can use their controls, and temporary-role expirations continue to work after slash commands are removed. The bot needs Manage Roles, Add Reactions and Read Message History; offered roles must be below its highest role. Delete removes the setup, not the member roles already granted.
 
 ## Data and reliability
 
@@ -100,7 +102,7 @@ Delivery records prevent repeat sends across normal restarts. Number One claims 
 
 Run `npm test` for offline isolation, daylight saving, rotation, payload limits, feed restrictions, command shape and delivery deduplication checks. Run `npm run check` for the entry point syntax check.
 
-Live checks still required: create/edit/send an embed, test a permitted role notification, schedule an event a few minutes ahead with reminder 0, test RSVPs from two members, verify a member without staff-channel access cannot view private meetings, restart to verify saved data, then test a real Instagram RSS/Atom source and its configured delivery schedule. No live Discord or Instagram testing is performed by offline tests.
+Live checks still required: create/edit/send an embed, test a permitted role notification, schedule an event a few minutes ahead with reminder 0, test RSVPs from two authorized staff accounts, verify a member without staff-channel access cannot view private meetings, restart to verify saved data, then test a real Instagram RSS/Atom source and its configured delivery schedule. No live Discord or Instagram testing is performed by offline tests.
 
 ## BETA development activity
 

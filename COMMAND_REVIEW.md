@@ -1,5 +1,7 @@
 # Command and dashboard review — 2026-10-25
 
+Current access policy: [native Discord permissions](ACCESS_POLICY.md). Ordinary members can only use their own verification submission/status/privacy portal. Legacy per-user bot grants do not authorize access. The [whole-bot access review](ACCESS_REVIEW.md) records coverage and release limits. This policy supersedes older access descriptions below.
+
 Reviewed the full registered command surface and its repository integrations. The user-facing standard is familiar action names, clear required inputs, optional details on the same action, and no opaque record selectors. This review follows the latest request: remove the duplicate warnings list, moderation appeals, and reaction-role setup slash commands.
 
 ## Result

@@ -1,5 +1,9 @@
 # Number One release requirements
 
+## Current access policy (supersedes all older access rules in this file)
+
+Use native Discord permissions: owner/Administrator administer the bot; Manage Server configures routine dashboard features; moderators need the specific Discord permission for each moderation action, with hierarchy and channel checks. Ordinary members can only access their own verification submission/status/privacy portal. They cannot use any commands, components, reaction-role controls, dashboard settings or other users' records. Configured verification reviewers receive case-review access only. Owner/Administrator is required for verification security and privacy administration. Legacy owner-issued bot grants and custom staff roles are not authorization. Access policy is displayed read-only; change native access in Discord. Keep the owner restriction on legacy grant-changing requests, and reject retired grant mutations. Continue the entire-bot review after fixing individual findings. Publish with the connected GitHub account, wait for GitHub checks, then tell the user Wispbyte is ready for their refresh/restart. Do not open/sign in to Wispbyte or operate hosting controls unless explicitly requested. Do not create local commits or run local tests.
+
 ## Every Discord error: permanent public-bot writing rule
 
 - EVERY Discord error must be brief, friendly, and actionable for the invoking user, usually one or two sentences. Number One serves other communities; users are not the Wispbyte operator.
@@ -39,10 +43,3 @@
 - Reaction-role setup and access management are dashboard-only. Preserve published reaction-role behavior, saved drafts and configuration copying.
 
 - Removing a warning permanently deletes its case and related database records. Do not archive it or retain a Removed entry in history/dashboard. Clean up legacy voided/removed cases and preserve only the case-number counter; late background work must never recreate deleted records.
-
-## Hosted dashboard workflow
-
-- Number One runs on Wispbyte at https://number-one.wispbyte.app. The user does not run a local bot or dashboard. Do not start one or direct the user to localhost unless explicitly asked.
-- Publish completed changes to benzhangstudio/number-one main using the connected GitHub repository, wait for GitHub Actions, then ask the user to restart Wispbyte with AUTO_UPDATE=1. Source changes are not a deployed service.
-- Dashboard servers are owner-only by default, with explicit current-owner dashboard grants. Dashboard grants, slash-command grants and member verification are separate permissions.
-- Use conventional Discord bot navigation, forms and actions for every feature. No marketing or paid-product framing.

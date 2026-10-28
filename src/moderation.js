@@ -9,6 +9,7 @@ import {errorPayload} from './error-embed.js';
 import {modlogConfig,modlogEmbed,eventKey,missingPermissions,enabledList} from './modlog.js';
 import {readProof,addProof,proofItems,proofSummary,firstImage} from './mod-proof.js';
 import {commandPluginEnabled} from './plugins.js';
+import {canUseCommand,NATIVE_ACCESS_MESSAGE} from './permissions.js';
 const writing=P.SendMessages|P.SendMessagesInThreads|P.CreatePublicThreads|P.CreatePrivateThreads|P.AddReactions;
 const has=(m,p)=>!!m?.permissions?.has(p);
 const owner=i=>i.user.id===i.guild.ownerId;
@@ -65,14 +66,13 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
  }
  function allowed(i,actor,permission=P.ModerateMembers){
   const cfg=core.config(i.guildId);
-  must(owner(i)||has(actor,P.Administrator)||has(actor,permission)||cfg.modRole&&actor.roles.cache.has(cfg.modRole),'You need the relevant moderation permission or the moderator role, plus command access.');
+  must(owner(i)||has(actor,P.Administrator)||has(actor,permission),NATIVE_ACCESS_MESSAGE);
  }
  function targetSafe(i,actor,bot,target){
   const cfg=core.config(i.guildId);
   must(target.id!==i.user.id&&target.id!==bot.id&&target.id!==i.guild.ownerId,'You cannot moderate yourself, the bot, or the server owner.');
   must(!target.user.bot,'Bot accounts must be handled manually by the server owner.');
   must(!has(target,P.Administrator),'Administrator members are protected.');
-  must(!cfg.modRole||!target.roles.cache.has(cfg.modRole),'Configured moderators are protected.');
   must(rank(bot)>rank(target),'Move the bot’s role above the target’s highest role.');
   must(owner(i)||rank(actor)>rank(target),'Your highest role must be above the target’s highest role.');
  }
@@ -228,8 +228,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    must(kind==='history','Open /case user to view this member’s moderation history.');
    must(commandPluginEnabled(store,i.guildId,'case'),'This feature is turned off for this server. A server manager can turn it on in the dashboard.');
    const {actor}=interactionMembers(i);allowed(i,actor);
-   const grant=store.get(i.guildId,'access',i.user.id);
-   must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy&&grant.grantedBy===i.guild.ownerId,'Your command access has expired. Ask the current owner.');
+   must(canUseCommand({...i,memberPermissions:actor.permissions},'case'),NATIVE_ACCESS_MESSAGE);
    await updateResponse(i,await listPayload(i,'history',target,Number(page),invoker));return true;
   }
   needStaff(i);
@@ -261,8 +260,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   if(!local)await acknowledge(i);
   const {actor,bot}=local?interactionMembers(i):await members(i);needStaff(i);
   // Explicit grants are bound to the current owner, as in dashboard Access.
-  const grant=store.get(i.guildId,'access',i.user.id);
-  must(owner(i)||has(actor,P.Administrator)||has(actor,P.ManageGuild)||grant?.grantedBy&&grant.grantedBy===i.guild.ownerId,'Your command access has expired. Ask the current owner.');
+  must(canUseCommand({...i,memberPermissions:actor.permissions},i.commandName),NATIVE_ACCESS_MESSAGE);
   const sub=routeAction;
   if(i.commandName==='lockdown'){await emergency(i,sub,actor,bot);return true;}
   allowed(i,actor,({ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub])||P.ModerateMembers);
@@ -288,7 +286,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    const reason=i.options.getString('reason')||(sub==='void'?'Removed by moderator':'Images or message links added');
    if(sub==='void')must(c.target===i.options.getUser('user')?.id,'That warning does not belong to this member. Check their history with /case user.');
    if(sub==='reconcile'){
-    must(owner(i),'Only the current owner can reconcile uncertain actions after checking Discord.');
+    must(owner(i)||has(actor,P.Administrator),'Only the owner or an administrator can reconcile uncertain actions after checking Discord.');
     c=store.transaction(()=>{const resolved=core.reconcile(i.guildId,c.id,i.user.id,i.options.getString('outcome'),reason);if(i.proof.length){addProof(resolved,i.proof);core.append(i.guildId,resolved,'proof',i.user.id,reason);}return resolved;});
     flushSoon(i.guild);
     await respond(i,{content:`Case marked as ${c.state==='succeeded'?'completed':'not completed'}. The action was not repeated.`,embeds:[caseEmbedFull(c)],allowedMentions:{parse:[]}});return true;
@@ -334,8 +332,8 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
    }
   }
   // Recheck after channel/message/ban preflight, before reserving a mutation.
-  const fresh=await members(i),grantNow=store.get(i.guildId,'access',i.user.id);
-  must(owner(i)||has(fresh.actor,P.Administrator)||has(fresh.actor,P.ManageGuild)||grantNow?.grantedBy&&grantNow.grantedBy===i.guild.ownerId,'Command access was removed during preflight.');
+  const fresh=await members(i);
+  must(canUseCommand({...i,memberPermissions:fresh.actor.permissions},i.commandName),'Command access was removed during preflight.');
   const required={ban:P.BanMembers,unban:P.BanMembers,kick:P.KickMembers,purge:P.ManageMessages}[sub]||P.ModerateMembers;
   allowed(i,fresh.actor,required);must(has(fresh.bot,required),'The bot lost the required Discord permission.');
   if(selectedMember){const live=await read(i.guild.members.fetch({user:target,force:true}));targetSafe(i,fresh.actor,fresh.bot,live);}
@@ -359,7 +357,7 @@ export function createModeration(client,store,{needStaff,timeoutMs=12000}={}) {
   if(!message.guild||!message.author||message.author.bot||message.webhookId||!core.config(message.guild.id).automod)return;
   try{
    const member=await read(message.guild.members.fetch({user:message.author.id,force:true})),cfg=core.config(message.guild.id);
-   if(member.id===message.guild.ownerId||has(member,P.Administrator)||has(member,P.ManageGuild)||has(member,P.ModerateMembers)||cfg.modRole&&member.roles.cache.has(cfg.modRole))return;
+   if(member.id===message.guild.ownerId||has(member,P.Administrator)||has(member,P.ManageGuild)||has(member,P.ModerateMembers))return;
    const violation=core.filter(message.guild.id,member.id,message.content||'',message.mentions.users.size+message.mentions.roles.size+(message.mentions.everyone?100:0));
    if(!violation)return;
    const bot=await read(message.guild.members.fetchMe({force:true}));if(!message.channel.permissionsFor(bot).has(P.ManageMessages))return;

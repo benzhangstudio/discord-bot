@@ -1,4 +1,5 @@
 import {moderationCommands} from './moderation-commands.js';
+import {commandPermission} from './permissions.js';
 // Discord application command JSON.
 const str = (name, description, required = false, extra = {}) => ({type:3,name,description,required,...extra});
 const integer = (name, description, min, max) => ({type:4,name,description,min_value:min,max_value:max});
@@ -48,4 +49,4 @@ export const commands = [
     sub('list','List sources and queued posts'),sub('preview','Preview the latest post',[id()]),
     sub('pause','Pause a source',[id()]),sub('resume','Resume a paused source',[id()]),sub('remove','Remove a source (posted messages stay)',[id()])
   ]}
-].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:({embed:'message',schedule:'event',instagram:'source'}[c.name]??option.name)}:option)})),type:1,default_member_permissions:null,contexts:[0],integration_types:[0]}));
+].map(c => ({...c,options:c.options?.map(sub=>({...sub,options:sub.options?.map(option=>option.name==='id'?{...option,name:({embed:'message',schedule:'event',instagram:'source'}[c.name]??option.name)}:option)})),type:1,default_member_permissions:String(commandPermission(c.name)),contexts:[0],integration_types:[0]}));

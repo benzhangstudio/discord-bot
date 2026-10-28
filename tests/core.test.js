@@ -6,6 +6,7 @@ import {Store} from '../src/store.js';
 import {parseTime,advance,rollForward,rotationMember,validateEmbed} from '../src/domain.js';
 import {allowedUrl,publicAddress} from '../src/feeds.js';
 import {deliver} from '../src/worker.js';
+import {commandPermission} from '../src/permissions.js';
 import {commands} from '../src/commands.js';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -75,7 +76,7 @@ test('delivery claims prevent repeat sends, including after an ambiguous send fa
 });
 test('command schema has valid option order, descriptions and guild-only entry points',()=>{
   for(const command of commands) {
-    assert.equal(command.default_member_permissions,command.name==='access'?'32':null,'Runtime access checks must support owner-approved users');
+    assert.equal(command.default_member_permissions,String(commandPermission(command.name)),'Discord command visibility must match native permissions');
     assert.deepEqual(command.contexts,[0]);assert.deepEqual(command.integration_types,[0]);
     assert.ok(command.description.length<=100);
     for(const sub of command.options || []) {

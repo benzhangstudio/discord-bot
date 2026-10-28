@@ -3,7 +3,18 @@ import assert from 'node:assert/strict';
 import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {Store} from '../src/store.js';
 import {startWorker} from '../src/worker.js';
+import {setPluginEnabled} from '../src/plugins.js';
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('a disabled scheduler does no background work, including revocation during channel lookup',async()=>{
+  for(const duringLookup of [false,true]){
+    const store=new Store(':memory:');let sends=0,lookups=0;
+    store.put('g','event',{id:'event',channel:'c',kind:'event',title:'Event',start:Date.now()+60000,reminder:5,duration:60});
+    if(!duringLookup)setPluginEnabled(store,'g','scheduler',false,'admin');
+    const stop=startWorker({channels:{fetch:async()=>{lookups++;setPluginEnabled(store,'g','scheduler',false,'admin');return {guildId:'g',isTextBased:()=>true,send:async()=>{sends++;}};}}},store);
+    await settle();stop();assert.equal(sends,0);assert.equal(lookups,duringLookup?1:0);assert.equal(store.delivery('event:g:event:'+store.get('g','event','event').start),undefined);store.close();
+  }
+});
 test('due reminders send once across worker restarts; cancelled events send nothing',async()=>{
   const store=new Store(':memory:');const start=Date.now()+60000;const payloads=[];
   store.put('g','event',{id:'event',channel:'c',kind:'event',title:'Meeting',start,reminder:5,duration:60,repeat:'none',zone:'America/New_York'});

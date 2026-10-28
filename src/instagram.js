@@ -47,7 +47,7 @@ function form(d,action) {
   return new ModalBuilder().setCustomId(`instagram:${d.id}:${action}form`).setTitle(action==='source'?'Instagram · Choose a source':'Instagram · Delivery schedule').addComponents(fields.map(([id,label,value,max])=>new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(max).setValue(value))));
 }
 
-export function createInstagramSetup({store,settings,needStaff,destination,pingRole,load=loadFeed}) {
+export function createInstagramSetup({store,settings,needStaff,reauthorizeWrite=needStaff,destination,pingRole,load=loadFeed}) {
   function draft(i,source) {
     const base=source?{sourceId:source.id,version:source.settingsVersion||0,name:source.name,url:source.url,channel:source.channel,role:source.role,zone:source.zone||DIGEST_ZONE,time:source.time||'00:00',weekday:source.weekday||7,delivery:source.delivery||'weekly',showPreviews:Boolean(source.showPreviews)}:{zone:settings(i.guildId).zone||'UTC',time:'09:00',weekday:7,delivery:'weekly',showPreviews:false};
     return store.put(i.guildId,'instagram-draft',{...base,owner:i.user.id,expiresAt:Date.now()+1800000});
@@ -114,7 +114,7 @@ export function createInstagramSetup({store,settings,needStaff,destination,pingR
       const changed=!old||old.url!==d.url;
       if(changed&&old?.pending?.length)throw new UserError('This source still has posts waiting. Keep its feed link until the roundup is delivered, or add a separate source.');
       const items=changed?await step(i,load(d.url)):null;
-      needStaff(i);
+      await reauthorizeWrite(i);
       old=current(i,d);
       if(changed&&old?.pending?.length)throw new UserError('New posts arrived while you were editing. Keep this feed link and add a separate source.');
       const sources=store.list(i.guildId,'feed');

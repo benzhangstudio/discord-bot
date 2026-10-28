@@ -6,7 +6,7 @@ test('help overview is a plain category list with a select menu',()=>{
   const p=helpMenu(),e=p.embeds[0].toJSON(),select=p.components[0].components[0];
   assert.equal(e.title,'Help');assert.equal(e.color,0x5865f2);assert.ok(!e.fields?.length);
   assert.match(e.description,/^Select a category to see its commands\.\n\n\*\*Moderation\*\* – /);
-  assert.equal(e.footer.text,'Some commands require Manage Server or staff access.');
+  assert.equal(e.footer.text,'Commands require the matching Discord permissions.');
   assert.equal(select.type,3);assert.equal(select.custom_id,'help:topic');assert.equal(select.placeholder,'Select a category');
   assert.equal(p.components.length,1);assert.doesNotMatch(JSON.stringify(p),/manual|DM |Number One|!/);
   for(const c of categories)assert.ok(e.description.includes(`**${c.label}** – ${c.description}`));

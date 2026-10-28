@@ -137,7 +137,7 @@ for(const networkStep of ['channel','messages','ban-lookup','overwrite','restore
  }finally{h.close();}
 });
 test('revoked access, owner changes, peer hierarchy, administrators and moderator roles are protected',async()=>{
- for(const variant of ['revoked','owner-change','peer','admin','mod-role']){
+ for(const variant of ['revoked','owner-change','peer','admin']){
   const h=harness();try{
    if(variant==='revoked'){h.actor.permissions=perm([]);h.actor.id='revoked';h.actor.user={id:'revoked'};}
    if(variant==='owner-change'){h.actor.permissions=perm([P.ModerateMembers]);h.actor.id='grantee';h.actor.user={id:'grantee'};h.store.put('guild','access',{id:'grantee',grantedBy:'old-owner'});}

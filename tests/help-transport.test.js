@@ -18,7 +18,7 @@ for(const command of commands)for(const sub of command.options?.some(o=>o.type==
       id:'123456789012345678',application_id:'234567890123456789',type:2,token:'test-only-token',version:1,guild_id:'345678901234567890',channel:{id:'456789012345678901',type:0},
       data:{id:'567890123456789012',name:command.name,type:1,options:sub?[{name:sub.name,type:1,options:[]}]:[]},member:{user:{id:'678901234567890123',username:'Member',discriminator:'0',avatar:null},roles:[],permissions:'0'},entitlements:[],authorizing_integration_owners:{},locale:'en-US'
     });
-    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,0);assert.equal(messageOf(requests[0].data),'You don’t have permission to use this command. Ask a server admin for access.');assert.equal(i.deferred,false);assert.deepEqual(store.db.prepare('SELECT * FROM records').all(),[]);
+    await app.dispatch(i);assert.equal(requests.length,1);assert.equal(requests[0].type,4);assert.equal((requests[0].data.flags||0)&64,0);assert.equal(messageOf(requests[0].data),'You need the Discord permission for this action. Ask a server administrator to review your roles.');assert.equal(i.deferred,false);assert.deepEqual(store.db.prepare('SELECT * FROM records').all(),[]);
   } finally {client.destroy();store.close();}
 });
 test('real Discord SDK serializes /help as one immediate public callback containing the menu',async()=>{

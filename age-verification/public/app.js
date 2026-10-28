@@ -66,10 +66,10 @@ const Verification=(()=>{
     guild=id;const scope={guild:id,generation:++generation};reset();
     try{
       const info=await serverApi(scope,'context');if(!current(scope))return false;
-      const [queue,admin,settings]=await Promise.all([info.reviewer?serverApi(scope,'queue'):null,info.owner?serverApi(scope,'admin'):null,info.owner?serverApi(scope,'settings'):null]);
+      const [queue,admin,settings]=await Promise.all([info.reviewer?serverApi(scope,'queue'):null,info.securityAdmin?serverApi(scope,'admin'):null,info.securityAdmin?serverApi(scope,'settings'):null]);
       if(!current(scope))return false;
       $('serverName').textContent=info.name;$('share').value=info.shareUrl;
-      $('availability').textContent=info.enabled?'Verification is open in this server.':info.manager?'Complete setup below to open verification.':'Verification is not open in this server yet.';
+      $('availability').textContent=info.enabled?'Verification is open in this server.':info.securityAdmin?'Complete setup below to open verification.':'Verification is not open in this server yet.';
       $('case').textContent=info.case?summary(info.case):'You have not submitted a test case in this server.';$('submission').hidden=!!info.case||!info.enabled;
       if(info.reviewer){
         $('review').hidden=false;if(!queue.length)$('queue').textContent='No submissions to review.';
@@ -86,10 +86,10 @@ const Verification=(()=>{
             });
             view.disabled=!!claimed&&item.claimant!==NO.session?.id;
           }
-          if(info.owner&&item.roleState==='uncertain')NO.button(row,'Check role in Discord',async()=>{if(!current(scope))return;await serverApi(scope,'admin/reconcile',{id:item.id});await reload(scope,'Role status checked.');});
+          if(info.securityAdmin&&item.roleState==='uncertain')NO.button(row,'Check role in Discord',async()=>{if(!current(scope))return;await serverApi(scope,'admin/reconcile',{id:item.id});await reload(scope,'Role status checked.');});
         }
       }
-      if(info.owner){
+      if(info.securityAdmin){
         $('admin').hidden=false;if(!admin.requests.length)$('requests').textContent='No privacy requests.';
         for(const request of admin.requests){
           const row=NO.row($('requests'),`${request.kind==='delete'?'Delete records':'Data export'} · ${request.memberName||'User '+request.member} · ${request.state==='open'?'Awaiting action':'Completed'} · ${date(request.created)}`);
@@ -101,7 +101,7 @@ const Verification=(()=>{
         if(!admin.audit.length)$('audit').textContent='No recent verification activity.';
         for(const entry of admin.audit){const actor=entry.actor==='system'?'Number One':entry.actorName||(!entry.actor?'Anonymous':'User '+entry.actor);NO.row($('audit'),`${date(entry.at)} · ${auditLabel(entry.action)} · ${actor}${entry.caseId?' · Case '+entry.caseId.slice(0,8):''}`);}
       }
-      if(info.owner){options('reviewerRole',settings.roles,settings.settings?.reviewerRole);options('verifiedRole',settings.roles.filter(r=>r.canVerify),settings.settings?.verifiedRole);$('enabled').checked=!!settings.settings?.enabled;$('vSettings').hidden=false;}
+      if(info.securityAdmin){options('reviewerRole',settings.roles,settings.settings?.reviewerRole);options('verifiedRole',settings.roles.filter(r=>r.canVerify),settings.settings?.verifiedRole);$('enabled').checked=!!settings.settings?.enabled;$('vSettings').hidden=false;}
       return true;
     }catch(error){if(!current(scope))return false;throw error;}
   }

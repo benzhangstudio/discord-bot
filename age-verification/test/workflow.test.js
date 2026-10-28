@@ -116,3 +116,10 @@ test('workflow operations cannot reach another community’s cases or privacy re
   await assert.rejects(workflow.decide(other,id,reviewer,'approved'));
   await assert.rejects(workflow.erase(other,request,owner));assert(store.get(id));assert.equal(calls.length,0);
 });
+
+test('deleting a reviewer’s personal case cannot erase their decisions on another member',t=>{
+  const {store,id}=setup(t);const own=store.submit('reviewer','adult',true);
+  store.decide(id,'reviewer','approved');store.request('reviewer','delete');store.erase('reviewer');
+  assert.equal(store.get(own),undefined);assert.equal(store.get(id).status,'approved');
+  assert(store.audits().some(row=>row.caseId===id&&row.actor==='reviewer'&&row.action==='approved'));
+});

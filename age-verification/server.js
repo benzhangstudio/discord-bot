@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {Store,assert,DEMO_GUILDS} from './core.js';
 import {Discord} from './discord.js';
 import {VerificationWorkflow} from './workflow.js';
+import {dashboardAccess} from '../src/permissions.js';
 import {createDashboardApi} from '../src/dashboard-api.js';
 import {Store as BotStore} from '../src/store.js';
 const here=dirname(fileURLToPath(import.meta.url));
@@ -37,25 +38,26 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
   async function identityFor(guild,session,dashboardOnly=false){
     const settings=root.forGuild(guild).settings();
     assert(!session.expires||session.expires>Date.now(),401,'Your session expired. Sign in again.');
-    const raw=c.mode==='discord'?await workflow.bounded(()=>(dashboardOnly&&discord.dashboardIdentity?discord.dashboardIdentity(guild,session.id):discord.identity(guild,session.id,settings))):{id:session.id,name:DEMO_GUILDS.find(g=>g.id===guild)?.name,owner:session.id==='owner',ownerId:'owner',manager:['owner','manager'].includes(session.id),reviewer:session.id==='owner'||!!settings&&['reviewer','reviewer2'].includes(session.id)};
+    const raw=c.mode==='discord'?await workflow.bounded(()=>(dashboardOnly&&discord.dashboardIdentity?discord.dashboardIdentity(guild,session.id):discord.identity(guild,session.id,settings))):{id:session.id,name:DEMO_GUILDS.find(g=>g.id===guild)?.name,owner:session.id==='owner',ownerId:'owner',administrator:['owner','administrator'].includes(session.id),manager:['owner','administrator','manager'].includes(session.id),reviewer:session.id==='owner'||!!settings&&['reviewer','reviewer2'].includes(session.id)};
     if(!raw.owner&&settings&&plugins?.verificationRoleConflicts?.(guild,[settings.reviewerRole]))raw.reviewer=false;
-    return plugins?plugins.dashboardIdentity(guild,raw):{...raw,dashboard:!!raw.owner,manager:!!raw.owner};
+    return plugins?plugins.dashboardIdentity(guild,raw):dashboardAccess(raw);
   }
   async function guildList(session,verification=false){
-    const rows=[];
+    const rows=[],until=Date.now()+25000;
     // Membership-only communities are reserved for the separate member verification flow.
     // Only owner/delegate candidates trigger bot lookups, rather than every Discord community.
     for(const guild of session.guilds){
+      assert(Date.now()<until,504,'Server access checks took too long. Refresh the server list shortly.');
       let owner=guild.owner===true,manageable=false;
       const present=plugins?plugins.hasBot(guild.id):null;
-      if(owner||plugins?.dashboardCandidate(guild.id,session.id)){
-        if(present===false){manageable=owner;}
+      if(owner||guild.manageable||plugins?.dashboardCandidate(guild.id,session.id)){
+        if(present===false){manageable=owner||guild.manageable===true;}
         else{
           try{const identity=await identityFor(guild.id,session,true);owner=identity.owner;manageable=identity.dashboard;}
           catch(error){if(error.status!==403)throw error;owner=false;}
         }
       }
-      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'approved'):null,botPresent:present,inviteUrl:owner&&c.mode==='discord'?invite(guild.id):null});
+      if(verification||manageable)rows.push({id:guild.id,name:guild.name,icon:guild.icon||null,owner,manageable,access:manageable?(owner?'owner':'manager'):null,botPresent:present,inviteUrl:manageable&&c.mode==='discord'?invite(guild.id):null});
     }
     return rows;
   }
@@ -96,8 +98,8 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
         const identity=await discord.exchange(url.searchParams.get('code'));sessions.delete(cookies[cookieName]);setSession(res,identity);return redirect(res,state.guild?'/verify?guild='+state.guild:'/dashboard');
       }
       if(req.method==='POST'&&path==='/api/demo-login'){
-        assert(c.mode==='demo',404,'Not available.');assert(req.headers.origin===c.origin,403,'Invalid origin.');const data=await body(req);keys(data,['identity']);assert(['member','reviewer','reviewer2','owner','manager','outsider'].includes(data.identity),400,'Unknown demo identity.');
-        sessions.delete(cookies[cookieName]);setSession(res,{id:data.identity,name:'Demo '+data.identity,guilds:data.identity==='outsider'?[]:DEMO_GUILDS.map(g=>({...g,owner:data.identity==='owner',manageable:data.identity==='owner'}))});return send(res,{ok:true});
+        assert(c.mode==='demo',404,'Not available.');assert(req.headers.origin===c.origin,403,'Invalid origin.');const data=await body(req);keys(data,['identity']);assert(['member','reviewer','reviewer2','owner','administrator','manager','outsider'].includes(data.identity),400,'Unknown demo identity.');
+        sessions.delete(cookies[cookieName]);setSession(res,{id:data.identity,name:'Demo '+data.identity,guilds:data.identity==='outsider'?[]:DEMO_GUILDS.map(g=>({...g,owner:data.identity==='owner',manageable:['owner','administrator','manager'].includes(data.identity)}))});return send(res,{ok:true});
       }
       assert(session&&session.expires>now,401,'Sign in with Discord to continue.');
       if(req.method==='GET'&&path==='/api/session')return send(res,{id:session.id,name:session.name||null,avatar:session.avatar||null,csrf:session.csrf,guilds:await guildList(session)});
@@ -116,11 +118,11 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
       catch(error){if(error.status===403)return send(res,{error:'Number One must be installed and you must still belong to this server. Add the bot if you manage this server, then sign in again.',inviteUrl:invite(guild)},403);throw error;}
       const reviewer=()=>assert(identity.reviewer,403,'Server owner or this server’s configured reviewer role required.');
       identity.reauthorize=async()=>{const fresh=await identityFor(guild,session);assert(fresh.dashboard,403,'Your dashboard access was removed.');return fresh;};
-      const manager=()=>assert(identity.dashboard,403,'Only the server owner or members they approve can configure this server.');
-      const owner=()=>assert(identity.owner,403,'Only the current server owner can access privacy and audit administration.');
+      const manager=()=>assert(identity.dashboard,403,'Administrator or Manage Server permission is required for dashboard settings.');
+      const owner=()=>assert(identity.securityAdmin,403,'Only the server owner or an administrator can access privacy and audit administration.');
       const enabled=()=>assert(store.settings()?.enabled,409,'Verification is not open for this server. Its owner can enable it here.');
       if(req.method==='GET'){
-        if(endpoint==='context'){store.purge();const item=store.mine(identity.id);return send(res,{...identity,guild,configured:!!settings,enabled:!!settings?.enabled,capabilities:{submit:!!settings?.enabled&&!item&&!store.deletionPending(identity.id),review:!!identity.reviewer,configure:!!identity.owner,privacyAdmin:!!identity.owner,realAgeVerification:false},shareUrl:c.origin+'/verify?guild='+guild,case:item?{id:item.id,status:item.status,roleState:item.roleState,dmState:item.dmState}:null});}
+        if(endpoint==='context'){store.purge();const item=store.mine(identity.id);return send(res,{...identity,guild,configured:!!settings,enabled:!!settings?.enabled,capabilities:{submit:!!settings?.enabled&&!item&&!store.deletionPending(identity.id),review:!!identity.reviewer,configure:!!identity.securityAdmin,privacyAdmin:!!identity.securityAdmin,realAgeVerification:false},shareUrl:c.origin+'/verify?guild='+guild,case:item?{id:item.id,status:item.status,roleState:item.roleState,dmState:item.dmState}:null});}
         if(endpoint==='settings'){manager();return send(res,{settings,roles:c.mode==='discord'?await discord.roleOptions(guild):[{id:'333333333333333333',name:'Demo reviewers',canVerify:false},{id:'444444444444444444',name:'Beta test verified',canVerify:true}]});}
         if(endpoint==='queue'){reviewer();return send(res,store.list());}
         if(endpoint==='evidence'){reviewer();return send(res,workflow.evidence(store,url.searchParams.get('id'),identity.id));}
@@ -134,12 +136,12 @@ export function application(c,root,discord=new Discord(c),plugins=null,onCommit=
       }
       assert(req.method==='POST',404,'Route not found.');
       if(endpoint==='settings'){
-        assert(identity.owner,403,'Only the current server owner can choose verification roles and open submissions.');keys(data,['reviewerRole','verifiedRole','enabled','betaAcknowledged']);assert(snowflake(data.reviewerRole)&&snowflake(data.verifiedRole)&&typeof data.enabled==='boolean'&&data.betaAcknowledged===true,400,'Select both roles and acknowledge the synthetic-only Beta.');
+        assert(identity.securityAdmin,403,'Only the server owner or an administrator can choose verification roles and open submissions.');keys(data,['reviewerRole','verifiedRole','enabled','betaAcknowledged']);assert(snowflake(data.reviewerRole)&&snowflake(data.verifiedRole)&&typeof data.enabled==='boolean'&&data.betaAcknowledged===true,400,'Select both roles and acknowledge the synthetic-only Beta.');
         assert(data.reviewerRole!==data.verifiedRole&&data.reviewerRole!==guild&&data.verifiedRole!==guild,400,'Choose different custom roles, excluding @everyone.');
         if(c.mode==='discord')await workflow.bounded(()=>discord.validateRoles(guild,data.reviewerRole,data.verifiedRole));
         else assert(data.reviewerRole==='333333333333333333'&&data.verifiedRole==='444444444444444444',400,'Choose the available demo roles.');
         // Recheck management after the asynchronous role validation.
-        assert((await identityFor(guild,session)).owner,403,'Only the current server owner can choose verification roles and open submissions.');
+        assert((await identityFor(guild,session)).securityAdmin,403,'Your verification administration permission was removed.');
         assert(!plugins?.verificationRoleConflicts?.(guild,[data.reviewerRole,data.verifiedRole]),409,'Choose dedicated verification roles that are not offered by reaction-role messages or temporary role assignments.');
         store.configure(identity.id,data.reviewerRole,data.verifiedRole,data.enabled);return send(res,{ok:true});
       }

@@ -1,5 +1,6 @@
 // Reviewed public copy for reaction-role setup. Shared by slash commands (UserError) and the dashboard (Fault).
 export const RR={
+  staffAccess:'Manage Server and Manage Roles permissions are required to configure reaction roles.',
   lookupTimeout:'Discord took too long to check the setup. Your draft is saved; no new message was sent.',
   publishUncertain:'The message could not be confirmed. Check the channel before publishing again; this draft will not be sent twice.',
   needManageRoles:'The bot needs the Manage Roles permission to give reaction roles.',
