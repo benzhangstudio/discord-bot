@@ -50,7 +50,7 @@ function table(headers,rows,empty){if(!rows.length)return el('div',{class:'empty
 function commands(list){if(!list?.length)return null;return el('details',{class:'card command-help'},el('summary',{text:'Related Discord commands'}),el('div',{class:'chips'},...list.map(c=>el('code',{text:c}))));}
 function trackForms(parent){for(const f of parent.querySelectorAll('form')){f.dataset.dirty='false';f.addEventListener('input',()=>f.dataset.dirty='true');f.addEventListener('change',()=>f.dataset.dirty='true');}}
 function saveForm(title,fields,work,notice){const f=el('form',{class:'card settings-form'},el('h2',{text:title}),...fields,notice?el('p',{class:'muted',text:notice}):null,actions(el('button',{class:'primary',text:'Save changes'})));f.onsubmit=NO.action(async()=>{await work();f.dataset.dirty='false';NO.message(title+' saved.');});return f;}
-function ownerForm(f,!d.ownerOnly||owner){if(!owner){for(const c of f.querySelectorAll('input,select,textarea,button'))c.disabled=true;f.append(el('p',{class:'muted',text:'Only the server owner can change these settings.'}));}return f;}
+function ownerForm(f,owner){if(!owner){for(const c of f.querySelectorAll('input,select,textarea,button'))c.disabled=true;f.append(el('p',{class:'muted',text:'Only the server owner can change these settings.'}));}return f;}
 function timezoneOptions(){return el('datalist',{id:'tzList'},...(Intl.supportedValuesOf?Intl.supportedValuesOf('timeZone'):[]).map(z=>el('option',{value:z})));}
 async function renderPlugin(guild,name,version=routeVersion){
   const target=parse();if(target.guild!==guild||target.plugin!==name)return;
