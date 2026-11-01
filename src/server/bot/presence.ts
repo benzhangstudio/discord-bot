@@ -4,7 +4,7 @@ import { ActivityType, Events, type Client, type PresenceData } from "discord.js
  * The status under the bot's name on its Discord profile.
  *
  * Normally it shows no activity. While Claude is working on the bot it shows
- * "Playing Working on new features" (do not disturb). Claude turns that on by itself: at the start of a coding
+ * "Playing with code" (do not disturb). Claude turns that on by itself: at the start of a coding
  * task it pushes a branch called `bot-status` to the public repo, and deletes it when the task is done.
  * The bot looks for that branch every few minutes (one tiny request that GitHub answers with "unchanged"
  * almost every time). If the branch is ever left behind by mistake, the working status ends on its own.
@@ -18,7 +18,7 @@ const EXPIRES_MS = 3 * 60 * 60_000;
 
 // Shown as an activity under the bot's name ("Playing …"), which is how Discord lets bots show rich presence.
 export const idlePresence: PresenceData = { status: "online", activities: [] };
-const workingPresence: PresenceData = { status: "dnd", activities: [{ name: "Working on new features", type: ActivityType.Playing }] };
+const workingPresence: PresenceData = { status: "dnd", activities: [{ name: "with code", type: ActivityType.Playing }] };
 
 let etag: string | undefined;
 let startedAt: number | null = null; // when the marker branch was last updated
