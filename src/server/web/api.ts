@@ -2,6 +2,8 @@ import { PermissionFlagsBits, type Guild } from "discord.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type DashboardGuild, type DashboardUser, categoryIds, getFeatureInfo } from "../../shared/features.js";
+import { registerDeveloperApi } from "../../features/announcements/index.js";
+import { isDeveloper } from "../../features/announcements/developer.js";
 import { features } from "../../features/index.js";
 import { client } from "../bot/client.js";
 import { config, loginReady } from "../config.js";
@@ -90,8 +92,11 @@ export function registerApiRoutes(app: FastifyInstance) {
 
     api.get("/api/me", async (request): Promise<DashboardUser> => {
       const s = request.session!;
-      return { id: s.userId, username: s.username, avatar: s.avatar };
+      return { id: s.userId, username: s.username, avatar: s.avatar, developer: await isDeveloper(s.userId) };
     });
+
+    // The bot developer's own tools (publishing announcements to every server).
+    registerDeveloperApi(api);
 
     api.get("/api/guilds", async (request, reply) => {
       try {

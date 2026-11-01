@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { announcementSettings } from "./announcements.js";
 import { onboardingSettings } from "./onboarding.js";
 
 /**
@@ -107,7 +108,17 @@ export const onboardingFeature = defineFeature({
   settings: onboardingSettings,
 });
 
-export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature];
+export const announcementsFeature = defineFeature({
+  id: "announcements",
+  name: "Bot announcements",
+  icon: "📢",
+  description: "Hear about Number One updates, maintenance, downtime and security notices in a channel you choose.",
+  category: "utility",
+  recommended: true,
+  settings: announcementSettings,
+});
+
+export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature, announcementsFeature];
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);
@@ -144,6 +155,9 @@ export interface DashboardUser {
   id: string;
   username: string;
   avatar: string | null;
+  /** The bot's developer: can publish announcements to every server. */
+  developer?: boolean;
 }
 
+export * from "./announcements.js";
 export * from "./reactionRoles.js";

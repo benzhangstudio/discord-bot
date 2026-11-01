@@ -127,7 +127,7 @@ export const setupCommand: SlashCommand = {
 };
 
 /** The first channel where the bot can post a welcome: the system channel if possible. */
-function welcomeChannel(guild: Guild): GuildTextBasedChannel | undefined {
+export function welcomeChannel(guild: Guild): GuildTextBasedChannel | undefined {
   const me = guild.members.me;
   if (!me) return;
   const canPost = (c: GuildTextBasedChannel) =>

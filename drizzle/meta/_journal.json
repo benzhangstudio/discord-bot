@@ -50,6 +50,13 @@
       "when": 1793499268084,
       "tag": "0006_reaction_role_extras",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793500577770,
+      "tag": "0007_announcements",
+      "breakpoints": true
     }
   ]
 }
