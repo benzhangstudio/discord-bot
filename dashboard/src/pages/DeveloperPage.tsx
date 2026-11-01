@@ -8,6 +8,7 @@ import {
   MAX_TITLE,
   announcementTypes,
 } from "../../../src/shared/announcements";
+import type { BugReportView } from "../../../src/shared/reports";
 import { api } from "../api";
 
 const typeOf = (id: string) => announcementTypes.find((t) => t.id === id) ?? announcementTypes[3];
@@ -19,6 +20,12 @@ const TEMPLATES: { label: string; type: AnnouncementTypeId; title: string; body:
     type: "maintenance",
     title: "Scheduled maintenance",
     body: "Number One will be offline briefly for maintenance. Commands, role menus and the dashboard won't respond until it's back. We'll post here as soon as it's online again.",
+  },
+  {
+    label: "Working on the bot (short)",
+    type: "maintenance",
+    title: "Heads up: updates in progress",
+    body: "I'm working on Number One right now. It stays online, but it restarts briefly to apply changes, so you may notice things change or see the odd error for a few minutes. If something breaks, run `/report` and tell me what happened. Thanks for your patience!",
   },
   {
     label: "Back online",
@@ -223,6 +230,8 @@ export function DeveloperPage() {
         </div>
       </div>
 
+      <ReportsSection />
+
       <h2>Sent</h2>
       {!list && <p className="muted">Loading…</p>}
       {list && list.length === 0 && <p className="muted">Nothing sent yet.</p>}
@@ -268,5 +277,56 @@ function SentItem({ a }: { a: AnnouncementSummary }) {
         </ul>
       )}
     </article>
+  );
+}
+
+/** Bug reports that admins sent with /report. Open ones first. */
+function ReportsSection() {
+  const [data, setData] = useState<{ reports: BugReportView[]; open: number } | null>(null);
+  const [error, setError] = useState("");
+
+  const load = () => api.bugReports().then(setData).catch((err) => setError(err.message));
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 30_000); // new reports show up without a refresh
+    return () => window.clearInterval(t);
+  }, []);
+
+  const toggle = async (r: BugReportView) => {
+    try {
+      await api.resolveBugReport(r.id, !r.resolved);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <>
+      <h2>
+        🐛 Bug reports {data && data.open > 0 && <span className="pill">{data.open} open</span>}
+      </h2>
+      <p className="muted small">Admins send these with <code>/report</code>.</p>
+      {error && <p className="error small">{error}</p>}
+      {!data && !error && <p className="muted">Loading…</p>}
+      {data && data.reports.length === 0 && <p className="muted">No reports yet.</p>}
+      <div className="dev-list">
+        {data?.reports.map((r) => (
+          <article key={r.id} className={`card dev-item ${r.resolved ? "dev-resolved" : ""}`}>
+            <div className="dev-item-head">
+              <strong>#{r.id} {r.summary}</strong>
+              <button className="btn ghost small" onClick={() => toggle(r)}>
+                {r.resolved ? "Reopen" : "Mark resolved"}
+              </button>
+            </div>
+            <div className="muted small">
+              {r.guildName} ({r.memberCount.toLocaleString()} members) · {r.username} · {new Date(r.createdAt).toLocaleString()}
+            </div>
+            {r.details && <p className="dev-report-body small">{r.details}</p>}
+            <div className="muted small">Server ID {r.guildId} · User ID {r.userId}</div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }

@@ -16,6 +16,7 @@ import type {
   AnnouncementsPanelData,
   AudiencePreview,
 } from "../../src/shared/announcements";
+import type { BugReportView } from "../../src/shared/reports";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
 export class ApiError extends Error {
@@ -103,6 +104,9 @@ export const api = {
     request<AnnouncementSummary>("/api/developer/announcements", { method: "POST", body: JSON.stringify(input) }),
   announcementFailures: (id: number) =>
     request<{ failures: AnnouncementFailure[] }>(`/api/developer/announcements/${id}/failures`),
+  bugReports: () => request<{ reports: BugReportView[]; open: number }>("/api/developer/reports"),
+  resolveBugReport: (id: number, resolved: boolean) =>
+    request<BugReportView>(`/api/developer/reports/${id}/resolved`, { method: "POST", body: JSON.stringify({ resolved }) }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 
