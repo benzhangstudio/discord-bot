@@ -6,6 +6,36 @@ import { z } from "zod";
  * a text and/or embed message, selection modes, and who may use the menu.
  */
 
+/** Longest a temporary role can last: 30 days, in minutes. */
+export const MAX_TEMP_MINUTES = 30 * 24 * 60;
+
+/** Choices offered for temporary roles (minutes; 0 = keep the role). */
+export const tempRoleChoices = [
+  { minutes: 0, label: "Forever" },
+  { minutes: 10, label: "10 minutes" },
+  { minutes: 30, label: "30 minutes" },
+  { minutes: 60, label: "1 hour" },
+  { minutes: 6 * 60, label: "6 hours" },
+  { minutes: 12 * 60, label: "12 hours" },
+  { minutes: 24 * 60, label: "1 day" },
+  { minutes: 3 * 24 * 60, label: "3 days" },
+  { minutes: 7 * 24 * 60, label: "7 days" },
+  { minutes: 14 * 24 * 60, label: "14 days" },
+  { minutes: 30 * 24 * 60, label: "30 days" },
+] as const;
+
+/**
+ * Reads a Discord message link (or a bare message ID) an admin pasted.
+ * Returns the channel ID when the link has one.
+ */
+export function parseMessageLink(text: string): { guildId?: string; channelId?: string; messageId: string } | null {
+  const t = text.trim();
+  const link = t.match(/^https?:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\/(\d{17,20})\/(\d{17,20})\/(\d{17,20})\/?$/i);
+  if (link) return { guildId: link[1], channelId: link[2], messageId: link[3] };
+  if (/^\d{17,20}$/.test(t)) return { messageId: t };
+  return null;
+}
+
 /** Most reaction-role messages one server can have. */
 export const MAX_REACTION_ROLE_MESSAGES = 50;
 
@@ -123,6 +153,13 @@ export const reactionRoleInput = z
     removeReaction: z.boolean().default(false),
     /** Buttons and dropdown: tell members privately what changed. */
     confirm: z.boolean().default(true),
+    /** Take roles given by this menu away again after this many minutes (0 = keep them). */
+    tempMinutes: z.number().int().min(0).max(MAX_TEMP_MINUTES).default(0),
+    /**
+     * Add the reactions to a message that's already in the server (a link or ID) instead of posting a new one.
+     * Only for emoji reactions: the bot can't add buttons to, or edit, a message it didn't send.
+     */
+    existingMessage: z.string().trim().max(200).default(""),
     entries: z.array(reactionRoleEntryInput).min(1, "Add at least one role"),
   })
   .superRefine((v, ctx) => {
@@ -132,11 +169,16 @@ export const reactionRoleInput = z
     if (v.entries.length > kind.max) fail(`${kind.name} can have at most ${kind.max} roles.`);
     if (!(mode.kinds as readonly string[]).includes(v.kind)) fail(`“${mode.name}” mode only works with ${mode.kinds.join(" and ")}.`);
     if (v.kind === "reactions" && v.entries.some((e) => !e.emoji)) fail("Every reaction needs an emoji.");
+    if (v.existingMessage) {
+      if (!parseMessageLink(v.existingMessage)) fail("Paste the message link (right-click the message → Copy Message Link).");
+      if (v.kind !== "reactions") fail("Only emoji reactions can be added to an existing message.");
+      return; // the existing message keeps its own text
+    }
     const embedHasText = v.embed.enabled && (v.embed.title || v.embed.description.trim() || v.embed.listRoles || v.embed.image);
     if (!v.content.trim() && !embedHasText) fail("Write a message, or turn on the embed.");
   });
 export type ReactionRoleInput = z.infer<typeof reactionRoleInput>;
-export type ReactionRoleOptions = Omit<ReactionRoleInput, "channelId" | "kind" | "mode" | "content" | "entries" | "name">;
+export type ReactionRoleOptions = Omit<ReactionRoleInput, "channelId" | "kind" | "mode" | "content" | "entries" | "name" | "existingMessage">;
 
 /** Saved per-message options (stored as JSON). Parsing fills in defaults for older rows. */
 export const reactionRoleOptions = z.object({
@@ -147,6 +189,7 @@ export const reactionRoleOptions = z.object({
   ignoredRoles: z.array(z.string()).default([]),
   removeReaction: z.boolean().default(false),
   confirm: z.boolean().default(true),
+  tempMinutes: z.number().int().default(0),
 });
 
 /** A reaction-role message as the dashboard shows it. */
@@ -159,6 +202,18 @@ export interface ReactionRoleMessageView {
   content: string;
   options: z.infer<typeof reactionRoleOptions>;
   url: string;
+  /** True when the menu uses a message the bot didn't post: the bot only adds reactions to it. */
+  external: boolean;
+  /** How the menu has been used since stats began. */
+  stats: {
+    picks: number;
+    removals: number;
+    lastUsedAt: number | null;
+    /** Per role: times given and taken away through this menu. */
+    roles: Record<string, { added: number; removed: number }>;
+    /** Members who currently hold a temporary role from this menu. */
+    activeTemporary: number;
+  };
   /** Things stopping this message from working right now, in plain words (empty when all is well). */
   problems: string[];
   entries: {

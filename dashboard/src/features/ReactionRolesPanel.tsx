@@ -7,6 +7,7 @@ import {
   type ReactionRoleMessageView,
   type ReactionRoleMode,
   buttonStyles,
+  tempRoleChoices,
   reactionRoleKinds,
   reactionRoleModes,
 } from "../../../src/shared/features";
@@ -18,6 +19,21 @@ type Guild = GuildDetails["guild"];
 
 const kindName = (k: ReactionRoleKind) => reactionRoleKinds.find((x) => x.id === k)?.name ?? k;
 const modeName = (m: ReactionRoleMode) => reactionRoleModes.find((x) => x.id === m)?.name ?? m;
+const tempLabel = (minutes: number) =>
+  tempRoleChoices.find((c) => c.minutes === minutes)?.label ??
+  (minutes >= 1440 ? `${Math.round(minutes / 1440)} days` : minutes >= 60 ? `${Math.round(minutes / 60)} hours` : `${minutes} minutes`);
+
+/** "5 minutes ago" style text for the last time a menu was used. */
+function ago(ms: number) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  const units: [number, string][] = [[86400, "day"], [3600, "hour"], [60, "minute"]];
+  for (const [size, name] of units) {
+    const n = Math.floor(s / size);
+    if (n >= 1) return `${n} ${name}${n === 1 ? "" : "s"} ago`;
+  }
+  return "just now";
+}
+
 const displayName = (m: Pick<ReactionRoleMessageView, "name" | "options">) => m.name || m.options.embed.title || "Untitled role menu";
 
 /** Dashboard section for reaction roles: list, create, edit, duplicate and delete role menus. */
@@ -39,7 +55,10 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
   const channelName = (id: string) => guild.channels.find((c) => c.id === id)?.name ?? "deleted-channel";
 
   const remove = async (m: ReactionRoleMessageView) => {
-    if (!confirm(`Delete "${displayName(m)}"? The message is removed from Discord. Members keep roles they already have.`)) return;
+    const what = m.external
+      ? "The message stays in Discord; I'll just take my reactions off it."
+      : "The message is removed from Discord.";
+    if (!confirm(`Delete "${displayName(m)}"? ${what} Members keep roles they already have.`)) return;
     try {
       await api.deleteReactionRole(guild.id, m.messageId);
       setMessages((list) => list?.filter((x) => x.messageId !== m.messageId) ?? null);
@@ -109,6 +128,19 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
                 {m.mode !== "normal" && <span className="pill tiny">{modeName(m.mode)}</span>}
                 {m.options.maxRoles > 0 && <span className="pill tiny">Max {m.options.maxRoles}</span>}
                 {(m.options.allowedRoles.length > 0 || m.options.ignoredRoles.length > 0) && <span className="pill tiny">Restricted</span>}
+                {m.options.tempMinutes > 0 && <span className="pill tiny">⏳ {tempLabel(m.options.tempMinutes)}</span>}
+                {m.external && <span className="pill tiny">Existing message</span>}
+              </div>
+              <div className="muted small rr-stats">
+                {m.stats.picks || m.stats.removals ? (
+                  <>
+                    {m.stats.picks.toLocaleString()} role{m.stats.picks === 1 ? "" : "s"} given · {m.stats.removals.toLocaleString()} removed
+                    {m.stats.lastUsedAt && <> · last used {ago(m.stats.lastUsedAt)}</>}
+                    {m.stats.activeTemporary > 0 && <> · {m.stats.activeTemporary} temporary role{m.stats.activeTemporary === 1 ? "" : "s"} running</>}
+                  </>
+                ) : (
+                  "Not used yet"
+                )}
               </div>
             </div>
             <div className="rr-actions">
@@ -135,6 +167,9 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
                 <span key={e.emojiKey} className="rr-entry">
                   {e.emojiDisplay && <EmojiView display={e.emojiDisplay} url={e.emojiUrl} />}
                   <span className="role-chip" style={color ? { color } : undefined}>@{role?.name ?? "deleted role"}</span>
+                  {(m.stats.roles[e.roleId]?.added ?? 0) > 0 && (
+                    <span className="rr-count" title="Times this role was given through this menu">{m.stats.roles[e.roleId].added.toLocaleString()}</span>
+                  )}
                 </span>
               );
             })}
@@ -176,6 +211,10 @@ interface Draft {
   ignoredRoles: string[];
   removeReaction: boolean;
   confirm: boolean;
+  tempMinutes: number;
+  /** Use a message that's already in the server (link) instead of posting one. */
+  useExisting: boolean;
+  existingMessage: string;
   rows: Row[];
 }
 
@@ -208,6 +247,9 @@ function draftFrom(m: ReactionRoleMessageView | undefined, channelId: string): D
       ignoredRoles: [],
       removeReaction: false,
       confirm: true,
+      tempMinutes: 0,
+      useExisting: false,
+      existingMessage: "",
       rows: [newRow()],
     };
   }
@@ -224,6 +266,9 @@ function draftFrom(m: ReactionRoleMessageView | undefined, channelId: string): D
     ignoredRoles: m.options.ignoredRoles,
     removeReaction: m.options.removeReaction,
     confirm: m.options.confirm,
+    tempMinutes: m.options.tempMinutes,
+    useExisting: m.external,
+    existingMessage: m.external ? m.url : "",
     rows: m.entries.map((e) => newRow({ emoji: e.emojiDisplay, roleId: e.roleId, label: e.label, description: e.description, style: e.style })),
   };
 }
@@ -361,12 +406,16 @@ function Editor({
   const firstChannel = guild.channels.find((c) => c.type === 0 || c.type === 5)?.id ?? "";
   const [d, setD] = useState<Draft>(() => {
     const base = draftFrom(initial, firstChannel);
-    return copy ? { ...base, name: `${base.name || base.embed.title || "Role menu"} (copy)` } : base;
+    // A copy of a menu on an existing message needs a different message, so the link starts empty.
+    return copy ? { ...base, name: `${base.name || base.embed.title || "Role menu"} (copy)`, existingMessage: "" } : base;
   });
   const [template, setTemplate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const editingExisting = initial && !copy;
+  /** The menu sits on someone else's message: only emoji reactions, and the message text isn't ours to change. */
+  const onExisting = d.useExisting;
+  const lockedToMessage = Boolean(editingExisting && initial.external);
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setD((x) => ({ ...x, [key]: value }));
   const setEmbed = (patch: Partial<Draft["embed"]>) => setD((x) => ({ ...x, embed: { ...x.embed, ...patch } }));
@@ -400,13 +449,14 @@ function Editor({
       const match = guild.roles.find((role) => role.assignable && role.name.toLowerCase() === r.label.toLowerCase());
       return match ? { ...r, roleId: match.id, label: "" } : r;
     });
-    setD((x) => ({ ...x, ...made, rows, embed: { ...x.embed, ...made.embed } }));
+    setD((x) => ({ ...x, ...made, kind: x.useExisting ? "reactions" : (made.kind ?? x.kind), rows, embed: { ...x.embed, ...made.embed } }));
   };
 
   const submit = async () => {
     setError("");
     const rows = d.rows.filter((r) => r.emoji || r.roleId || r.label);
-    if (!d.channelId) return setError("Pick a channel.");
+    if (onExisting && !lockedToMessage && !d.existingMessage.trim()) return setError("Paste the link to the message to use.");
+    if (!onExisting && !d.channelId) return setError("Pick a channel.");
     if (rows.length === 0) return setError("Add at least one role.");
     const missingRole = rows.findIndex((r) => !r.roleId);
     if (missingRole !== -1) return setError(`Row ${missingRole + 1}: pick a role.`);
@@ -429,6 +479,8 @@ function Editor({
       ignoredRoles: d.ignoredRoles,
       removeReaction: d.removeReaction,
       confirm: d.confirm,
+      tempMinutes: d.mode === "drop" ? 0 : d.tempMinutes,
+      existingMessage: onExisting && !lockedToMessage ? d.existingMessage.trim() : "",
       entries: rows.map(({ emoji, roleId, label, description, style }) => ({ emoji, roleId, label, description, style })),
     };
     setSaving(true);
@@ -474,19 +526,78 @@ function Editor({
               <span>Name <em className="muted">(only you see this)</em></span>
               <input value={d.name} maxLength={100} placeholder="e.g. Colour roles" onChange={(e) => set("name", e.target.value)} />
             </label>
-            <div className="field">
-              <span>Channel</span>
-              <ChannelSelect guild={guild} value={d.channelId || null} onChange={(id) => set("channelId", id ?? "")} />
-              {editingExisting && d.channelId !== initial.channelId && (
-                <small className="muted">The message will be reposted in the new channel. Members keep their roles.</small>
-              )}
-            </div>
+            {!editingExisting && (
+              <div className="field">
+                <span>Where</span>
+                <div className="rr-where" role="radiogroup" aria-label="Where the role menu goes">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!onExisting}
+                    className={`rr-template ${!onExisting ? "on" : ""}`}
+                    onClick={() => set("useExisting", false)}
+                  >
+                    <span>📝</span>Post a new message
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={onExisting}
+                    className={`rr-template ${onExisting ? "on" : ""}`}
+                    onClick={() => setD((x) => ({ ...x, useExisting: true, kind: "reactions" }))}
+                  >
+                    <span>🔗</span>Use a message that's already there
+                  </button>
+                </div>
+              </div>
+            )}
+            {lockedToMessage ? (
+              <div className="field">
+                <span>Message</span>
+                <div className="rr-existing-note">
+                  This menu adds reactions to a message that's already in{" "}
+                  <strong>#{guild.channels.find((c) => c.id === initial?.channelId)?.name ?? "a channel"}</strong>.{" "}
+                  <a href={initial?.url} target="_blank" rel="noreferrer">Open it in Discord</a>
+                </div>
+              </div>
+            ) : onExisting ? (
+              <label className="field">
+                <span>Message link</span>
+                <input
+                  value={d.existingMessage}
+                  placeholder="https://discord.com/channels/…"
+                  onChange={(e) => set("existingMessage", e.target.value)}
+                />
+                <small className="muted">
+                  In Discord, right-click the message (or long-press on a phone) → Copy Message Link, then paste it here. I'll add the
+                  reactions without changing the message.
+                </small>
+              </label>
+            ) : (
+              <div className="field">
+                <span>Channel</span>
+                <ChannelSelect guild={guild} value={d.channelId || null} onChange={(id) => set("channelId", id ?? "")} />
+                {editingExisting && d.channelId !== initial.channelId && (
+                  <small className="muted">The message will be reposted in the new channel. Members keep their roles.</small>
+                )}
+              </div>
+            )}
           </Section>
 
-          <Section title="How members pick">
+          <Section
+            title="How members pick"
+            hint={onExisting ? "Buttons and menus can only go on messages I post, so existing messages use emoji reactions." : undefined}
+          >
             <div className="rr-kinds">
               {reactionRoleKinds.map((k) => (
-                <button key={k.id} type="button" className={`rr-kind ${d.kind === k.id ? "on" : ""}`} aria-pressed={d.kind === k.id} onClick={() => setKind(k.id)}>
+                <button
+                  key={k.id}
+                  type="button"
+                  className={`rr-kind ${d.kind === k.id ? "on" : ""}`}
+                  aria-pressed={d.kind === k.id}
+                  disabled={onExisting && k.id !== "reactions"}
+                  onClick={() => setKind(k.id)}
+                >
                   <strong>{k.name}</strong>
                   <small className="muted">{k.description}</small>
                 </button>
@@ -564,6 +675,7 @@ function Editor({
             <small className="muted">Roles marked "above my role" can't be given out until my role is moved higher in Server Settings → Roles.</small>
           </Section>
 
+          {!onExisting && (
           <Section title="Message">
             <label className="field">
               <span>Text <em className="muted">(optional, shown above the embed)</em></span>
@@ -610,6 +722,7 @@ function Editor({
               </div>
             )}
           </Section>
+          )}
 
           <Section title="Mode">
             <div className="rr-modes">
@@ -632,6 +745,22 @@ function Editor({
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
+              </label>
+            )}
+            {d.mode !== "drop" && (
+              <label className="field rr-max">
+                <span>Roles last</span>
+                <select value={d.tempMinutes} onChange={(e) => set("tempMinutes", Number(e.target.value))}>
+                  {tempRoleChoices.map((c) => (
+                    <option key={c.minutes} value={c.minutes}>{c.label}</option>
+                  ))}
+                  {!tempRoleChoices.some((c) => c.minutes === d.tempMinutes) && <option value={d.tempMinutes}>{tempLabel(d.tempMinutes)}</option>}
+                </select>
+                <small className="muted">
+                  {d.tempMinutes
+                    ? `Roles from this menu are taken away ${tempLabel(d.tempMinutes)} after they're picked. Picking again restarts the time.`
+                    : "Members keep their roles until they remove them."}
+                </small>
               </label>
             )}
             {d.kind === "dropdown" && (
@@ -671,7 +800,7 @@ function Editor({
           {error && <p className="error">{error}</p>}
           <div className="editor-actions rr-save">
             <button className="btn primary" disabled={saving} onClick={submit}>
-              {saving ? "Saving…" : editingExisting ? "Save changes" : "Post message"}
+              {saving ? "Saving…" : editingExisting ? "Save changes" : onExisting ? "Add reactions" : "Post message"}
             </button>
             <button className="btn ghost" disabled={saving} onClick={onCancel}>Cancel</button>
           </div>
@@ -725,8 +854,9 @@ function Preview({ guild, d }: { guild: Guild; d: Draft }) {
         <div className="dc-author">
           Number One <span className="dc-bot">APP</span>
         </div>
-        {d.content.trim() && <div className="dc-content">{rich(d.content)}</div>}
-        {d.embed.enabled && (
+        {d.useExisting && <div className="dc-content muted">Your existing message stays exactly as it is. I only add the reactions below.</div>}
+        {!d.useExisting && d.content.trim() && <div className="dc-content">{rich(d.content)}</div>}
+        {!d.useExisting && d.embed.enabled && (
           <div className="dc-embed" style={{ borderLeftColor: d.embed.color }}>
             <div className="dc-embed-main">
               <div>
@@ -749,7 +879,7 @@ function Preview({ guild, d }: { guild: Guild; d: Draft }) {
             <div className="dc-footer">{footer}</div>
           </div>
         )}
-        {!d.content.trim() && !d.embed.enabled && <div className="muted small">Write some text or turn on the embed.</div>}
+        {!d.useExisting && !d.content.trim() && !d.embed.enabled && <div className="muted small">Write some text or turn on the embed.</div>}
 
         {d.kind === "reactions" && rows.length > 0 && (
           <div className="dc-reactions">

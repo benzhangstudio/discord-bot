@@ -1,5 +1,6 @@
 import { type Guild, type GuildMember, RESTJSONErrorCodes } from "discord.js";
 import { isDiscordError, roleProblem } from "./message.js";
+import * as store from "./store.js";
 import type { ReactionRoleConfig, ReactionRoleEntry } from "./store.js";
 
 /**
@@ -29,6 +30,8 @@ export interface Outcome {
   removed: string[];
   /** Why nothing changed, in plain words (e.g. not allowed, limit reached). */
   denied?: string;
+  /** When the roles just added will be taken away again (temporary roles), as a timestamp. */
+  expiresAt?: number;
 }
 
 const nothing = (denied?: string): Outcome => ({ added: [], removed: [], denied });
@@ -77,7 +80,8 @@ async function applyRoles(member: GuildMember, config: ReactionRoleConfig, add: 
       const next = [...member.roles.cache.keys()].filter((id) => id !== member.guild.id && !toRemove.includes(id));
       await member.roles.set([...next, ...toAdd], "Reaction roles");
     }
-    return { added: toAdd, removed: toRemove };
+    const expiresAt = await afterChange(member, config, toAdd, toRemove);
+    return { added: toAdd, removed: toRemove, expiresAt };
   } catch (err) {
     if (isDiscordError(err, RESTJSONErrorCodes.MissingPermissions)) {
       log(`missing permission to change roles for ${member.id} in ${member.guild.name} (${member.guild.id})`);
@@ -85,6 +89,34 @@ async function applyRoles(member: GuildMember, config: ReactionRoleConfig, add: 
     }
     if (!isDiscordError(err, RESTJSONErrorCodes.UnknownRole, RESTJSONErrorCodes.UnknownMember)) log("role update failed:", err);
     return nothing("Something went wrong changing your roles. Please try again.");
+  }
+}
+
+/**
+ * Book-keeping after a successful change: usage stats, and countdowns for temporary roles.
+ * Never blocks the change itself if it fails. Returns when added roles expire, if they do.
+ */
+async function afterChange(member: GuildMember, config: ReactionRoleConfig, added: string[], removed: string[]) {
+  await store.recordUse(config.messageId, added, removed).catch((err) => log("couldn't save stats:", err));
+  try {
+    if (removed.length) await store.clearTimers(member.guild.id, member.id, removed);
+    const minutes = config.options.tempMinutes;
+    if (!minutes || !added.length) return undefined;
+    const expiresAt = new Date(Date.now() + minutes * 60_000);
+    for (const roleId of added) {
+      await store.setTimer({
+        guildId: member.guild.id,
+        userId: member.id,
+        roleId,
+        messageId: config.messageId,
+        channelId: config.channelId,
+        expiresAt,
+      });
+    }
+    return expiresAt.getTime();
+  } catch (err) {
+    log("couldn't save a temporary role timer:", err);
+    return undefined;
   }
 }
 
@@ -194,7 +226,10 @@ export async function pickFromMenu(memberIn: GuildMember, config: ReactionRoleCo
 export function describeOutcome(o: Outcome, empty = "No changes."): string {
   if (o.denied) return o.denied;
   const parts: string[] = [];
-  if (o.added.length) parts.push(`✅ Added ${o.added.map((id) => `<@&${id}>`).join(", ")}`);
+  if (o.added.length) {
+    const until = o.expiresAt ? ` until <t:${Math.floor(o.expiresAt / 1000)}:f> (<t:${Math.floor(o.expiresAt / 1000)}:R>)` : "";
+    parts.push(`✅ Added ${o.added.map((id) => `<@&${id}>`).join(", ")}${until}`);
+  }
   if (o.removed.length) parts.push(`➖ Removed ${o.removed.map((id) => `<@&${id}>`).join(", ")}`);
   return parts.join("\n") || empty;
 }

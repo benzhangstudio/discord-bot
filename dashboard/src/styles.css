@@ -1844,3 +1844,39 @@ select.chip-add {
   font-size: 0.7rem;
   margin-left: auto;
 }
+
+/* Reaction roles: stats, existing messages */
+.rr-stats {
+  margin-top: 4px;
+}
+
+.rr-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.rr-where {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rr-existing-note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+}
+
+.rr-existing-note a {
+  color: var(--accent);
+}
+
+.rr-kind:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

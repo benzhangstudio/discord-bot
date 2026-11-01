@@ -116,6 +116,7 @@ const channelDeleted = onEvent(Events.ChannelDelete, async (channel) => {
 });
 
 const roleDeleted = onEvent(Events.GuildRoleDelete, async (role) => {
+  await store.clearTimersForRole(role.id);
   const affected = await store.removeRoleEverywhere(role.id);
   for (const messageId of affected) {
     const config = await store.getConfig(messageId);

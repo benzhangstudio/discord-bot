@@ -29,10 +29,12 @@ const PERMISSION_NAMES: Record<string, string> = {
   [String(PermissionFlagsBits.ManageMessages)]: "Manage Messages",
 };
 
-type Setup = Pick<ReactionRoleConfig, "kind" | "mode" | "options">;
+type Setup = Pick<ReactionRoleConfig, "kind" | "mode" | "options"> & { external?: boolean };
 
 /** Permissions the bot needs in the channel to run a message of this kind. */
 function requiredPermissions(setup: Setup) {
+  // On someone else's message the bot only reads it and adds reactions.
+  if (setup.external) return [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AddReactions];
   const perms: bigint[] = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
   if (setup.options.embed.enabled) perms.push(PermissionFlagsBits.EmbedLinks);
   if (setup.kind === "reactions") perms.push(PermissionFlagsBits.AddReactions);
@@ -60,10 +62,14 @@ export function needsManageMessages(setup: Setup) {
 export function configProblems(guild: Guild, config: ReactionRoleConfig): string[] {
   const problems: string[] = [];
   const channel = guild.channels.cache.get(config.channelId);
-  if (!channel || !channel.isTextBased() || channel.isThread()) {
+  if (config.external && (!channel || channel.isThread())) {
+    // Threads may simply be archived (not cached), so only check permissions when the channel is known.
+    if (!channel) return problems;
+  } else if (!channel || !channel.isTextBased() || channel.isThread()) {
     problems.push("Its channel was deleted. Edit it and pick a new channel to post it again.");
     return problems;
   }
+  if (!channel.isTextBased()) return problems;
   const text = channel as GuildTextBasedChannel;
   const missing = missingChannelPermissions(text, config);
   if (missing.length) problems.push(`I'm missing ${missing.join(", ")} in #${channel.name}.`);
@@ -217,9 +223,12 @@ export async function syncMessage(client: Client, config: ReactionRoleConfig): P
   if (!message) return ["The reaction-role message no longer exists."];
 
   const guild = message.guild ?? undefined;
-  await message.edit(buildMessage(guild, config)).catch(() => problems.push("I couldn't update the message. Check my permissions in that channel."));
+  // Someone else's message is never edited: the bot only manages its own reactions on it.
+  if (!config.external) {
+    await message.edit(buildMessage(guild, config)).catch(() => problems.push("I couldn't update the message. Check my permissions in that channel."));
+  }
 
-  if (config.kind !== "reactions") {
+  if (config.kind !== "reactions" && !config.external) {
     // Buttons or a menu: clear any reactions left from when this was an emoji message.
     if (message.reactions.cache.size) {
       await message.reactions.removeAll().catch(async () => {
@@ -253,3 +262,11 @@ export async function syncMessage(client: Client, config: ReactionRoleConfig): P
 
 import { roleProblem } from "../../server/bot/roles.js";
 export { roleProblem };
+
+/** Takes the bot's own reactions off a message (used when a menu on someone else's message is deleted). */
+export async function removeOwnReactions(client: Client, config: ReactionRoleConfig) {
+  const message = await fetchConfigMessage(client, config).catch(() => null);
+  for (const reaction of message?.reactions.cache.values() ?? []) {
+    if (reaction.me) await reaction.users.remove(client.user!.id).catch(() => {});
+  }
+}

@@ -53,6 +53,8 @@ export const reactionRoleMessages = sqliteTable(
     content: text("content").notNull().default(""),
     /** Embed look, restrictions and other per-message options (JSON, validated by reactionRoleOptions). */
     options: text("options", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+    /** The message was posted by someone else: the bot only adds reactions and never edits or deletes it. */
+    external: integer("external", { mode: "boolean" }).notNull().default(false),
   },
   // Lookups by server (dashboard list) and channel (cleanup when a channel is deleted).
   (t) => [index("reaction_role_messages_guild_idx").on(t.guildId), index("reaction_role_messages_channel_idx").on(t.channelId)],
@@ -79,6 +81,34 @@ export const reactionRoleEntries = sqliteTable(
     style: text("style").notNull().default("secondary"),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] }), index("reaction_role_entries_role_idx").on(t.roleId)],
+);
+
+/** Reaction roles: how often each role on a menu was given and taken away. */
+export const reactionRoleStats = sqliteTable(
+  "reaction_role_stats",
+  {
+    messageId: text("message_id").notNull(),
+    roleId: text("role_id").notNull(),
+    added: integer("added").notNull().default(0),
+    removed: integer("removed").notNull().default(0),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.roleId] })],
+);
+
+/** Reaction roles: temporary roles waiting to be taken away. */
+export const reactionRoleTimers = sqliteTable(
+  "reaction_role_timers",
+  {
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    roleId: text("role_id").notNull(),
+    /** The menu that gave the role (kept even if the menu is deleted, so the role still expires). */
+    messageId: text("message_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.guildId, t.userId, t.roleId] }), index("reaction_role_timers_due_idx").on(t.expiresAt)],
 );
 
 /** Answers from /setup: what each server uses Number One for. */
