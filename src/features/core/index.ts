@@ -1,4 +1,4 @@
-import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { coreFeature } from "../../shared/features.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { dashboardLink } from "../../server/config.js";
@@ -16,7 +16,6 @@ export const core: BotFeature = {
         const ws = interaction.client.ws.ping;
         await interaction.reply({
           content: `Pong! Gateway latency: ${ws >= 0 ? `${ws} ms` : "measuring..."}`,
-          flags: MessageFlags.Ephemeral,
         });
       },
     },
@@ -30,7 +29,6 @@ export const core: BotFeature = {
         const link = dashboardLink(`/servers/${interaction.guildId}`);
         await interaction.reply({
           content: link ? `Configure Number One here: ${link}` : "The dashboard isn't available yet.",
-          flags: MessageFlags.Ephemeral,
         });
       },
     },

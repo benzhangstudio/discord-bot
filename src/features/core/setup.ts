@@ -108,7 +108,7 @@ export const setupComponents: ComponentHandler = {
     if (interaction.customId === PICK_ID) return handlePick(interaction);
     if (interaction.customId === START_ID) {
       if (!canManage(interaction)) return interaction.reply({ content: NEEDS_MANAGE, flags: MessageFlags.Ephemeral });
-      return interaction.reply({ ...(await setupPrompt(interaction.guildId!)), flags: MessageFlags.Ephemeral });
+      return interaction.reply(await setupPrompt(interaction.guildId!));
     }
   },
 };
@@ -121,7 +121,8 @@ export const setupCommand: SlashCommand = {
     .setContexts(0),
   async execute(interaction) {
     if (!interaction.inGuild()) return;
-    await interaction.reply({ ...(await setupPrompt(interaction.guildId)), flags: MessageFlags.Ephemeral });
+    // Public, so staff can see who ran setup and what was picked.
+    await interaction.reply(await setupPrompt(interaction.guildId));
   },
 };
 
