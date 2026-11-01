@@ -16,7 +16,6 @@ import type {
   AnnouncementsPanelData,
   AudiencePreview,
 } from "../../src/shared/announcements";
-import type { BotStatusView } from "../../src/shared/botStatus";
 import type { BugReportView } from "../../src/shared/reports";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
@@ -108,9 +107,6 @@ export const api = {
   bugReports: () => request<{ reports: BugReportView[]; open: number }>("/api/developer/reports"),
   resolveBugReport: (id: number, resolved: boolean) =>
     request<BugReportView>(`/api/developer/reports/${id}/resolved`, { method: "POST", body: JSON.stringify({ resolved }) }),
-  botStatus: () => request<BotStatusView>("/api/developer/status"),
-  saveBotStatus: (patch: { showStatus?: boolean; workingHours?: number | null }) =>
-    request<BotStatusView>("/api/developer/status", { method: "PUT", body: JSON.stringify(patch) }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 
