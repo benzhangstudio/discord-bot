@@ -7,15 +7,7 @@ import type {
   ReactionRoleMessageView,
   SetupState,
 } from "../../src/shared/features";
-import type {
-  AnnouncementFailure,
-  AnnouncementInput,
-  AnnouncementSettings,
-  AnnouncementSummary,
-  AnnouncementTypeId,
-  AnnouncementsPanelData,
-  AudiencePreview,
-} from "../../src/shared/announcements";
+import type { AnnouncementSettings, AnnouncementsPanelData } from "../../src/shared/announcements";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
 export class ApiError extends Error {
@@ -96,13 +88,6 @@ export const api = {
     request<AnnouncementsPanelData>(`/api/guilds/${guildId}/announcements`, { method: "PUT", body: JSON.stringify(settings) }),
   testAnnouncement: (guildId: string) =>
     request<{ ok: true }>(`/api/guilds/${guildId}/announcements/test`, { method: "POST", body: "{}" }),
-  developerAnnouncements: () => request<{ announcements: AnnouncementSummary[] }>("/api/developer/announcements"),
-  previewAudience: (type: AnnouncementTypeId) =>
-    request<AudiencePreview>("/api/developer/announcements/preview", { method: "POST", body: JSON.stringify({ type }) }),
-  sendAnnouncement: (input: AnnouncementInput) =>
-    request<AnnouncementSummary>("/api/developer/announcements", { method: "POST", body: JSON.stringify(input) }),
-  announcementFailures: (id: number) =>
-    request<{ failures: AnnouncementFailure[] }>(`/api/developer/announcements/${id}/failures`),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

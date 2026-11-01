@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DashboardUser } from "../../src/shared/features";
 import { api, avatarUrl } from "./api";
-import { DeveloperPage } from "./pages/DeveloperPage";
 import { GuildPage } from "./pages/GuildPage";
 import { HomePage } from "./pages/HomePage";
 import { ServersPage } from "./pages/ServersPage";
@@ -21,7 +20,6 @@ export function App() {
   const guildMatch = path.match(/^\/servers\/(\d+)(?:\/([\w-]+))?/);
   let page;
   if (!user) page = <HomePage />;
-  else if (path === "/developer") page = <DeveloperPage />;
   else if (guildMatch) page = <GuildPage guildId={guildMatch[1]} page={guildMatch[2] ?? ""} />;
   else if (path.startsWith("/servers")) page = <ServersPage />;
   else page = <HomePage loggedIn />;
@@ -41,18 +39,6 @@ export function App() {
         </a>
         {user && (
           <div className="user">
-            {user.developer && (
-              <a
-                className="btn ghost small"
-                href="/developer"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate("/developer");
-                }}
-              >
-                📢 Developer
-              </a>
-            )}
             {avatarUrl(user) ? <img src={avatarUrl(user)!} alt="" /> : <span className="avatar-fallback">{user.username[0]}</span>}
             <span>{user.username}</span>
             <button
