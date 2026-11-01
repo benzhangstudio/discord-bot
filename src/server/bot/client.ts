@@ -3,6 +3,7 @@ import { features } from "../../features/index.js";
 import { config, dashboardLink, setPublicUrl } from "../config.js";
 import { isFeatureEnabled } from "../settings.js";
 import { client } from "./discord.js";
+import { startPresence } from "./presence.js";
 import type { BotFeature, ComponentHandler, ModalHandler, SlashCommand } from "./types.js";
 
 export { client };
@@ -137,6 +138,7 @@ let featuresSetUp = false;
 export async function startBot() {
   if (!featuresSetUp) {
     for (const feature of features) feature.setup?.(client);
+    startPresence(client);
     featuresSetUp = true;
   }
   await client.login(config.token);

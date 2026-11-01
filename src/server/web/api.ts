@@ -5,6 +5,7 @@ import { type DashboardGuild, type DashboardUser, categoryIds, getFeatureInfo } 
 import { registerDeveloperApi } from "../../features/announcements/index.js";
 import { isDeveloper } from "../../features/announcements/developer.js";
 import { registerReportsApi } from "../../features/core/report.js";
+import { registerStatusApi } from "../../features/status/api.js";
 import { features } from "../../features/index.js";
 import { client } from "../bot/client.js";
 import { config, loginReady } from "../config.js";
@@ -99,6 +100,7 @@ export function registerApiRoutes(app: FastifyInstance) {
     // The bot developer's own tools (publishing announcements to every server).
     registerDeveloperApi(api);
     registerReportsApi(api);
+    registerStatusApi(api);
 
     api.get("/api/guilds", async (request, reply) => {
       try {

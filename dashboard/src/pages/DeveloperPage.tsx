@@ -8,7 +8,9 @@ import {
   MAX_TITLE,
   announcementTypes,
 } from "../../../src/shared/announcements";
+import { type BotStatusView, WORKING_HOURS } from "../../../src/shared/botStatus";
 import type { BugReportView } from "../../../src/shared/reports";
+import { Toggle } from "../components/pickers";
 import { api } from "../api";
 
 const typeOf = (id: string) => announcementTypes.find((t) => t.id === id) ?? announcementTypes[3];
@@ -230,6 +232,8 @@ export function DeveloperPage() {
         </div>
       </div>
 
+      <BotStatusSection />
+
       <ReportsSection />
 
       <h2>Sent</h2>
@@ -328,5 +332,86 @@ function ReportsSection() {
         ))}
       </div>
     </>
+  );
+}
+
+/** The little status under the bot's name in Discord: the developer's "I'm coding" switch and a master on/off. */
+function BotStatusSection() {
+  const [status, setStatus] = useState<BotStatusView | null>(null);
+  const [hours, setHours] = useState<number>(4);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.botStatus().then(setStatus).catch((err) => setError(err.message));
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 30_000); // picks up the status ending or the bot finishing a restart
+    return () => window.clearInterval(t);
+  }, []);
+
+  const save = async (patch: { showStatus?: boolean; workingHours?: number | null }) => {
+    setError("");
+    setBusy(true);
+    try {
+      setStatus(await api.saveBotStatus(patch));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const until = status?.workingUntil ? new Date(status.workingUntil) : null;
+
+  return (
+    <div className="card dev-card">
+      <h2 style={{ marginTop: 0 }}>🎮 Bot status</h2>
+      <p className="muted small">
+        The line under Number One's name in Discord. It shows “Applying changes…” while the bot restarts, then goes back to
+        a friendly status. Nothing else to set up.
+      </p>
+      {!status && !error && <p className="muted">Loading…</p>}
+      {status && (
+        <>
+          <p className="small">
+            Showing now:{" "}
+            <strong>{status.shown.mode === "off" ? "No status (switched off)" : status.shown.text}</strong>
+          </p>
+          <Toggle
+            checked={status.showStatus}
+            onChange={(v) => save({ showStatus: v })}
+            label="Show a status on the bot"
+            hint="Turn this off and the bot just shows as online."
+          />
+          <div className="field">
+            <span>I'm working on the bot</span>
+            <div className="editor-actions">
+              <select value={hours} onChange={(e) => setHours(Number(e.target.value))} disabled={busy || !!until}>
+                {WORKING_HOURS.map((h) => (
+                  <option key={h} value={h}>
+                    for {h} hour{h === 1 ? "" : "s"}
+                  </option>
+                ))}
+              </select>
+              {until ? (
+                <button className="btn ghost" disabled={busy} onClick={() => save({ workingHours: null })}>
+                  Stop coding status
+                </button>
+              ) : (
+                <button className="btn primary" disabled={busy || !status.showStatus} onClick={() => save({ workingHours: hours })}>
+                  Show “Coding new features”
+                </button>
+              )}
+            </div>
+            <small className="muted">
+              {until
+                ? `Do not disturb, “Coding new features”, until ${until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. It stays on through restarts and ends by itself.`
+                : "Shows a do-not-disturb status. It ends by itself, so you can't forget it."}
+            </small>
+          </div>
+        </>
+      )}
+      {error && <span className="error small">{error}</span>}
+    </div>
   );
 }
