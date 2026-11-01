@@ -1,12 +1,14 @@
 :root {
-  --bg: #0e0f13;
-  --surface: #17191f;
-  --surface-2: #1f222a;
-  --border: #2a2e38;
-  --text: #eceef3;
-  --muted: #9198a8;
-  --accent: #f5b72f;
-  --accent-text: #1a1406;
+  /* Black and pink theme */
+  --bg: #0a0a0b;
+  --surface: #141215;
+  --surface-2: #1f1a1e;
+  --border: #2e2429;
+  --text: #f6eef2;
+  --muted: #a8949f;
+  --accent: #ff4fa3;
+  --accent-soft: rgba(255, 79, 163, 0.14);
+  --accent-text: #1a0610;
   --danger: #ff6b6b;
   --radius: 12px;
   color-scheme: dark;
@@ -262,4 +264,51 @@ h2 {
 
 .switch:disabled {
   opacity: 0.6;
+}
+
+/* Pink accents */
+body {
+  background:
+    radial-gradient(1200px 500px at 50% -200px, rgba(255, 79, 163, 0.12), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+.topbar {
+  background: rgba(10, 10, 11, 0.85);
+  border-bottom-color: var(--accent-soft);
+}
+
+.hero h1 {
+  background: linear-gradient(90deg, #ffffff 0%, #ffb3d6 60%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn.primary {
+  box-shadow: 0 4px 20px rgba(255, 79, 163, 0.3);
+}
+
+.card {
+  transition: border-color 0.15s;
+}
+
+.card:hover {
+  border-color: rgba(255, 79, 163, 0.4);
+}
+
+.pill {
+  color: var(--accent);
+  border-color: rgba(255, 79, 163, 0.35);
+  background: var(--accent-soft);
+}
+
+.link:hover {
+  color: var(--accent);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-text);
 }
