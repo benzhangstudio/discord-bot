@@ -14,15 +14,43 @@ import { z } from "zod";
  * category later switch on automatically for servers that picked it.
  */
 export const categories = [
-  { id: "moderation", name: "Moderation & safety", emoji: "🛡️", description: "Warnings, timeouts, bans and keeping spam out" },
-  { id: "roles", name: "Roles", emoji: "🎭", description: "Let members pick their own roles" },
-  { id: "welcome", name: "Welcome & onboarding", emoji: "👋", description: "Greet new members and give starting roles" },
-  { id: "logging", name: "Server logs", emoji: "📋", description: "Keep a record of joins, leaves, edits and deletes" },
-  { id: "engagement", name: "Community & engagement", emoji: "🎉", description: "Levels, polls, giveaways and events" },
+  {
+    id: "moderation",
+    name: "Moderation & Safety",
+    emoji: "🛡️",
+    description: "Warnings, bans, timeouts, auto-moderation, anti-spam and anti-raid",
+  },
+  {
+    id: "community",
+    name: "Community & Roles",
+    emoji: "👥",
+    description: "Welcome messages, auto roles, reaction roles and member verification",
+  },
+  {
+    id: "logging",
+    name: "Logging & Auditing",
+    emoji: "📋",
+    description: "Track joins, leaves, message edits, deletes and moderator actions",
+  },
+  {
+    id: "engagement",
+    name: "Engagement & Fun",
+    emoji: "🎉",
+    description: "Levels, giveaways, polls, starboard and events",
+  },
+  {
+    id: "utility",
+    name: "Utilities & Automation",
+    emoji: "🛠️",
+    description: "Custom commands, announcements, tickets, reminders and social feeds",
+  },
 ] as const;
 
 export type CategoryId = (typeof categories)[number]["id"];
 export const categoryIds = categories.map((c) => c.id) as [CategoryId, ...CategoryId[]];
+
+/** Older category IDs that servers may have saved, and the broader category they now belong to. */
+export const legacyCategories: Record<string, CategoryId> = { roles: "community", welcome: "community" };
 
 export interface FeatureInfo<S extends z.ZodObject = z.ZodObject> {
   id: string;
@@ -52,7 +80,7 @@ export const reactionRolesFeature = defineFeature({
   id: "reaction-roles",
   name: "Reaction roles",
   description: "Members pick their own roles by reacting to a message. Build the messages below.",
-  category: "roles",
+  category: "community",
   recommended: true,
   settings: z.object({}),
 });

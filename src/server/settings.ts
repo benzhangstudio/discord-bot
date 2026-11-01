@@ -6,6 +6,7 @@ import {
   type SetupState,
   categoryIds,
   featureCatalog,
+  legacyCategories,
 } from "../shared/features.js";
 import { db } from "./db/client.js";
 import { featureSettings, guildSetup } from "./db/schema.js";
@@ -15,7 +16,9 @@ export async function getSetup(guildId: string): Promise<SetupState> {
   const row = await db.select().from(guildSetup).where(eq(guildSetup.guildId, guildId)).get();
   const valid = new Set<string>(categoryIds);
   return {
-    categories: (row?.categories ?? []).filter((c): c is CategoryId => valid.has(c)),
+    categories: [...new Set((row?.categories ?? []).map((c) => legacyCategories[c] ?? c))].filter((c): c is CategoryId =>
+      valid.has(c),
+    ),
     completed: Boolean(row?.completedAt),
   };
 }
