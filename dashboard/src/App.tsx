@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DashboardUser } from "../../src/shared/features";
 import { api, avatarUrl } from "./api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DeveloperPage } from "./pages/DeveloperPage";
 import { GuildPage } from "./pages/GuildPage";
 import { HomePage } from "./pages/HomePage";
@@ -67,7 +68,7 @@ export function App() {
           </div>
         )}
       </header>
-      <main className={`content ${user && guildMatch ? "wide" : ""}`}>{page}</main>
+      <main className={`content ${user && guildMatch ? "wide" : ""}`}><ErrorBoundary key={path}>{page}</ErrorBoundary></main>
     </div>
   );
 }
