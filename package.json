@@ -11,7 +11,7 @@
   "scripts": {
     "postinstall": "npm run build",
     "build": "npm run build:server && npm run build:dashboard",
-    "build:server": "tsc -p tsconfig.json --singleThreaded",
+    "build:server": "tsc -p tsconfig.json",
     "build:dashboard": "vite build --config dashboard/vite.config.ts",
     "start": "node index.js",
     "dev": "tsx watch src/server/index.ts",
