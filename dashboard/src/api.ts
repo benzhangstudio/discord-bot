@@ -1,4 +1,4 @@
-import type { DashboardGuild, DashboardUser, FeatureState } from "../../src/shared/features";
+import type { DashboardGuild, DashboardUser, FeatureState, ReactionRoleMessageView } from "../../src/shared/features";
 
 export class ApiError extends Error {
   constructor(
@@ -39,6 +39,9 @@ export const api = {
   guild: (id: string) => request<GuildDetails>(`/api/guilds/${id}`),
   saveFeature: (guildId: string, featureId: string, state: Omit<FeatureState, "id">) =>
     request<FeatureState>(`/api/guilds/${guildId}/features/${featureId}`, { method: "PUT", body: JSON.stringify(state) }),
+  reactionRoles: (guildId: string) => request<ReactionRoleMessageView[]>(`/api/guilds/${guildId}/reaction-roles`),
+  deleteReactionRole: (guildId: string, messageId: string) =>
+    request<{ ok: true }>(`/api/guilds/${guildId}/reaction-roles/${messageId}`, { method: "DELETE" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

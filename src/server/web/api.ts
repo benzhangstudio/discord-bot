@@ -2,6 +2,7 @@ import { PermissionFlagsBits, type Guild } from "discord.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type DashboardGuild, type DashboardUser, getFeatureInfo } from "../../shared/features.js";
+import { features } from "../../features/index.js";
 import { client } from "../bot/client.js";
 import { config, loginReady } from "../config.js";
 import { getAllFeatureStates, getFeatureState, saveFeatureState } from "../settings.js";
@@ -120,6 +121,9 @@ export function registerApiRoutes(app: FastifyInstance) {
           return getFeatureState(request.params.guildId, feature);
         },
       );
+
+      // Feature-specific dashboard routes (e.g. the reaction-role messages list).
+      for (const feature of features) feature.registerApi?.(guildApi);
     });
   });
 }

@@ -10,8 +10,10 @@ export const client = new Client({
     GatewayIntentBits.GuildMembers, // privileged: enable "Server Members Intent" in the Developer Portal
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
   ],
-  partials: [Partials.GuildMember],
+  // Partials let the bot react to events on messages, reactions and members it hasn't cached (e.g. after a restart).
+  partials: [Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User, Partials.Channel],
 });
 
 const commands = new Map<string, { command: SlashCommand; feature: BotFeature }>();
@@ -48,6 +50,18 @@ client.once(Events.ClientReady, async (c) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    const entry = commands.get(interaction.commandName);
+    if (!entry?.command.autocomplete) return;
+    if (interaction.guildId && !(await isFeatureEnabled(interaction.guildId, entry.feature.info))) {
+      return interaction.respond([]).catch(() => {});
+    }
+    await entry.command.autocomplete(interaction).catch((err) => {
+      console.error(`[bot] /${interaction.commandName} suggestions failed:`, err);
+      return interaction.respond([]).catch(() => {});
+    });
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
   const entry = commands.get(interaction.commandName);
   if (!entry) return;

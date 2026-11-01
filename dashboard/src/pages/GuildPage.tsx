@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type FeatureState, featureCatalog } from "../../../src/shared/features";
 import { type GuildDetails, api } from "../api";
+import { featurePanels } from "../features";
 import { navigate } from "../router";
 import { GuildIcon } from "./ServersPage";
 
@@ -55,26 +56,31 @@ export function GuildPage({ guildId }: { guildId: string }) {
         {featureCatalog.map((info) => {
           const state = data.features.find((f) => f.id === info.id);
           if (!state) return null;
+          const Panel = featurePanels[info.id];
           return (
-            <div key={info.id} className="card feature-card">
-              <div>
-                <div className="feature-name">{info.name}</div>
-                <div className="muted">{info.description}</div>
+            <div key={info.id} className="card feature-block">
+              <div className="feature-card">
+                <div>
+                  <div className="feature-name">{info.name}</div>
+                  <div className="muted">{info.description}</div>
+                </div>
+                {info.alwaysOn ? (
+                  <span className="pill">Always on</span>
+                ) : (
+                  <button
+                    className={`switch ${state.enabled ? "on" : ""}`}
+                    role="switch"
+                    aria-checked={state.enabled}
+                    aria-label={`Turn ${info.name} ${state.enabled ? "off" : "on"}`}
+                    disabled={saving === info.id}
+                    onClick={() => toggle(state)}
+                  >
+                    <span />
+                  </button>
+                )}
               </div>
-              {info.alwaysOn ? (
-                <span className="pill">Always on</span>
-              ) : (
-                <button
-                  className={`switch ${state.enabled ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={state.enabled}
-                  aria-label={`Turn ${info.name} ${state.enabled ? "off" : "on"}`}
-                  disabled={saving === info.id}
-                  onClick={() => toggle(state)}
-                >
-                  <span />
-                </button>
-              )}
+              {Panel && state.enabled && <Panel guild={data.guild} />}
+              {Panel && !state.enabled && <p className="muted small panel-off">Turn this on to start using it.</p>}
             </div>
           );
         })}

@@ -27,3 +27,33 @@ export const sessions = sqliteTable("sessions", {
   accessToken: text("access_token").notNull(),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+/** Reaction roles: one row per reaction-role message the bot posted. */
+export const reactionRoleMessages = sqliteTable("reaction_role_messages", {
+  messageId: text("message_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  /** Single choice: members can hold only one role from this message at a time. */
+  singleChoice: integer("single_choice", { mode: "boolean" }).notNull().default(false),
+  createdBy: text("created_by").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+/** Reaction roles: which emoji gives which role on a message. */
+export const reactionRoleEntries = sqliteTable(
+  "reaction_role_entries",
+  {
+    messageId: text("message_id")
+      .notNull()
+      .references(() => reactionRoleMessages.messageId, { onDelete: "cascade" }),
+    /** Custom emoji ID, or the Unicode emoji itself (without variation selectors). */
+    emojiKey: text("emoji_key").notNull(),
+    /** How to show / react with the emoji: "<:name:id>" or the Unicode emoji. */
+    emojiDisplay: text("emoji_display").notNull(),
+    roleId: text("role_id").notNull(),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] })],
+);

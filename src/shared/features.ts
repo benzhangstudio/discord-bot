@@ -27,7 +27,25 @@ export const coreFeature = defineFeature({
   settings: z.object({}),
 });
 
-export const featureCatalog: FeatureInfo[] = [coreFeature];
+export const reactionRolesFeature = defineFeature({
+  id: "reaction-roles",
+  name: "Reaction roles",
+  description: "Members pick their own roles by reacting to a message. Set up with /reactionroles.",
+  settings: z.object({}),
+});
+
+export const featureCatalog: FeatureInfo[] = [coreFeature, reactionRolesFeature];
+
+/** A reaction-role message as the dashboard shows it. */
+export interface ReactionRoleMessageView {
+  messageId: string;
+  channelId: string;
+  title: string;
+  description: string;
+  singleChoice: boolean;
+  url: string;
+  entries: { emojiKey: string; emojiDisplay: string; emojiUrl: string | null; roleId: string }[];
+}
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);

@@ -312,3 +312,99 @@ body {
   background: var(--accent);
   color: var(--accent-text);
 }
+
+/* Feature sections */
+.feature-block {
+  padding: 0;
+}
+
+.feature-block .feature-card {
+  padding: 16px;
+}
+
+.panel,
+.panel-off {
+  border-top: 1px solid var(--border);
+  padding: 14px 16px 16px;
+  margin: 0;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.hint {
+  margin: 12px 0 0;
+}
+
+code {
+  background: var(--surface-2);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 0.85em;
+}
+
+.pill.tiny {
+  font-size: 0.7rem;
+  padding: 0 8px;
+  margin-left: 8px;
+}
+
+.btn.danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.rr-message {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.rr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rr-title {
+  font-weight: 600;
+}
+
+.rr-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.rr-entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rr-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px 10px 3px 6px;
+}
+
+.rr-emoji {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.role-chip {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+}

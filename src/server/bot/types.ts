@@ -1,4 +1,5 @@
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   Client,
   ClientEvents,
@@ -10,6 +11,8 @@ export interface SlashCommand {
   /** Built with discord.js's SlashCommandBuilder. */
   data: { name: string; toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody };
   execute(interaction: ChatInputCommandInteraction): Promise<unknown>;
+  /** Suggestions while the user is typing an option marked with setAutocomplete(true). */
+  autocomplete?(interaction: AutocompleteInteraction): Promise<unknown>;
 }
 
 export interface FeatureEvent<E extends keyof ClientEvents = keyof ClientEvents> {
@@ -31,4 +34,8 @@ export interface BotFeature {
   events?: FeatureEvent[];
   /** Optional one-time setup when the bot starts (timers, caches...). */
   setup?(client: Client): void;
+  /** Optional dashboard API routes for this feature (already limited to people who manage the server). */
+  registerApi?(api: FeatureApi): void;
 }
+
+export type FeatureApi = import("fastify").FastifyInstance;
