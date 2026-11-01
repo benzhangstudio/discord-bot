@@ -17,10 +17,10 @@ export function App() {
 
   if (user === undefined) return <div className="center muted">Loading…</div>;
 
-  const guildMatch = path.match(/^\/servers\/(\d+)/);
+  const guildMatch = path.match(/^\/servers\/(\d+)(?:\/([\w-]+))?/);
   let page;
   if (!user) page = <HomePage />;
-  else if (guildMatch) page = <GuildPage guildId={guildMatch[1]} />;
+  else if (guildMatch) page = <GuildPage guildId={guildMatch[1]} page={guildMatch[2] ?? ""} />;
   else if (path.startsWith("/servers")) page = <ServersPage />;
   else page = <HomePage loggedIn />;
 
@@ -53,7 +53,7 @@ export function App() {
           </div>
         )}
       </header>
-      <main className="content">{page}</main>
+      <main className={`content ${user && guildMatch ? "wide" : ""}`}>{page}</main>
     </div>
   );
 }

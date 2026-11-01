@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   type CategoryId,
+  type DashboardGuild,
   type FeatureInfo,
   type FeatureState,
   categories,
@@ -12,15 +13,30 @@ import { featurePanels } from "../features";
 import { navigate } from "../router";
 import { GuildIcon } from "./ServersPage";
 
-export function GuildPage({ guildId }: { guildId: string }) {
+/**
+ * A server's dashboard, laid out like MEE6 / Carl-bot:
+ * a menu on the left (Overview, Server setup, then each category and its features)
+ * and one page at a time on the right.
+ *
+ * Pages: /servers/:id (overview), /servers/:id/setup, /servers/:id/:featureId
+ */
+export function GuildPage({ guildId, page }: { guildId: string; page: string }) {
   const [data, setData] = useState<GuildDetails | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     setData(null);
+    setError("");
     api.guild(guildId).then(setData).catch((err) => setError(err.message));
   }, [guildId]);
+
+  // Close the phone menu and jump to the top whenever the page changes.
+  useEffect(() => {
+    setMenuOpen(false);
+    window.scrollTo(0, 0);
+  }, [page, guildId]);
 
   if (error)
     return (
@@ -33,11 +49,15 @@ export function GuildPage({ guildId }: { guildId: string }) {
     );
   if (!data) return <p className="muted">Loading server…</p>;
 
-  const toggle = async (state: FeatureState) => {
-    setSaving(state.id);
+  const stateOf = (id: string) => data.features.find((f) => f.id === id);
+
+  const setEnabled = async (info: FeatureInfo, enabled: boolean) => {
+    const state = stateOf(info.id);
+    if (!state) return;
+    setSaving(info.id);
     try {
-      const updated = await api.saveFeature(guildId, state.id, { enabled: !state.enabled, settings: state.settings });
-      setData({ ...data, features: data.features.map((f) => (f.id === updated.id ? updated : f)) });
+      const updated = await api.saveFeature(guildId, info.id, { enabled, settings: state.settings });
+      setData((d) => d && { ...d, features: d.features.map((f) => (f.id === updated.id ? updated : f)) });
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -45,76 +65,301 @@ export function GuildPage({ guildId }: { guildId: string }) {
     }
   };
 
-  const renderFeature = (info: FeatureInfo) => {
-    const state = data.features.find((f) => f.id === info.id);
-    if (!state) return null;
-    const Panel = featurePanels[info.id];
-    return (
-      <div key={info.id} className="card feature-block">
-        <div className="feature-card">
-          <div>
-            <div className="feature-name">{info.name}</div>
-            <div className="muted">{info.description}</div>
-          </div>
-          {info.alwaysOn ? (
-            <span className="pill">Always on</span>
-          ) : (
-            <button
-              className={`switch ${state.enabled ? "on" : ""}`}
-              role="switch"
-              aria-checked={state.enabled}
-              aria-label={`Turn ${info.name} ${state.enabled ? "off" : "on"}`}
-              disabled={saving === info.id}
-              onClick={() => toggle(state)}
-            >
-              <span />
-            </button>
-          )}
-        </div>
-        {Panel && state.enabled && <Panel guild={data.guild} />}
-        {Panel && !state.enabled && <p className="muted small panel-off">Turn this on to start using it.</p>}
-      </div>
-    );
-  };
+  const base = `/servers/${guildId}`;
+  const feature = featureCatalog.find((f) => f.id === page && f.category);
 
-  const core = featureCatalog.filter((f) => !f.category);
+  let body;
+  let title = "Overview";
+  if (page === "setup") {
+    title = "Server setup";
+    body = <SetupPage data={data} onChange={setData} />;
+  } else if (feature) {
+    title = feature.name;
+    body = (
+      <FeaturePage
+        info={feature}
+        state={stateOf(feature.id)}
+        guild={data.guild}
+        saving={saving === feature.id}
+        onToggle={(on) => setEnabled(feature, on)}
+      />
+    );
+  } else {
+    body = (
+      <OverviewPage
+        data={data}
+        base={base}
+        saving={saving}
+        onToggle={(info, on) => setEnabled(info, on)}
+      />
+    );
+  }
+
+  const link = (to: string, label: ReactNode, active: boolean, extra?: ReactNode) => (
+    <a
+      href={to}
+      className={`nav-item ${active ? "active" : ""}`}
+      aria-current={active ? "page" : undefined}
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(to);
+      }}
+    >
+      {label}
+      {extra}
+    </a>
+  );
+
+  return (
+    <div className="guild-layout">
+      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+        <ServerSwitcher current={data.guild} />
+        <button className="menu-toggle" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
+          <span>{title}</span>
+          <span aria-hidden>{menuOpen ? "▲" : "▼"}</span>
+        </button>
+        <nav className="nav">
+          {link(base, <><span className="nav-icon">🏠</span>Overview</>, !feature && page !== "setup")}
+          {link(
+            `${base}/setup`,
+            <><span className="nav-icon">⚙️</span>Server setup</>,
+            page === "setup",
+            !data.setup.completed ? <span className="nav-badge">Start here</span> : null,
+          )}
+          {categories.map((c) => {
+            const list = featuresInCategory(c.id);
+            return (
+              <div key={c.id} className="nav-group">
+                <div className="nav-heading">{c.name}</div>
+                {list.length === 0 && <div className="nav-soon">Coming soon</div>}
+                {list.map((f) =>
+                  link(
+                    `${base}/${f.id}`,
+                    <><span className="nav-icon">{f.icon ?? "•"}</span>{f.name}</>,
+                    feature?.id === f.id,
+                    <span className={`nav-dot ${stateOf(f.id)?.enabled ? "on" : ""}`} title={stateOf(f.id)?.enabled ? "On" : "Off"} />,
+                  ),
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      </aside>
+      <div className="guild-main">{body}</div>
+    </div>
+  );
+}
+
+/** Server name and icon at the top of the menu. Click to jump to another server. */
+function ServerSwitcher({ current }: { current: GuildDetails["guild"] }) {
+  const [open, setOpen] = useState(false);
+  const [guilds, setGuilds] = useState<DashboardGuild[] | null>(null);
+
+  useEffect(() => {
+    if (open && !guilds) api.guilds().then(setGuilds).catch(() => setGuilds([]));
+  }, [open, guilds]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  const others = (guilds ?? []).filter((g) => g.botPresent && g.id !== current.id);
+
+  return (
+    <div className="switcher" onClick={(e) => e.stopPropagation()}>
+      <button className="switcher-btn" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <GuildIcon guild={current} size={36} />
+        <span className="switcher-name">
+          <strong>{current.name}</strong>
+          <small className="muted">{current.memberCount.toLocaleString()} members</small>
+        </span>
+        <span className="muted" aria-hidden>⇅</span>
+      </button>
+      {open && (
+        <div className="switcher-menu">
+          {!guilds && <div className="muted small switcher-empty">Loading…</div>}
+          {others.map((g) => (
+            <button key={g.id} onClick={() => { setOpen(false); navigate(`/servers/${g.id}`); }}>
+              <GuildIcon guild={g} size={24} />
+              <span>{g.name}</span>
+            </button>
+          ))}
+          {guilds && others.length === 0 && <div className="muted small switcher-empty">No other servers yet.</div>}
+          <button className="switcher-all" onClick={() => { setOpen(false); navigate("/servers"); }}>
+            ← All servers
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Switch({ on, label, disabled, onChange }: { on: boolean; label: string; disabled?: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      className={`switch ${on ? "on" : ""}`}
+      role="switch"
+      aria-checked={on}
+      aria-label={`Turn ${label} ${on ? "off" : "on"}`}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(!on);
+      }}
+    >
+      <span />
+    </button>
+  );
+}
+
+/** Home page for a server: a card per feature, grouped by category, each with a switch and a Configure button. */
+function OverviewPage({
+  data,
+  base,
+  saving,
+  onToggle,
+}: {
+  data: GuildDetails;
+  base: string;
+  saving: string | null;
+  onToggle: (info: FeatureInfo, on: boolean) => void;
+}) {
   const groups = categories.filter((c) => featuresInCategory(c.id).length > 0);
+  const soon = categories.filter((c) => featuresInCategory(c.id).length === 0);
+  const enabledCount = data.features.filter((f) => f.enabled && featureCatalog.find((i) => i.id === f.id)?.category).length;
+  const total = featureCatalog.filter((f) => f.category).length;
 
   return (
     <section>
-      <button className="link" onClick={() => navigate("/servers")}>
-        ← All servers
-      </button>
-      <div className="guild-header">
-        <GuildIcon guild={data.guild} size={64} />
-        <div>
-          <h1>{data.guild.name}</h1>
-          <p className="muted">{data.guild.memberCount.toLocaleString()} members</p>
-        </div>
+      <div className="page-head">
+        <h1>Overview</h1>
+        <p className="muted">
+          {enabledCount} of {total} features on. Open a feature to set it up, or use the switches to turn things on and off.
+        </p>
       </div>
 
-      <SetupCard data={data} onChange={setData} />
+      {!data.setup.completed && (
+        <div className="card banner">
+          <div>
+            <div className="feature-name">New here? Start with server setup</div>
+            <div className="muted">Tell Number One what your server needs and the right features switch on for you.</div>
+          </div>
+          <button className="btn primary" onClick={() => navigate(`${base}/setup`)}>
+            Set up
+          </button>
+        </div>
+      )}
 
-      <h2>Features</h2>
-      <div className="feature-list">{core.map(renderFeature)}</div>
       {groups.map((c) => (
-        <div key={c.id}>
-          <h3 className="group-title">
+        <div key={c.id} className="overview-group">
+          <h2>
             {c.emoji} {c.name}
-          </h3>
-          <div className="feature-list">{featuresInCategory(c.id).map(renderFeature)}</div>
+          </h2>
+          <div className="plugin-grid">
+            {featuresInCategory(c.id).map((info) => {
+              const state = data.features.find((f) => f.id === info.id);
+              if (!state) return null;
+              const go = () => navigate(`${base}/${info.id}`);
+              return (
+                <div key={info.id} className={`card plugin ${state.enabled ? "on" : ""}`}>
+                  <div className="plugin-top">
+                    <span className="plugin-icon">{info.icon ?? c.emoji}</span>
+                    <Switch on={state.enabled} label={info.name} disabled={saving === info.id} onChange={(on) => onToggle(info, on)} />
+                  </div>
+                  <div className="feature-name">{info.name}</div>
+                  <p className="muted small plugin-desc">{info.description}</p>
+                  <button className="btn ghost small" onClick={go}>
+                    Configure →
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ))}
+
+      {soon.length > 0 && (
+        <div className="overview-group">
+          <h2>Coming soon</h2>
+          <div className="soon-list">
+            {soon.map((c) => (
+              <div key={c.id} className="card soon-card">
+                <span className="plugin-icon">{c.emoji}</span>
+                <div>
+                  <div className="feature-name">{c.name}</div>
+                  <div className="muted small">{c.description}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="muted small footnote">
+        Always on: <code>/setup</code>, <code>/dashboard</code> and <code>/ping</code>.
+      </p>
+    </section>
+  );
+}
+
+/** One feature on its own page: header with the on/off switch, then its settings. */
+function FeaturePage({
+  info,
+  state,
+  guild,
+  saving,
+  onToggle,
+}: {
+  info: FeatureInfo;
+  state: FeatureState | undefined;
+  guild: GuildDetails["guild"];
+  saving: boolean;
+  onToggle: (on: boolean) => void;
+}) {
+  const Panel = featurePanels[info.id];
+  const category = categories.find((c) => c.id === info.category);
+  const on = !!state?.enabled;
+
+  return (
+    <section className="feature-page">
+      <div className="page-head feature-head">
+        <span className="plugin-icon big">{info.icon ?? category?.emoji}</span>
+        <div className="feature-head-text">
+          {category && <div className="muted small">{category.name}</div>}
+          <h1>{info.name}</h1>
+          <p className="muted">{info.description}</p>
+        </div>
+        {state && <Switch on={on} label={info.name} disabled={saving} onChange={onToggle} />}
+      </div>
+
+      {!on ? (
+        <div className="card enable-card">
+          <div className="plugin-icon big">{info.icon ?? category?.emoji}</div>
+          <div className="feature-name">{info.name} is off</div>
+          <p className="muted">Turn it on to start setting it up. Nothing changes in your server until you save something.</p>
+          <button className="btn primary" disabled={saving} onClick={() => onToggle(true)}>
+            {saving ? "Turning on…" : "Turn on"}
+          </button>
+        </div>
+      ) : Panel ? (
+        <div className="feature-body">
+          <Panel guild={guild} />
+        </div>
+      ) : (
+        <p className="muted">This feature is on. It has no settings yet.</p>
+      )}
     </section>
   );
 }
 
 /** The dashboard version of /setup: pick what the server is for, recommended features switch on. */
-function SetupCard({ data, onChange }: { data: GuildDetails; onChange: (d: GuildDetails) => void }) {
+function SetupPage({ data, onChange }: { data: GuildDetails; onChange: (d: GuildDetails) => void }) {
   const [picked, setPicked] = useState<CategoryId[]>(data.setup.categories);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [open, setOpen] = useState(!data.setup.completed);
 
   const dirty = picked.slice().sort().join() !== data.setup.categories.slice().sort().join();
 
@@ -133,27 +378,19 @@ function SetupCard({ data, onChange }: { data: GuildDetails; onChange: (d: Guild
     }
   };
 
-  if (!open) {
-    const chosen = categories.filter((c) => data.setup.categories.includes(c.id));
-    return (
-      <div className="card setup-summary">
-        <div>
-          <div className="feature-name">Used for</div>
-          <div className="muted">{chosen.map((c) => `${c.emoji} ${c.name}`).join(" · ") || "Nothing picked yet"}</div>
-        </div>
-        <button className="btn ghost small" onClick={() => setOpen(true)}>Change</button>
-      </div>
-    );
-  }
-
   return (
-    <div className="card setup-card">
-      <div className="feature-name">What will you use Number One for?</div>
-      <p className="muted">Pick everything that fits. The right features switch on for each one. Same as <code>/setup</code> in Discord.</p>
+    <section>
+      <div className="page-head">
+        <h1>Server setup</h1>
+        <p className="muted">
+          What will you use Number One for? Pick everything that fits and the recommended features for each switch on. Same as{" "}
+          <code>/setup</code> in Discord. You can still turn any feature on or off later.
+        </p>
+      </div>
       <div className="category-grid">
         {categories.map((c) => {
           const on = picked.includes(c.id);
-          const ready = featuresInCategory(c.id).length > 0;
+          const list = featuresInCategory(c.id);
           return (
             <button
               key={c.id}
@@ -165,7 +402,11 @@ function SetupCard({ data, onChange }: { data: GuildDetails; onChange: (d: Guild
               <span>
                 <strong>{c.name}</strong>
                 <small className="muted">{c.description}</small>
-                {!ready && <small className="soon">Coming soon</small>}
+                {list.length === 0 ? (
+                  <small className="soon">Coming soon</small>
+                ) : (
+                  <small className="includes">Includes: {list.map((f) => f.name).join(", ")}</small>
+                )}
               </span>
             </button>
           );
@@ -175,11 +416,8 @@ function SetupCard({ data, onChange }: { data: GuildDetails; onChange: (d: Guild
         <button className="btn primary" disabled={saving || picked.length === 0 || (!dirty && data.setup.completed)} onClick={save}>
           {saving ? "Saving…" : "Save"}
         </button>
-        {data.setup.completed && (
-          <button className="btn ghost" onClick={() => { setPicked(data.setup.categories); setOpen(false); }}>Close</button>
-        )}
         {message && <span className="muted small">{message}</span>}
       </div>
-    </div>
+    </section>
   );
 }

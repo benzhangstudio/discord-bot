@@ -57,6 +57,8 @@ export interface FeatureInfo<S extends z.ZodObject = z.ZodObject> {
   id: string;
   name: string;
   description: string;
+  /** Emoji shown next to the feature in the dashboard menu and cards. */
+  icon?: string;
   /** Which /setup category this belongs to. Core features have none. */
   category?: CategoryId;
   /** Switched on automatically when the server picks this feature's category in /setup. */
@@ -72,6 +74,7 @@ const defineFeature = <S extends z.ZodObject>(info: FeatureInfo<S>) => info;
 export const coreFeature = defineFeature({
   id: "core",
   name: "Core",
+  icon: "⭐",
   description: "/setup, /dashboard and /ping. Always on.",
   alwaysOn: true,
   settings: z.object({}),
@@ -80,7 +83,8 @@ export const coreFeature = defineFeature({
 export const reactionRolesFeature = defineFeature({
   id: "reaction-roles",
   name: "Reaction roles",
-  description: "Members pick their own roles by reacting to a message. Build the messages below.",
+  icon: "🎭",
+  description: "Members pick their own roles by reacting to a message.",
   category: "community",
   recommended: true,
   settings: z.object({}),
@@ -89,6 +93,7 @@ export const reactionRolesFeature = defineFeature({
 export const onboardingFeature = defineFeature({
   id: "onboarding",
   name: "Member onboarding",
+  icon: "👋",
   description: "Welcome new members, give starting roles, and walk them through rules and questions. No Community settings needed.",
   category: "community",
   recommended: true,
