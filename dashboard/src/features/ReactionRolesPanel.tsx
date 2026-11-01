@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import type { ReactionRoleInput, ReactionRoleMessageView } from "../../../src/shared/features";
+import { MAX_REACTION_ROLE_MESSAGES, type ReactionRoleInput, type ReactionRoleMessageView } from "../../../src/shared/features";
 import { type GuildDetails, api } from "../api";
 import { EmojiInput, EmojiView } from "../components/emoji";
+import { ChannelSelect, RoleSelect } from "../components/pickers";
 
 type Guild = GuildDetails["guild"];
-
-
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5]); // text and announcement channels
 
@@ -89,6 +88,13 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
                   <button className="btn danger small" onClick={() => remove(m)}>Delete</button>
                 </div>
               </div>
+              {m.problems.length > 0 && (
+                <div className="rr-problems">
+                  {m.problems.map((p) => (
+                    <div key={p} className="warning">⚠️ {p}</div>
+                  ))}
+                </div>
+              )}
               {m.entries.length === 0 ? (
                 <p className="muted small">No roles yet. Click Edit to add some.</p>
               ) : (
@@ -107,9 +113,13 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
               )}
             </div>
           ))}
-          <button className="btn primary small" onClick={() => { setNotice(null); setEditing("new"); }}>
-            + New reaction-role message
-          </button>
+          {messages.length < MAX_REACTION_ROLE_MESSAGES ? (
+            <button className="btn primary small" onClick={() => { setNotice(null); setEditing("new"); }}>
+              + New reaction-role message
+            </button>
+          ) : (
+            <p className="muted small">You've reached the limit of {MAX_REACTION_ROLE_MESSAGES} reaction-role messages. Delete one to add another.</p>
+          )}
         </>
       )}
     </div>
@@ -161,6 +171,8 @@ function Editor({
       entries: filled.map((r) => ({ emoji: r.emoji.trim(), roleId: r.roleId })),
     };
     if (!input.title) return setError("Add a title.");
+    if (!input.channelId) return setError("Pick a channel.");
+    if (filled.length === 0) return setError("Add at least one emoji and role.");
     if (filled.some((r) => !r.emoji.trim() || !r.roleId)) return setError("Each row needs both an emoji and a role.");
     setSaving(true);
     try {
@@ -179,17 +191,13 @@ function Editor({
     <div className="editor">
       <h3>{initial ? "Edit reaction-role message" : "New reaction-role message"}</h3>
 
-      <label className="field">
+      <div className="field">
         <span>Channel</span>
-        <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
-          {channels.map((c) => (
-            <option key={c.id} value={c.id}>#{c.name}</option>
-          ))}
-        </select>
+        <ChannelSelect guild={guild} value={channelId || null} onChange={(id) => setChannelId(id ?? "")} />
         {initial && channelId !== initial.channelId && (
           <small className="muted">The message will be reposted in the new channel. Members keep their roles.</small>
         )}
-      </label>
+      </div>
 
       <label className="field">
         <span>Title</span>
@@ -220,14 +228,7 @@ function Editor({
         {rows.map((r) => (
           <div key={r.key} className="rr-row">
             <EmojiInput guild={guild} value={r.emoji} onChange={(emoji) => update(r.key, { emoji })} />
-            <select value={r.roleId} onChange={(e) => update(r.key, { roleId: e.target.value })}>
-              <option value="">Choose a role…</option>
-              {guild.roles.map((role) => (
-                <option key={role.id} value={role.id} disabled={!role.assignable}>
-                  @{role.name}{role.assignable ? "" : " (above my role)"}
-                </option>
-              ))}
-            </select>
+            <RoleSelect guild={guild} value={r.roleId || null} onChange={(id) => update(r.key, { roleId: id ?? "" })} />
             <button
               className="icon-btn"
               aria-label="Remove row"

@@ -1,7 +1,8 @@
 import { type Client, Events, type GuildMember } from "discord.js";
 import { onEvent } from "../../server/bot/types.js";
 import type { OnboardingSettings } from "../../shared/onboarding.js";
-import { flowActive } from "./flow.js";
+import { onboardingFeature } from "../../shared/features.js";
+import { flowActive, syncStartMessage } from "./flow.js";
 import { hideNewChannel } from "./gate.js";
 import { sendGoodbye, sendWelcome, sendWelcomeDm } from "./messages.js";
 import { addRoles } from "./roles.js";
@@ -86,8 +87,39 @@ async function removeUnfinished(client: Client) {
   }
 }
 
+/**
+ * While onboarding is marked work in progress it's off everywhere. So nobody is left stuck behind the
+ * access gate, servers that used it get the Start message taken down and the "new member" role
+ * removed from anyone still holding it. Saved settings stay, so it can be switched back on later.
+ */
+async function pauseOnboarding(client: Client) {
+  for (const guildId of await store.guildsWithOnboarding()) {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const settings = await store.getSettings(guildId);
+    await syncStartMessage(guild, settings, false).catch(() => {});
+    const roleId = settings.gate.enabled ? settings.gate.roleId : null;
+    const role = roleId ? guild.roles.cache.get(roleId) : undefined;
+    if (!role || !role.editable) continue;
+    const members = await guild.members.fetch().catch(() => null);
+    let released = 0;
+    for (const member of (members ?? guild.members.cache).values()) {
+      if (!member.roles.cache.has(role.id)) continue;
+      await member.roles
+        .remove(role, "Member onboarding is paused while it's being worked on")
+        .then(() => released++)
+        .catch(() => {});
+    }
+    if (released) console.log(`[onboarding] paused in ${guild.name} (${guild.id}): released ${released} gated member(s)`);
+  }
+}
+
 export function startOnboardingTasks(client: Client) {
   client.once(Events.ClientReady, () => {
+    if (onboardingFeature.workInProgress) {
+      pauseOnboarding(client).catch((err) => console.warn("[onboarding] pause failed:", err));
+      return;
+    }
     catchUp(client).catch((err) => console.warn("[onboarding] catch-up failed:", err));
   });
   setInterval(() => {

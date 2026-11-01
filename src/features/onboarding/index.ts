@@ -54,7 +54,7 @@ async function validate(guild: Guild, userId: string, s: OnboardingSettings) {
       optionIds.add(o.id);
       o.roleIds.forEach((id) => checkRole(id, `“${q.title}” → “${o.label}”`));
       if (o.emoji) {
-        const emoji = parseEmojiInput(o.emoji, client);
+        const emoji = parseEmojiInput(o.emoji, guild);
         if ("error" in emoji) throw new FixableError(`“${q.title}” → “${o.label}”: ${emoji.error}`);
         o.emoji = emoji.display;
       }
@@ -115,6 +115,7 @@ export const onboarding: BotFeature = {
 
     api.put("/api/guilds/:guildId/onboarding", async (request: Req, reply) =>
       guarded(reply, async () => {
+        if (onboardingFeature.workInProgress) throw new FixableError("Member onboarding is still being worked on and can't be changed yet.");
         const guild = guildOf(request);
         const parsed = onboardingSettings.safeParse(request.body);
         if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Check the form and try again." });
@@ -130,6 +131,7 @@ export const onboarding: BotFeature = {
 
     api.post("/api/guilds/:guildId/onboarding/gate/setup", async (request: Req, reply) =>
       guarded(reply, async () => {
+        if (onboardingFeature.workInProgress) throw new FixableError("Member onboarding is still being worked on and can't be changed yet.");
         const guild = guildOf(request);
         const state = await getFeatureState(guild.id, onboardingFeature);
         if (!state.enabled) throw new FixableError("Turn on Member onboarding first.");

@@ -16,7 +16,7 @@ import {
 import { type ComponentHandler, type SlashCommand, onEvent } from "../../server/bot/types.js";
 import { dashboardLink } from "../../server/config.js";
 import { applySetup, getSetup, markWelcomed } from "../../server/settings.js";
-import { type CategoryId, categories, categoryIds, featuresInCategory } from "../../shared/features.js";
+import { type CategoryId, categories, categoryIds, featuresInCategory, isUsable } from "../../shared/features.js";
 
 const PINK = 0xff4fa3;
 const PICK_ID = "setup:categories";
@@ -37,7 +37,7 @@ async function setupPrompt(guildId: string) {
     .setMaxValues(categories.length)
     .addOptions(
       categories.map((c) => {
-        const ready = featuresInCategory(c.id).length > 0;
+        const ready = featuresInCategory(c.id).some(isUsable);
         return {
           label: c.name,
           value: c.id,
@@ -77,8 +77,8 @@ async function handlePick(interaction: MessageComponentInteraction) {
 
   const picked = interaction.values.filter((v): v is CategoryId => (categoryIds as string[]).includes(v));
   const turnedOn = await applySetup(interaction.guildId!, picked, interaction.user.id);
-  const ready = picked.flatMap((id) => featuresInCategory(id).filter((f) => f.recommended));
-  const comingSoon = categories.filter((c) => picked.includes(c.id) && featuresInCategory(c.id).length === 0);
+  const ready = picked.flatMap((id) => featuresInCategory(id).filter((f) => f.recommended && isUsable(f)));
+  const comingSoon = categories.filter((c) => picked.includes(c.id) && !featuresInCategory(c.id).some(isUsable));
 
   const embed = new EmbedBuilder().setColor(PINK).setTitle("✅ You're all set");
   embed.addFields({

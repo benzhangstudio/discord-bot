@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * One row per (server, feature): whether the feature is on and its settings.
@@ -29,7 +29,9 @@ export const sessions = sqliteTable("sessions", {
 });
 
 /** Reaction roles: one row per reaction-role message the bot posted. */
-export const reactionRoleMessages = sqliteTable("reaction_role_messages", {
+export const reactionRoleMessages = sqliteTable(
+  "reaction_role_messages",
+  {
   messageId: text("message_id").primaryKey(),
   guildId: text("guild_id").notNull(),
   channelId: text("channel_id").notNull(),
@@ -39,7 +41,10 @@ export const reactionRoleMessages = sqliteTable("reaction_role_messages", {
   singleChoice: integer("single_choice", { mode: "boolean" }).notNull().default(false),
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-});
+  },
+  // Lookups by server (dashboard list) and channel (cleanup when a channel is deleted).
+  (t) => [index("reaction_role_messages_guild_idx").on(t.guildId), index("reaction_role_messages_channel_idx").on(t.channelId)],
+);
 
 /** Reaction roles: which emoji gives which role on a message. */
 export const reactionRoleEntries = sqliteTable(
@@ -55,7 +60,7 @@ export const reactionRoleEntries = sqliteTable(
     roleId: text("role_id").notNull(),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] })],
+  (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] }), index("reaction_role_entries_role_idx").on(t.roleId)],
 );
 
 /** Answers from /setup: what each server uses Number One for. */

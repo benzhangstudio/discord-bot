@@ -37,6 +37,26 @@ export function missingChannelPermissions(channel: GuildTextBasedChannel): strin
   return CHANNEL_PERMISSIONS.filter((p) => !perms?.has(p)).map((p) => PERMISSION_NAMES[String(p)]);
 }
 
+/**
+ * What's stopping a saved message from working right now (missing channel, missing permissions,
+ * roles the bot can't give), in plain words for the dashboard. Uses only cached data, so it's instant.
+ */
+export function configProblems(guild: Guild, config: ReactionRoleConfig): string[] {
+  const problems: string[] = [];
+  const channel = guild.channels.cache.get(config.channelId);
+  if (!channel || !channel.isTextBased() || channel.isThread()) {
+    problems.push("Its channel was deleted. Edit it and pick a new channel to post it again.");
+    return problems;
+  }
+  const missing = missingChannelPermissions(channel as GuildTextBasedChannel);
+  if (missing.length) problems.push(`I'm missing ${missing.join(", ")} in #${channel.name}.`);
+  for (const entry of config.entries) {
+    const problem = roleProblem(guild, entry.roleId);
+    if (problem) problems.push(`${entry.emojiDisplay}: ${problem.replace(/\*\*/g, "")}`);
+  }
+  return [...new Set(problems)];
+}
+
 export function buildEmbed(config: ReactionRoleConfig) {
   const lines = config.entries.map((e) => `${e.emojiDisplay}  <@&${e.roleId}>`);
   const body = [config.description, lines.join("\n")].filter(Boolean).join("\n\n");
@@ -101,4 +121,5 @@ export async function syncMessage(client: Client, config: ReactionRoleConfig): P
   return problems;
 }
 
-export { roleProblem } from "../../server/bot/roles.js";
+import { roleProblem } from "../../server/bot/roles.js";
+export { roleProblem };

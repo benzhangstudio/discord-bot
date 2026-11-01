@@ -1,5 +1,5 @@
 import { ChannelType, type Client, type Guild, type GuildTextBasedChannel } from "discord.js";
-import type { ReactionRoleInput } from "../../shared/features.js";
+import { MAX_REACTION_ROLE_MESSAGES, type ReactionRoleInput } from "../../shared/features.js";
 import { parseEmojiInput } from "./emoji.js";
 import { buildEmbed, fetchConfigMessage, missingChannelPermissions, roleProblem, syncMessage } from "./message.js";
 import * as store from "./store.js";
@@ -20,7 +20,7 @@ async function checkEntries(client: Client, guild: Guild, userId: string, input:
   const seenEmojis = new Set<string>();
   const seenRoles = new Set<string>();
   return input.entries.map((entry, i) => {
-    const emoji = parseEmojiInput(entry.emoji, client);
+    const emoji = parseEmojiInput(entry.emoji, guild);
     if ("error" in emoji) throw new SetupError(`Row ${i + 1}: ${emoji.error}`);
     const problem = roleProblem(guild, entry.roleId, rank);
     if (problem) throw new SetupError(`Row ${i + 1}: ${problem}`);
@@ -51,7 +51,10 @@ async function saveEntries(messageId: string, entries: Awaited<ReturnType<typeof
 }
 
 /** Posts a new reaction-role message and saves it. Returns warnings to show (empty when all went well). */
-export async function createFromDashboard(client: Client, guild: Guild, userId: string, input: ReactionRoleInput) {
+export async function createFromDashboard(client: Client, guild: Guild, userId: string, input: ReactionRoleInput, replacing = false) {
+  if (!replacing && (await store.countConfigs(guild.id)) >= MAX_REACTION_ROLE_MESSAGES) {
+    throw new SetupError(`A server can have up to ${MAX_REACTION_ROLE_MESSAGES} reaction-role messages. Delete one you no longer use first.`);
+  }
   const channel = textChannel(guild, input.channelId);
   const entries = await checkEntries(client, guild, userId, input);
   const base = {
@@ -63,9 +66,18 @@ export async function createFromDashboard(client: Client, guild: Guild, userId: 
     createdBy: userId,
     createdAt: new Date(),
   };
-  const posted = await channel.send({ embeds: [buildEmbed({ ...base, messageId: "", entries: [] })] });
-  await store.createMessage({ ...base, messageId: posted.id });
-  await saveEntries(posted.id, entries);
+  const posted = await channel.send({ embeds: [buildEmbed({ ...base, messageId: "", entries: [] })] }).catch(() => {
+    throw new SetupError(`I couldn't post in #${channel.name}. Check my permissions there and try again.`);
+  });
+  try {
+    await store.createMessage({ ...base, messageId: posted.id });
+    await saveEntries(posted.id, entries);
+  } catch (err) {
+    // Don't leave a message in Discord that the bot doesn't know about.
+    await store.deleteMessage(posted.id).catch(() => {});
+    await posted.delete().catch(() => {});
+    throw err;
+  }
   const warnings = await syncMessage(client, (await store.getConfig(posted.id))!);
   return { messageId: posted.id, warnings };
 }
@@ -79,7 +91,7 @@ export async function updateFromDashboard(client: Client, guild: Guild, userId: 
   const message = await fetchConfigMessage(client, config);
   if (!message || input.channelId !== config.channelId) {
     // Gone from Discord, or moving channels: post a fresh copy and retire the old one.
-    const created = await createFromDashboard(client, guild, userId, input);
+    const created = await createFromDashboard(client, guild, userId, input, true);
     await store.deleteMessage(config.messageId);
     await message?.delete().catch(() => {});
     return created;

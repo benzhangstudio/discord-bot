@@ -29,7 +29,8 @@ function resolveState(feature: FeatureInfo, row: typeof featureSettings.$inferSe
   const byDefault = Boolean(feature.recommended && feature.category && setup.categories.includes(feature.category));
   return {
     id: feature.id,
-    enabled: feature.alwaysOn ? true : (row?.enabled ?? byDefault),
+    // Work-in-progress features are off everywhere until they're finished; saved choices are kept for later.
+    enabled: feature.alwaysOn ? true : feature.workInProgress ? false : (row?.enabled ?? byDefault),
     settings: parsed.success ? parsed.data : feature.settings.parse({}),
   };
 }
@@ -96,7 +97,7 @@ export async function applySetup(guildId: string, picked: CategoryId[], userId: 
 
   const turnedOn: FeatureInfo[] = [];
   for (const feature of featureCatalog) {
-    if (!feature.recommended || !feature.category || !categories.includes(feature.category)) continue;
+    if (!feature.recommended || !feature.category || feature.workInProgress || !categories.includes(feature.category)) continue;
     const current = before.find((s) => s.id === feature.id)!;
     const row = await db
       .select({ enabled: featureSettings.enabled })

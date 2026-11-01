@@ -7,6 +7,7 @@ import {
   categories,
   featureCatalog,
   featuresInCategory,
+  isUsable,
 } from "../../../src/shared/features";
 import { type GuildDetails, api } from "../api";
 import { featurePanels } from "../features";
@@ -137,7 +138,11 @@ export function GuildPage({ guildId, page }: { guildId: string; page: string }) 
                     `${base}/${f.id}`,
                     <><span className="nav-icon">{f.icon ?? "•"}</span>{f.name}</>,
                     feature?.id === f.id,
-                    <span className={`nav-dot ${stateOf(f.id)?.enabled ? "on" : ""}`} title={stateOf(f.id)?.enabled ? "On" : "Off"} />,
+                    f.workInProgress ? (
+                      <span className="nav-badge wip" title="Work in progress">WIP</span>
+                    ) : (
+                      <span className={`nav-dot ${stateOf(f.id)?.enabled ? "on" : ""}`} title={stateOf(f.id)?.enabled ? "On" : "Off"} />
+                    ),
                   ),
                 )}
               </div>
@@ -229,8 +234,9 @@ function OverviewPage({
 }) {
   const groups = categories.filter((c) => featuresInCategory(c.id).length > 0);
   const soon = categories.filter((c) => featuresInCategory(c.id).length === 0);
-  const enabledCount = data.features.filter((f) => f.enabled && featureCatalog.find((i) => i.id === f.id)?.category).length;
-  const total = featureCatalog.filter((f) => f.category).length;
+  const usable = featureCatalog.filter(isUsable);
+  const enabledCount = data.features.filter((f) => f.enabled && usable.some((i) => i.id === f.id)).length;
+  const total = usable.length;
 
   return (
     <section>
@@ -263,6 +269,21 @@ function OverviewPage({
               const state = data.features.find((f) => f.id === info.id);
               if (!state) return null;
               const go = () => navigate(`${base}/${info.id}`);
+              if (info.workInProgress) {
+                return (
+                  <div key={info.id} className="card plugin wip">
+                    <div className="plugin-top">
+                      <span className="plugin-icon">{info.icon ?? c.emoji}</span>
+                      <span className="pill wip-pill">🚧 Work in progress</span>
+                    </div>
+                    <div className="feature-name">{info.name}</div>
+                    <p className="muted small plugin-desc">{info.description}</p>
+                    <button className="btn ghost small" onClick={go}>
+                      Details →
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <div key={info.id} className={`card plugin ${state.enabled ? "on" : ""}`}>
                   <div className="plugin-top">
@@ -332,10 +353,23 @@ function FeaturePage({
           <h1>{info.name}</h1>
           <p className="muted">{info.description}</p>
         </div>
-        {state && <Switch on={on} label={info.name} disabled={saving} onChange={onToggle} />}
+        {state && !info.workInProgress && <Switch on={on} label={info.name} disabled={saving} onChange={onToggle} />}
       </div>
 
-      {!on ? (
+      {info.workInProgress ? (
+        <div className="card enable-card wip-card">
+          <div className="plugin-icon big">🚧</div>
+          <div className="feature-name">Work in progress</div>
+          <p className="muted">
+            {info.name} is being reworked and is locked for now. It's paused in every server until it's ready, so nothing
+            from it runs in the meantime.
+          </p>
+          <p className="muted small">
+            Any settings you saved are kept and will come back when it returns. If your server picked {category?.name ?? "its category"}{" "}
+            in setup, it switches on by itself once it's finished.
+          </p>
+        </div>
+      ) : !on ? (
         <div className="card enable-card">
           <div className="plugin-icon big">{info.icon ?? category?.emoji}</div>
           <div className="feature-name">{info.name} is off</div>
@@ -405,7 +439,9 @@ function SetupPage({ data, onChange }: { data: GuildDetails; onChange: (d: Guild
                 {list.length === 0 ? (
                   <small className="soon">Coming soon</small>
                 ) : (
-                  <small className="includes">Includes: {list.map((f) => f.name).join(", ")}</small>
+                  <small className="includes">
+                    Includes: {list.map((f) => (f.workInProgress ? `${f.name} (work in progress)` : f.name)).join(", ")}
+                  </small>
                 )}
               </span>
             </button>

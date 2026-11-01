@@ -6,13 +6,15 @@ import { type ReactionRoleMessageView, reactionRoleInput, reactionRolesFeature }
 import { emojiImageUrl } from "./emoji.js";
 import { reactionRoleEvents } from "./events.js";
 import { SetupError, createFromDashboard, updateFromDashboard } from "./manage.js";
-import { fetchConfigMessage, messageUrl } from "./message.js";
+import { configProblems, fetchConfigMessage, messageUrl } from "./message.js";
 import * as store from "./store.js";
 
 type Req = FastifyRequest<{ Params: { guildId: string; messageId?: string } }>;
 
 function toView(c: store.ReactionRoleConfig): ReactionRoleMessageView {
+  const guild = client.guilds.cache.get(c.guildId);
   return {
+    problems: guild ? configProblems(guild, c) : [],
     messageId: c.messageId,
     channelId: c.channelId,
     title: c.title,

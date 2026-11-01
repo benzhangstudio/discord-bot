@@ -38,6 +38,15 @@ export async function listConfigs(guildId: string): Promise<ReactionRoleConfig[]
   return messages.map((m) => ({ ...m, entries: entries.filter((e) => e.messageId === m.messageId) }));
 }
 
+export async function countConfigs(guildId: string): Promise<number> {
+  const rows = await db
+    .select({ id: reactionRoleMessages.messageId })
+    .from(reactionRoleMessages)
+    .where(eq(reactionRoleMessages.guildId, guildId))
+    .all();
+  return rows.length;
+}
+
 export async function createMessage(values: ReactionRoleMessage) {
   await db.insert(reactionRoleMessages).values(values).run();
 }

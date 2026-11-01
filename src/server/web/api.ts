@@ -115,6 +115,9 @@ export function registerApiRoutes(app: FastifyInstance) {
         async (request, reply) => {
           const feature = getFeatureInfo(request.params.featureId);
           if (!feature) return reply.code(404).send({ error: "Unknown feature" });
+          if (feature.workInProgress) {
+            return reply.code(400).send({ error: `${feature.name} is still being worked on and can't be changed yet.` });
+          }
 
           const body = featureUpdateBody.safeParse(request.body);
           if (!body.success) return reply.code(400).send({ error: "Invalid request" });

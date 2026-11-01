@@ -1,10 +1,27 @@
 import type { GuildDetails } from "../api";
+import { type SearchOption, SearchSelect } from "./SearchSelect";
 
 type Guild = GuildDetails["guild"];
 
 const TEXT_CHANNEL_TYPES = new Set([0, 5]); // text and announcement channels
 
-/** Dropdown of the server's text channels. `emptyLabel` adds a "none" choice. */
+const roleColor = (color: string) => (color !== "#000000" ? color : undefined);
+
+/** The server's roles as search options. Roles above the bot are greyed out. */
+export function roleOptions(guild: Guild, exclude: string[] = []): SearchOption[] {
+  return guild.roles
+    .filter((r) => !exclude.includes(r.id))
+    .map((r) => ({
+      value: r.id,
+      label: r.name,
+      prefix: "@",
+      color: roleColor(r.color),
+      disabled: !r.assignable,
+      note: r.assignable ? undefined : "above my role",
+    }));
+}
+
+/** Searchable dropdown of the server's text channels. `emptyLabel` adds a "none" choice. */
 export function ChannelSelect({
   guild,
   value,
@@ -16,21 +33,22 @@ export function ChannelSelect({
   onChange: (id: string | null) => void;
   emptyLabel?: string;
 }) {
-  const channels = guild.channels.filter((c) => TEXT_CHANNEL_TYPES.has(c.type));
+  const options = guild.channels
+    .filter((c) => TEXT_CHANNEL_TYPES.has(c.type))
+    .map((c) => ({ value: c.id, label: c.name, prefix: "#" }));
   return (
-    <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-      {emptyLabel !== undefined && <option value="">{emptyLabel}</option>}
-      {!emptyLabel && !value && <option value="">Choose a channel…</option>}
-      {channels.map((c) => (
-        <option key={c.id} value={c.id}>
-          #{c.name}
-        </option>
-      ))}
-    </select>
+    <SearchSelect
+      options={options}
+      value={value}
+      onChange={onChange}
+      emptyLabel={emptyLabel}
+      placeholder="Choose a channel…"
+      searchPlaceholder="Search channels…"
+    />
   );
 }
 
-/** Pick several roles: chosen ones show as removable chips. Roles above the bot are greyed out. */
+/** Pick several roles: chosen ones show as removable chips, plus a searchable "Add a role…" button. */
 export function RolePicker({
   guild,
   value,
@@ -45,12 +63,11 @@ export function RolePicker({
   placeholder?: string;
 }) {
   const roleOf = (id: string) => guild.roles.find((r) => r.id === id);
-  const available = guild.roles.filter((r) => !value.includes(r.id));
   return (
     <div className="role-picker">
       {value.map((id) => {
         const role = roleOf(id);
-        const color = role && role.color !== "#000000" ? role.color : undefined;
+        const color = role ? roleColor(role.color) : undefined;
         return (
           <span key={id} className="chip" style={color ? { borderColor: color } : undefined}>
             <span style={color ? { color } : undefined}>@{role?.name ?? "deleted role"}</span>
@@ -61,25 +78,20 @@ export function RolePicker({
         );
       })}
       {value.length < max && (
-        <select
+        <SearchSelect
           className="chip-add"
-          value=""
-          onChange={(e) => e.target.value && onChange([...value, e.target.value])}
-        >
-          <option value="">{placeholder}</option>
-          {available.map((r) => (
-            <option key={r.id} value={r.id} disabled={!r.assignable}>
-              @{r.name}
-              {r.assignable ? "" : " (above my role)"}
-            </option>
-          ))}
-        </select>
+          options={roleOptions(guild, value)}
+          value={null}
+          onChange={(id) => id && onChange([...value, id])}
+          searchPlaceholder="Search roles…"
+          trigger={<span>+ {placeholder.replace(/…$/, "")}</span>}
+        />
       )}
     </div>
   );
 }
 
-/** Single role dropdown. */
+/** Searchable single role dropdown. */
 export function RoleSelect({
   guild,
   value,
@@ -92,15 +104,13 @@ export function RoleSelect({
   emptyLabel?: string;
 }) {
   return (
-    <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">{emptyLabel}</option>
-      {guild.roles.map((r) => (
-        <option key={r.id} value={r.id} disabled={!r.assignable}>
-          @{r.name}
-          {r.assignable ? "" : " (above my role)"}
-        </option>
-      ))}
-    </select>
+    <SearchSelect
+      options={roleOptions(guild)}
+      value={value}
+      onChange={onChange}
+      placeholder={emptyLabel}
+      searchPlaceholder="Search roles…"
+    />
   );
 }
 

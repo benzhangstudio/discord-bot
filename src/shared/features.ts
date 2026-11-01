@@ -65,6 +65,12 @@ export interface FeatureInfo<S extends z.ZodObject = z.ZodObject> {
   recommended?: boolean;
   /** Core features can't be turned off. */
   alwaysOn?: boolean;
+  /**
+   * Still being built. The dashboard shows a "work in progress" notice instead of settings,
+   * the feature counts as off in every server, and /setup doesn't switch it on.
+   * Saved settings are kept, so removing this flag brings everything back.
+   */
+  workInProgress?: boolean;
   /** Settings shape. Every field needs a default so a fresh server works without setup. */
   settings: S;
 }
@@ -97,6 +103,7 @@ export const onboardingFeature = defineFeature({
   description: "Welcome new members, give starting roles, and walk them through rules and questions. No Community settings needed.",
   category: "community",
   recommended: true,
+  workInProgress: true,
   settings: onboardingSettings,
 });
 
@@ -107,6 +114,9 @@ export function getFeatureInfo(id: string): FeatureInfo | undefined {
 }
 
 export const featuresInCategory = (id: CategoryId) => featureCatalog.filter((f) => f.category === id);
+
+/** Features a server can actually use today (not core, not work in progress). */
+export const isUsable = (f: FeatureInfo) => Boolean(f.category && !f.workInProgress);
 
 /** What the API returns for one feature in one server. */
 export interface FeatureState {
@@ -144,8 +154,13 @@ export interface ReactionRoleMessageView {
   description: string;
   singleChoice: boolean;
   url: string;
+  /** Things stopping this message from working right now, in plain words (empty when all is well). */
+  problems: string[];
   entries: { emojiKey: string; emojiDisplay: string; emojiUrl: string | null; roleId: string }[];
 }
+
+/** Most reaction-role messages one server can have. */
+export const MAX_REACTION_ROLE_MESSAGES = 50;
 
 /** What the dashboard sends to create or update a reaction-role message. */
 export const reactionRoleInput = z.object({
@@ -155,6 +170,7 @@ export const reactionRoleInput = z.object({
   singleChoice: z.boolean().default(false),
   entries: z
     .array(z.object({ emoji: z.string().trim().min(1, "Pick an emoji"), roleId: z.string().regex(/^\d{17,20}$/, "Pick a role") }))
+    .min(1, "Add at least one emoji and role")
     .max(20, "A message can have at most 20 reactions"),
 });
 export type ReactionRoleInput = z.infer<typeof reactionRoleInput>;
