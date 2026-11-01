@@ -14,40 +14,26 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Commands: `/ping`, `/dashboard` | ✅ |
 | Admin features (moderation, welcome, roles, logging…) | Next, one at a time |
 
-## Setting it up on Wispbyte
+## Running on Wispbyte
 
-### 1. Discord Developer Portal
+Number One runs on Wispbyte and deploys itself on every restart:
 
-At <https://discord.com/developers/applications>, open your application, then:
+1. Wispbyte pulls the latest code from `main` and runs `npm install`, which installs packages and builds the bot and dashboard.
+2. The bot connects to Discord and registers its slash commands automatically.
+3. The dashboard comes online at the server's Wispbyte subdomain (https://number-one.wispbyte.app), on the port Wispbyte assigns.
 
-1. **Bot** tab → **Reset Token** and copy it (this is `DISCORD_TOKEN`).
-2. **Bot** tab → turn on **Server Members Intent**. The bot won't start without it.
-3. **OAuth2** tab → copy the **Client Secret** (needed for dashboard login).
-4. **OAuth2** tab → **Redirects** → add your dashboard link followed by `/auth/callback`, for example `http://123.45.67.89:25565/auth/callback`.
+All settings (bot token, Discord client secret) live in the Wispbyte server's Environment settings. Nothing secret is stored in this repository. The dashboard address is detected automatically from the login redirect registered in the Discord application and from the address visitors use, so it never needs to be configured.
 
-### 2. Wispbyte panel
-
-1. Get the code onto the server. If the panel's **Startup** tab has a Git repository setting, point it at this repo with auto-update on. Otherwise upload the files in the **File Manager**.
-2. In the **Startup** tab, set the start file to **`index.js`** and choose **Node.js 22.13 or newer** (24 is ideal). The bot uses the database engine built into newer Node versions and will say so in the console if the version is too old.
-3. In the **Startup** tab, set these variables:
-
-   | Variable | Required? | What it is |
-   | --- | --- | --- |
-   | `DISCORD_TOKEN` | Yes | The bot token |
-   | `DISCORD_CLIENT_SECRET` | For dashboard login | OAuth2 Client Secret |
-   | `PUBLIC_URL` | For dashboard login | Your dashboard link, no slash at the end. If left empty, the server's address and port are used. |
-   | `DISCORD_CLIENT_ID` | No | Worked out from the token automatically |
-   | `DEV_GUILD_ID` | No | A test server where new commands appear instantly |
-
-   Only the token is required. Without the other two, the bot still runs and the console lists what's missing for dashboard login. Secrets live only in Wispbyte, never in this repository.
-4. Start the server. The first start takes a minute or two because it installs packages and builds the dashboard.
-
-When it works, the console shows lines like:
+When everything is working, the console shows:
 
 ```
-[web] dashboard running on port 25565 (http://123.45.67.89:25565)
+[web] dashboard online on port 16243
 [bot] logged in as Number One#1234 in 3 servers
+[bot] registered 2 global commands
+[web] dashboard address: https://number-one.wispbyte.app (from Discord application settings)
 ```
+
+If Discord login fails, the dashboard stays online and the bot retries every minute.
 
 ### Backups
 
@@ -100,4 +86,4 @@ npm run db:generate        # after changing src/server/db/schema.ts
 
 Settings come from environment variables. Set `SKIP_BOT=true` to run only the dashboard without logging the bot in.
 
-Stack: Node.js 22.13+, TypeScript, discord.js v14, Fastify, SQLite (built into Node.js) + Drizzle ORM, React + Vite.
+Stack: Node.js 22.13+ (the server runs Node 26), TypeScript, discord.js v14, Fastify, SQLite (built into Node.js) + Drizzle ORM, React + Vite.

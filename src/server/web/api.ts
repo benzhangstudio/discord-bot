@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type DashboardGuild, type DashboardUser, getFeatureInfo } from "../../shared/features.js";
 import { client } from "../bot/client.js";
-import { config } from "../config.js";
+import { config, loginReady } from "../config.js";
 import { getAllFeatureStates, getFeatureState, saveFeatureState } from "../settings.js";
 import { type Session, discordUserFetch, requireSession } from "./auth.js";
 
@@ -69,7 +69,7 @@ const featureUpdateBody = z.object({ enabled: z.boolean(), settings: z.record(z.
 export function registerApiRoutes(app: FastifyInstance) {
   app.get("/api/config", async () => ({
     clientId: config.clientId ?? client.application?.id ?? null,
-    loginReady: config.loginReady,
+    loginReady: loginReady(),
     botReady: client.isReady(),
   }));
 

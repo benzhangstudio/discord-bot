@@ -6,7 +6,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import { config } from "../config.js";
 import { registerApiRoutes } from "./api.js";
-import { registerAuthRoutes } from "./auth.js";
+import { learnPublicUrl, registerAuthRoutes } from "./auth.js";
 
 // Built dashboard files (created by `npm run build:dashboard`).
 const dashboardDir = join(dirname(fileURLToPath(import.meta.url)), "../../dashboard");
@@ -15,6 +15,7 @@ export async function startWebServer() {
   const app = Fastify({ logger: { level: "warn" }, trustProxy: true });
 
   await app.register(cookie, { secret: config.sessionSecret });
+  app.addHook("onRequest", async (request) => learnPublicUrl(request));
   registerAuthRoutes(app);
   registerApiRoutes(app);
 
@@ -37,6 +38,6 @@ export async function startWebServer() {
   });
 
   await app.listen({ host: "0.0.0.0", port: config.port });
-  console.log(`[web] dashboard running on port ${config.port}${config.publicUrl ? ` (${config.publicUrl})` : ""}`);
+  console.log(`[web] dashboard online on port ${config.port}`);
   return app;
 }

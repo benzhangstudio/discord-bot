@@ -1,6 +1,6 @@
-import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from "discord.js";
+import { Client, Events, Routes, GatewayIntentBits, MessageFlags, Partials } from "discord.js";
 import { features } from "../../features/index.js";
-import { config, dashboardLink } from "../config.js";
+import { config, dashboardLink, setPublicUrl } from "../config.js";
 import { isFeatureEnabled } from "../settings.js";
 import type { BotFeature, SlashCommand } from "./types.js";
 
@@ -33,9 +33,18 @@ async function registerCommands() {
   }
 }
 
+/** Finds the dashboard address from the login redirect already registered in the Discord application. */
+async function detectDashboardAddress() {
+  if (config.publicUrl) return;
+  const app = (await client.rest.get(Routes.currentApplication())) as { redirect_uris?: string[] };
+  const callback = app.redirect_uris?.find((u) => u.startsWith("https://") && u.endsWith("/auth/callback"));
+  if (callback) setPublicUrl(callback.slice(0, -"/auth/callback".length), "Discord application settings");
+}
+
 client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] logged in as ${c.user.tag} in ${c.guilds.cache.size} servers`);
   await registerCommands().catch((err) => console.error("[bot] command registration failed:", err));
+  await detectDashboardAddress().catch(() => {});
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -76,7 +85,12 @@ for (const feature of features) {
   }
 }
 
+let featuresSetUp = false;
+
 export async function startBot() {
-  for (const feature of features) feature.setup?.(client);
+  if (!featuresSetUp) {
+    for (const feature of features) feature.setup?.(client);
+    featuresSetUp = true;
+  }
   await client.login(config.token);
 }

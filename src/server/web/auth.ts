@@ -1,15 +1,32 @@
 import { randomBytes } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { config } from "../config.js";
+import { config, loginReady, setPublicUrl } from "../config.js";
 import { db } from "../db/client.js";
 import { sessions } from "../db/schema.js";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SESSION_COOKIE = "n1_session";
 const STATE_COOKIE = "n1_oauth_state";
-const REDIRECT_URI = `${config.publicUrl}/auth/callback`;
-const secureCookies = Boolean(config.publicUrl?.startsWith("https://"));
+
+/**
+ * The address the visitor used to reach the dashboard (e.g. https://number-one.wispbyte.app).
+ * Wispbyte's HTTPS proxy passes the original address along, so nothing needs configuring.
+ */
+export function requestOrigin(request: FastifyRequest) {
+  return `${request.protocol}://${request.host}`;
+}
+
+function isPublicHost(host: string) {
+  return !/^(localhost|127\.|0\.0\.0\.0|\[::1\]|\d+\.\d+\.\d+\.\d+)/.test(host);
+}
+
+/** Remembers the dashboard's public address the first time someone opens it. */
+export function learnPublicUrl(request: FastifyRequest) {
+  if (!config.publicUrl && request.protocol === "https" && isPublicHost(request.host)) {
+    setPublicUrl(requestOrigin(request), "dashboard visit");
+  }
+}
 
 export type Session = typeof sessions.$inferSelect;
 
@@ -19,8 +36,9 @@ declare module "fastify" {
   }
 }
 
-function cookieOptions(maxAgeSeconds: number) {
-  return { path: "/", httpOnly: true, sameSite: "lax" as const, secure: secureCookies, signed: true, maxAge: maxAgeSeconds };
+function cookieOptions(request: FastifyRequest, maxAgeSeconds: number) {
+  const secure = request.protocol === "https";
+  return { path: "/", httpOnly: true, sameSite: "lax" as const, secure, signed: true, maxAge: maxAgeSeconds };
 }
 
 /** Looks up the logged-in user from their cookie, if any. */
@@ -42,14 +60,14 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
 }
 
 export function registerAuthRoutes(app: FastifyInstance) {
-  app.get("/auth/login", async (_request, reply) => {
-    if (!config.loginReady) return reply.redirect("/?error=login_not_configured");
+  app.get("/auth/login", async (request, reply) => {
+    if (!loginReady()) return reply.redirect("/?error=login_not_configured");
     const state = randomBytes(16).toString("hex");
-    reply.setCookie(STATE_COOKIE, state, cookieOptions(600));
+    reply.setCookie(STATE_COOKIE, state, cookieOptions(request, 600));
     const params = new URLSearchParams({
       client_id: config.clientId!,
       response_type: "code",
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: `${requestOrigin(request)}/auth/callback`,
       scope: "identify guilds",
       state,
       prompt: "none",
@@ -58,7 +76,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Querystring: { code?: string; state?: string } }>("/auth/callback", async (request, reply) => {
-    if (!config.loginReady) return reply.redirect("/?error=login_not_configured");
+    if (!loginReady()) return reply.redirect("/?error=login_not_configured");
     const { code, state } = request.query;
     const savedState = request.cookies[STATE_COOKIE] && request.unsignCookie(request.cookies[STATE_COOKIE]);
     reply.clearCookie(STATE_COOKIE, { path: "/" });
@@ -74,7 +92,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
         client_secret: config.clientSecret!,
         grant_type: "authorization_code",
         code,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: `${requestOrigin(request)}/auth/callback`,
       }),
     });
     if (!tokenRes.ok) {
@@ -101,7 +119,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
       .run();
     await db.delete(sessions).where(lt(sessions.expiresAt, new Date())).run(); // tidy up old logins
 
-    reply.setCookie(SESSION_COOKIE, id, cookieOptions(ttlSeconds));
+    reply.setCookie(SESSION_COOKIE, id, cookieOptions(request, ttlSeconds));
     return reply.redirect("/servers");
   });
 

@@ -14,10 +14,13 @@ await startWebServer();
 if (config.skipBot) {
   console.log("[bot] SKIP_BOT is set; running the dashboard only");
 } else {
-  await startBot().catch((err) => {
-    console.error("[bot] could not log in:", err.message ?? err);
-    process.exit(1); // let Wispbyte restart the server
-  });
+  // If Discord login fails, keep the dashboard online and try again every minute.
+  const login = () =>
+    startBot().catch((err) => {
+      console.error(`[bot] could not log in (${err.message ?? err}); retrying in 60 seconds`);
+      setTimeout(login, 60_000);
+    });
+  await login();
 }
 
 process.on("unhandledRejection", (err) => console.error("[process] unhandled rejection:", err));

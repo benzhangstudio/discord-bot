@@ -1,62 +1,50 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
+import { parseEnv } from "node:util";
 
 /**
- * Settings come from the variables set in the Wispbyte panel (Startup tab).
- * Only DISCORD_TOKEN is required; everything else is optional or worked out automatically.
+ * Settings come from the Wispbyte server, never from this repository.
+ * Wispbyte's Environment page saves the variables into a private file on the server
+ * (not in GitHub); values passed directly as process variables take priority over it.
  */
-const schema = z.object({
-  DISCORD_TOKEN: z.string().trim().min(1),
-  // Optional: worked out from the token when not set.
-  DISCORD_CLIENT_ID: z.string().trim().optional(),
-  // Needed only for dashboard login ("Log in with Discord").
-  DISCORD_CLIENT_SECRET: z.string().trim().optional(),
-  // The dashboard's public address. Falls back to Wispbyte's server address and port.
-  PUBLIC_URL: z.string().trim().optional(),
-  // Optional: a test server ID where slash commands update instantly.
-  DEV_GUILD_ID: z.string().trim().optional(),
-  // Wispbyte (Pterodactyl) provides the allocated address and port automatically.
-  SERVER_IP: z.string().trim().optional(),
-  SERVER_PORT: z.coerce.number().int().positive().optional(),
-  PORT: z.coerce.number().int().positive().optional(),
-  DATA_DIR: z.string().default("data"),
-  // Local development only: run the web dashboard without logging the bot in.
-  SKIP_BOT: z.stringbool().default(false),
-});
-
-const emptyToUndefined = Object.fromEntries(
-  Object.entries(process.env).map(([k, v]) => [k, v === "" ? undefined : v]),
-);
-const parsed = schema.safeParse(emptyToUndefined);
-if (!parsed.success) {
-  console.error("[config] DISCORD_TOKEN is missing. Add it as a variable in the Wispbyte panel (Startup tab).");
-  process.exit(1);
+function loadWispbyteEnvironment() {
+  const file = ".env"; // written by Wispbyte's Environment page in the server's main folder
+  if (!existsSync(file)) return;
+  const values = parseEnv(readFileSync(file, "utf8"));
+  for (const [key, value] of Object.entries(values)) {
+    if (!process.env[key]?.trim()) process.env[key] = value;
+  }
 }
-const env = parsed.data;
+loadWispbyteEnvironment();
 
-/** A bot token starts with the bot's user ID (which is also its application ID), base64-encoded. */
-function clientIdFromToken(token: string): string | undefined {
-  try {
-    const id = Buffer.from(token.split(".")[0], "base64").toString("utf8");
-    return /^\d{17,20}$/.test(id) ? id : undefined;
-  } catch {
-    return undefined;
+/** First non-empty value among several possible variable names. */
+function pick(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
   }
 }
 
-function resolvePublicUrl(): string | undefined {
-  if (env.PUBLIC_URL) return env.PUBLIC_URL.replace(/\/+$/, "");
-  if (env.SERVER_IP && env.SERVER_PORT && env.SERVER_IP !== "0.0.0.0") return `http://${env.SERVER_IP}:${env.SERVER_PORT}`;
-  return undefined;
+const token = pick("DISCORD_TOKEN", "BOT_TOKEN", "TOKEN");
+if (!token) {
+  console.error("[config] DISCORD_TOKEN is missing from the Wispbyte Environment settings.");
+  process.exit(1);
 }
 
+/** A bot token starts with the bot's application ID, base64-encoded. */
+function clientIdFromToken(t: string): string | undefined {
+  const id = Buffer.from(t.split(".")[0], "base64").toString("utf8");
+  return /^\d{17,20}$/.test(id) ? id : undefined;
+}
+
+const dataDir = process.env.DATA_DIR?.trim() || "data";
+
 /**
- * The key that signs login cookies so they can't be forged. It's private and never shown anywhere.
- * Created once and kept in the data folder, so logins survive restarts.
+ * The private key that signs login cookies so they can't be forged. Never shown anywhere.
+ * Created once on the server's data folder, so logins survive restarts.
  */
-function loadSessionSecret(dataDir: string): string {
+function loadSessionSecret(): string {
   mkdirSync(dataDir, { recursive: true });
   const file = join(dataDir, "session-secret");
   if (existsSync(file)) {
@@ -68,38 +56,39 @@ function loadSessionSecret(dataDir: string): string {
   return secret;
 }
 
-const publicUrl = resolvePublicUrl();
-const clientId = env.DISCORD_CLIENT_ID || clientIdFromToken(env.DISCORD_TOKEN);
-
 export const config = {
-  token: env.DISCORD_TOKEN,
-  clientId,
-  clientSecret: env.DISCORD_CLIENT_SECRET,
-  publicUrl,
-  devGuildId: env.DEV_GUILD_ID,
-  port: env.SERVER_PORT ?? env.PORT ?? 3000,
-  dataDir: env.DATA_DIR,
-  skipBot: env.SKIP_BOT,
-  sessionSecret: loadSessionSecret(env.DATA_DIR),
-  /** True when everything "Log in with Discord" needs is set. */
-  loginReady: Boolean(clientId && env.DISCORD_CLIENT_SECRET && publicUrl),
+  token,
+  clientId: pick("DISCORD_CLIENT_ID", "DISCORD_APPLICATION_ID", "CLIENT_ID", "APPLICATION_ID") ?? clientIdFromToken(token),
+  clientSecret: pick("DISCORD_CLIENT_SECRET", "CLIENT_SECRET", "AGE_CLIENT_SECRET", "OAUTH_CLIENT_SECRET"),
+  /** The dashboard's public address. Detected automatically (see setPublicUrl). */
+  publicUrl: pick("PUBLIC_URL", "DASHBOARD_URL")?.replace(/\/+$/, ""),
+  devGuildId: pick("DEV_GUILD_ID", "DISCORD_TEST_GUILD_ID"),
+  // Wispbyte gives the server's allocated port as SERVER_PORT; 16243 is this server's allocation.
+  port: Number(pick("SERVER_PORT", "PORT") ?? 16243),
+  dataDir,
+  skipBot: pick("SKIP_BOT") === "true",
+  sessionSecret: loadSessionSecret(),
 };
 
-/** A link to a dashboard page, or undefined when the dashboard address isn't known. */
+/**
+ * Records the dashboard's public address once it's known: from the redirect link registered in the
+ * Discord application, or from the address people use to open the dashboard.
+ */
+export function setPublicUrl(url: string, source: string) {
+  if (config.publicUrl) return;
+  config.publicUrl = url.replace(/\/+$/, "");
+  console.log(`[web] dashboard address: ${config.publicUrl} (from ${source})`);
+}
+
+/** A link to a dashboard page, or undefined while the dashboard address isn't known yet. */
 export function dashboardLink(path = "") {
   return config.publicUrl ? `${config.publicUrl}${path}` : undefined;
 }
 
-/** Explains at startup which optional settings are missing and what that turns off. */
+export const loginReady = () => Boolean(config.clientId && config.clientSecret);
+
 export function logConfigStatus() {
-  const missing: string[] = [];
-  if (!config.clientSecret) missing.push("DISCORD_CLIENT_SECRET (Developer Portal → OAuth2 → Client Secret)");
-  if (!config.publicUrl) missing.push("PUBLIC_URL (your dashboard link, e.g. http://123.45.67.89:25565)");
-  if (!config.clientId) missing.push("DISCORD_CLIENT_ID (couldn't be read from the token)");
-  if (missing.length) {
-    console.warn("[config] The bot will run, but dashboard login is off until these Wispbyte variables are added:");
-    for (const m of missing) console.warn(`  - ${m}`);
-  } else {
-    console.log(`[config] dashboard login ready. Redirect URL to add in the Developer Portal: ${config.publicUrl}/auth/callback`);
+  if (!config.clientSecret) {
+    console.warn("[config] Dashboard login is off: the Discord client secret isn't in the Wispbyte Environment settings.");
   }
 }
