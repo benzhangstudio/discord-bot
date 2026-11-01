@@ -1,0 +1,48 @@
+{
+  "name": "number-one",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Number One: an all-in-one Discord server administration bot with a built-in web dashboard.",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "postinstall": "npm run build",
+    "build": "npm run build:server && npm run build:dashboard",
+    "build:server": "tsc -p tsconfig.json",
+    "build:dashboard": "vite build --config dashboard/vite.config.ts",
+    "start": "node index.js",
+    "dev": "tsx watch src/server/index.ts",
+    "dev:dashboard": "vite --config dashboard/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p dashboard/tsconfig.json --noEmit",
+    "db:generate": "drizzle-kit generate"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benzhangstudio/number-one.git"
+  },
+  "license": "UNLICENSED",
+  "comment": "Build tools (typescript, vite, @types/*) are regular dependencies on purpose: Wispbyte runs `npm install`, which may skip devDependencies, and the postinstall build needs them.",
+  "dependencies": {
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/static": "^10.1.8",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "discord.js": "^14.28.0",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15"
+  }
+}
