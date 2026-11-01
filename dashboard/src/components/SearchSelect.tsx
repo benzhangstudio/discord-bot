@@ -61,7 +61,9 @@ export function SearchSelect({
     return list;
   }, [options, query, emptyLabel]);
 
-  useEffect(() => setActive(Math.max(0, shown.findIndex((o) => !o.disabled))), [shown]);
+  useEffect(() => {
+    setActive(Math.max(0, shown.findIndex((o) => !o.disabled)));
+  }, [shown]);
 
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });

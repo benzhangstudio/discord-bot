@@ -90,7 +90,7 @@ export const reactionRolesFeature = defineFeature({
   id: "reaction-roles",
   name: "Reaction roles",
   icon: "🎭",
-  description: "Members pick their own roles by reacting to a message.",
+  description: "Members pick their own roles with reactions, buttons or a dropdown menu.",
   category: "community",
   recommended: true,
   settings: z.object({}),
@@ -146,31 +146,4 @@ export interface DashboardUser {
   avatar: string | null;
 }
 
-/** A reaction-role message as the dashboard shows it. */
-export interface ReactionRoleMessageView {
-  messageId: string;
-  channelId: string;
-  title: string;
-  description: string;
-  singleChoice: boolean;
-  url: string;
-  /** Things stopping this message from working right now, in plain words (empty when all is well). */
-  problems: string[];
-  entries: { emojiKey: string; emojiDisplay: string; emojiUrl: string | null; roleId: string }[];
-}
-
-/** Most reaction-role messages one server can have. */
-export const MAX_REACTION_ROLE_MESSAGES = 50;
-
-/** What the dashboard sends to create or update a reaction-role message. */
-export const reactionRoleInput = z.object({
-  channelId: z.string().regex(/^\d{17,20}$/),
-  title: z.string().trim().min(1, "Add a title").max(256),
-  description: z.string().max(2000).default(""),
-  singleChoice: z.boolean().default(false),
-  entries: z
-    .array(z.object({ emoji: z.string().trim().min(1, "Pick an emoji"), roleId: z.string().regex(/^\d{17,20}$/, "Pick a role") }))
-    .min(1, "Add at least one emoji and role")
-    .max(20, "A message can have at most 20 reactions"),
-});
-export type ReactionRoleInput = z.infer<typeof reactionRoleInput>;
+export * from "./reactionRoles.js";

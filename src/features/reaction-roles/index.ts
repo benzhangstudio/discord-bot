@@ -2,7 +2,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { client } from "../../server/bot/discord.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { isFeatureEnabled } from "../../server/settings.js";
-import { type ReactionRoleMessageView, reactionRoleInput, reactionRolesFeature } from "../../shared/features.js";
+import { type ButtonStyleId, type ReactionRoleMessageView, reactionRoleInput, reactionRolesFeature } from "../../shared/features.js";
+import { reactionRoleComponents } from "./components.js";
 import { emojiImageUrl } from "./emoji.js";
 import { reactionRoleEvents } from "./events.js";
 import { SetupError, createFromDashboard, updateFromDashboard } from "./manage.js";
@@ -14,18 +15,24 @@ type Req = FastifyRequest<{ Params: { guildId: string; messageId?: string } }>;
 function toView(c: store.ReactionRoleConfig): ReactionRoleMessageView {
   const guild = client.guilds.cache.get(c.guildId);
   return {
-    problems: guild ? configProblems(guild, c) : [],
     messageId: c.messageId,
     channelId: c.channelId,
-    title: c.title,
-    description: c.description,
-    singleChoice: c.singleChoice,
+    name: c.name,
+    kind: c.kind,
+    mode: c.mode,
+    content: c.content,
+    // The embed's title and description live in their own columns; put them back together here.
+    options: { ...c.options, embed: { ...c.options.embed, title: c.title, description: c.description } },
     url: messageUrl(c),
+    problems: guild ? configProblems(guild, c) : [],
     entries: c.entries.map((e) => ({
       emojiKey: e.emojiKey,
       emojiDisplay: e.emojiDisplay,
-      emojiUrl: emojiImageUrl(e.emojiDisplay),
+      emojiUrl: e.emojiDisplay ? emojiImageUrl(e.emojiDisplay) : null,
       roleId: e.roleId,
+      label: e.label,
+      description: e.description,
+      style: (["primary", "secondary", "success", "danger"].includes(e.style) ? e.style : "secondary") as ButtonStyleId,
     })),
   };
 }
@@ -49,6 +56,7 @@ async function save(request: Req, reply: FastifyReply, run: (input: ReturnType<t
 export const reactionRoles: BotFeature = {
   info: reactionRolesFeature,
   events: reactionRoleEvents,
+  components: [reactionRoleComponents],
 
   // Reaction roles are managed only from the dashboard, to keep the slash command list short.
   registerApi(api) {

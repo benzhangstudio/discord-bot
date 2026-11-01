@@ -1,13 +1,38 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../../server/db/client.js";
 import { reactionRoleEntries, reactionRoleMessages } from "../../server/db/schema.js";
+import type { z } from "zod";
+import {
+  type ReactionRoleKind,
+  type ReactionRoleMode,
+  reactionRoleKinds,
+  reactionRoleModes,
+  reactionRoleOptions,
+} from "../../shared/reactionRoles.js";
 
 export type ReactionRoleMessage = typeof reactionRoleMessages.$inferSelect;
 export type ReactionRoleEntry = typeof reactionRoleEntries.$inferSelect;
-export type ReactionRoleConfig = ReactionRoleMessage & { entries: ReactionRoleEntry[] };
+/** A saved message with its roles, its kind/mode checked and its options filled in with defaults. */
+export type ReactionRoleConfig = Omit<ReactionRoleMessage, "kind" | "mode" | "options"> & {
+  kind: ReactionRoleKind;
+  mode: ReactionRoleMode;
+  options: z.infer<typeof reactionRoleOptions>;
+  entries: ReactionRoleEntry[];
+};
 
-/** Discord allows at most 20 different reactions on one message. */
-export const MAX_ENTRIES = 20;
+const KINDS = new Set<string>(reactionRoleKinds.map((k) => k.id));
+const MODES = new Set<string>(reactionRoleModes.map((m) => m.id));
+
+export function toConfig(message: ReactionRoleMessage, entries: ReactionRoleEntry[]): ReactionRoleConfig {
+  const parsed = reactionRoleOptions.safeParse(message.options ?? {});
+  return {
+    ...message,
+    kind: (KINDS.has(message.kind) ? message.kind : "reactions") as ReactionRoleKind,
+    mode: (MODES.has(message.mode) ? message.mode : message.singleChoice ? "unique" : "normal") as ReactionRoleMode,
+    options: parsed.success ? parsed.data : reactionRoleOptions.parse({}),
+    entries,
+  };
+}
 
 export async function getConfig(messageId: string): Promise<ReactionRoleConfig | undefined> {
   const message = await db.select().from(reactionRoleMessages).where(eq(reactionRoleMessages.messageId, messageId)).get();
@@ -18,7 +43,7 @@ export async function getConfig(messageId: string): Promise<ReactionRoleConfig |
     .where(eq(reactionRoleEntries.messageId, messageId))
     .orderBy(asc(reactionRoleEntries.position))
     .all();
-  return { ...message, entries };
+  return toConfig(message, entries);
 }
 
 export async function listConfigs(guildId: string): Promise<ReactionRoleConfig[]> {
@@ -35,7 +60,7 @@ export async function listConfigs(guildId: string): Promise<ReactionRoleConfig[]
     .where(inArray(reactionRoleEntries.messageId, messages.map((m) => m.messageId)))
     .orderBy(asc(reactionRoleEntries.position))
     .all();
-  return messages.map((m) => ({ ...m, entries: entries.filter((e) => e.messageId === m.messageId) }));
+  return messages.map((m) => toConfig(m, entries.filter((e) => e.messageId === m.messageId)));
 }
 
 export async function countConfigs(guildId: string): Promise<number> {
@@ -53,7 +78,7 @@ export async function createMessage(values: ReactionRoleMessage) {
 
 export async function updateMessage(
   messageId: string,
-  values: Partial<Pick<ReactionRoleMessage, "title" | "description" | "singleChoice">>,
+  values: Partial<Pick<ReactionRoleMessage, "title" | "description" | "name" | "kind" | "mode" | "content" | "options" | "singleChoice">>,
 ) {
   await db.update(reactionRoleMessages).set(values).where(eq(reactionRoleMessages.messageId, messageId)).run();
 }
@@ -73,15 +98,13 @@ export async function deleteMessagesInChannel(channelId: string) {
   return rows.length;
 }
 
-/** Adds or replaces the role for an emoji on a message. */
-export async function setEntry(messageId: string, emojiKey: string, emojiDisplay: string, roleId: string, position: number) {
+/** Adds or replaces one row (an emoji, button or dropdown option) on a message. */
+export async function setEntry(entry: ReactionRoleEntry) {
+  const { messageId, emojiKey, ...rest } = entry;
   await db
     .insert(reactionRoleEntries)
-    .values({ messageId, emojiKey, emojiDisplay, roleId, position })
-    .onConflictDoUpdate({
-      target: [reactionRoleEntries.messageId, reactionRoleEntries.emojiKey],
-      set: { roleId, emojiDisplay },
-    })
+    .values(entry)
+    .onConflictDoUpdate({ target: [reactionRoleEntries.messageId, reactionRoleEntries.emojiKey], set: rest })
     .run();
 }
 

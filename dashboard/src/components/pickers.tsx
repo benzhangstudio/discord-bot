@@ -8,7 +8,7 @@ const TEXT_CHANNEL_TYPES = new Set([0, 5]); // text and announcement channels
 const roleColor = (color: string) => (color !== "#000000" ? color : undefined);
 
 /** The server's roles as search options. Roles above the bot are greyed out. */
-export function roleOptions(guild: Guild, exclude: string[] = []): SearchOption[] {
+export function roleOptions(guild: Guild, exclude: string[] = [], anyRole = false): SearchOption[] {
   return guild.roles
     .filter((r) => !exclude.includes(r.id))
     .map((r) => ({
@@ -16,8 +16,8 @@ export function roleOptions(guild: Guild, exclude: string[] = []): SearchOption[
       label: r.name,
       prefix: "@",
       color: roleColor(r.color),
-      disabled: !r.assignable,
-      note: r.assignable ? undefined : "above my role",
+      disabled: !anyRole && !r.assignable,
+      note: anyRole || r.assignable ? undefined : "above my role",
     }));
 }
 
@@ -55,12 +55,15 @@ export function RolePicker({
   onChange,
   max = 10,
   placeholder = "Add a role…",
+  anyRole = false,
 }: {
   guild: Guild;
   value: string[];
   onChange: (ids: string[]) => void;
   max?: number;
   placeholder?: string;
+  /** Allow every role, even ones above the bot (for "who can use this" lists, where nothing is handed out). */
+  anyRole?: boolean;
 }) {
   const roleOf = (id: string) => guild.roles.find((r) => r.id === id);
   return (
@@ -80,7 +83,7 @@ export function RolePicker({
       {value.length < max && (
         <SearchSelect
           className="chip-add"
-          options={roleOptions(guild, value)}
+          options={roleOptions(guild, value, anyRole)}
           value={null}
           onChange={(id) => id && onChange([...value, id])}
           searchPlaceholder="Search roles…"

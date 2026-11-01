@@ -32,15 +32,27 @@ export const sessions = sqliteTable("sessions", {
 export const reactionRoleMessages = sqliteTable(
   "reaction_role_messages",
   {
-  messageId: text("message_id").primaryKey(),
-  guildId: text("guild_id").notNull(),
-  channelId: text("channel_id").notNull(),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  /** Single choice: members can hold only one role from this message at a time. */
-  singleChoice: integer("single_choice", { mode: "boolean" }).notNull().default(false),
-  createdBy: text("created_by").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    messageId: text("message_id").primaryKey(),
+    guildId: text("guild_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    /** Embed title. */
+    title: text("title").notNull(),
+    /** Embed description. */
+    description: text("description").notNull().default(""),
+    /** Old single-choice switch. Replaced by mode = "unique"; kept so old databases still migrate. */
+    singleChoice: integer("single_choice", { mode: "boolean" }).notNull().default(false),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    /** Internal name shown only in the dashboard. */
+    name: text("name").notNull().default(""),
+    /** "reactions", "buttons" or "dropdown". */
+    kind: text("kind").notNull().default("reactions"),
+    /** Selection mode (see src/shared/reactionRoles.ts). Replaces single_choice, which is kept only for old rows. */
+    mode: text("mode").notNull().default("normal"),
+    /** Plain text above the embed. */
+    content: text("content").notNull().default(""),
+    /** Embed look, restrictions and other per-message options (JSON, validated by reactionRoleOptions). */
+    options: text("options", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
   },
   // Lookups by server (dashboard list) and channel (cleanup when a channel is deleted).
   (t) => [index("reaction_role_messages_guild_idx").on(t.guildId), index("reaction_role_messages_channel_idx").on(t.channelId)],
@@ -59,6 +71,12 @@ export const reactionRoleEntries = sqliteTable(
     emojiDisplay: text("emoji_display").notNull(),
     roleId: text("role_id").notNull(),
     position: integer("position").notNull(),
+    /** Button text / dropdown option name ("" = use the role's name). */
+    label: text("label").notNull().default(""),
+    /** Dropdown option description. */
+    description: text("description").notNull().default(""),
+    /** Button colour: primary, secondary, success or danger. */
+    style: text("style").notNull().default("secondary"),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] }), index("reaction_role_entries_role_idx").on(t.roleId)],
 );

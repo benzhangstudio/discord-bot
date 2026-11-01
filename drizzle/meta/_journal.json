@@ -36,6 +36,13 @@
       "when": 1793496422180,
       "tag": "0004_reaction_role_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793498316772,
+      "tag": "0005_reaction_role_menus",
+      "breakpoints": true
     }
   ]
 }

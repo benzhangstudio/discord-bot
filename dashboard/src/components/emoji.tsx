@@ -88,13 +88,15 @@ export function EmojiInput({ guild, value, onChange }: { guild: Guild; value: st
 
   const first = custom[0]?.text ?? standard.find((g) => g.emojis.length)?.emojis[0]?.emoji;
   const nothing = groups && custom.length === 0 && standard.every((g) => g.emojis.length === 0);
-  const label = value ? (customName(value) ? `:${customName(value)}:` : "Change") : "Pick emoji";
+  // Custom emojis show their name; a picked standard emoji speaks for itself.
+  const label = value ? (customName(value) ? `:${customName(value)}:` : "") : "Pick emoji";
 
   return (
     <div className="emoji-input" ref={ref}>
       <button className="emoji-btn" type="button" aria-label={value ? "Change emoji" : "Pick an emoji"} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {value ? <EmojiView display={value} /> : <span className="emoji-placeholder">🙂</span>}
-        <span className="emoji-btn-label">{label}</span>
+        {label && <span className="emoji-btn-label">{label}</span>}
+        <span className="muted emoji-caret" aria-hidden>▾</span>
       </button>
       {open && (
         <div className="emoji-pop">
