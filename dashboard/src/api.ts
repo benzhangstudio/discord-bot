@@ -7,6 +7,7 @@ import type {
   ReactionRoleMessageView,
   SetupState,
 } from "../../src/shared/features";
+import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
 export class ApiError extends Error {
   constructor(
@@ -42,6 +43,14 @@ export interface GuildDetails {
   setup: SetupState;
 }
 
+export interface OnboardingResponse {
+  settings: OnboardingSettings;
+  status: OnboardingStatus;
+  /** What "Set it up for me" would change, in plain words. */
+  gatePlan: string[];
+  warnings: string[];
+}
+
 export type ReactionRoleSaveResult = { message: ReactionRoleMessageView; warnings: string[] };
 
 export const api = {
@@ -66,6 +75,13 @@ export const api = {
     }),
   deleteReactionRole: (guildId: string, messageId: string) =>
     request<{ ok: true }>(`/api/guilds/${guildId}/reaction-roles/${messageId}`, { method: "DELETE" }),
+  onboarding: (guildId: string) => request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding`),
+  saveOnboarding: (guildId: string, settings: OnboardingSettings) =>
+    request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding`, { method: "PUT", body: JSON.stringify(settings) }),
+  setUpGate: (guildId: string) =>
+    request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/setup`, { method: "POST", body: "{}" }),
+  removeGate: (guildId: string) =>
+    request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/remove`, { method: "POST", body: "{}" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

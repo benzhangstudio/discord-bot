@@ -68,3 +68,30 @@ export const guildSetup = sqliteTable("guild_setup", {
   /** When the "thanks for adding me" message was posted, so it's only sent once. */
   welcomedAt: integer("welcomed_at", { mode: "timestamp_ms" }),
 });
+
+/** Onboarding: where each member is in the onboarding steps. */
+export const onboardingProgress = sqliteTable(
+  "onboarding_progress",
+  {
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** pending (joined, hasn't started), started, or done. */
+    status: text("status", { enum: ["pending", "started", "done"] }).notNull(),
+    step: integer("step").notNull().default(0),
+    /** Question ID → chosen answer IDs. */
+    answers: text("answers", { mode: "json" }).$type<Record<string, string[]>>().notNull().default({}),
+    rulesAccepted: integer("rules_accepted", { mode: "boolean" }).notNull().default(false),
+    joinedAt: integer("joined_at", { mode: "timestamp_ms" }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    /** Whether the welcome message has been posted for this member. */
+    welcomed: integer("welcomed", { mode: "boolean" }).notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.guildId, t.userId] })],
+);
+
+/** Onboarding: bot-managed details per server (the posted "Start" message). */
+export const onboardingState = sqliteTable("onboarding_state", {
+  guildId: text("guild_id").primaryKey(),
+  startChannelId: text("start_channel_id"),
+  startMessageId: text("start_message_id"),
+});

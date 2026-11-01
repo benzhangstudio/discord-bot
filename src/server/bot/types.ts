@@ -44,6 +44,8 @@ export interface BotFeature {
   setup?(client: Client): void;
   /** Optional dashboard API routes for this feature (already limited to people who manage the server). */
   registerApi?(api: FeatureApi): void;
+  /** Optional: runs after an admin switches the feature on or off in the dashboard. */
+  onToggle?(guildId: string, enabled: boolean): Promise<unknown>;
 }
 
 export type FeatureApi = import("fastify").FastifyInstance;

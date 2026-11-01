@@ -129,6 +129,8 @@ export function registerApiRoutes(app: FastifyInstance) {
             { enabled: body.data.enabled, settings: settings.data },
             request.session!.userId,
           );
+          const bot = features.find((f) => f.info.id === feature.id);
+          await bot?.onToggle?.(request.params.guildId, body.data.enabled).catch((err) => request.log.warn(err));
           return getFeatureState(request.params.guildId, feature);
         },
       );

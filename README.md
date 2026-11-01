@@ -14,6 +14,7 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Commands: `/setup`, `/dashboard`, `/ping` | ✅ |
 | Setup categories with recommended features | ✅ |
 | Reaction roles (dashboard) | ✅ |
+| Member onboarding: welcome, goodbye, join roles, steps, access gate | ✅ |
 | More admin features (moderation, welcome, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
@@ -60,6 +61,25 @@ Number One keeps its command list short. Everything else is configured in the da
 - Categories without features yet are marked "coming soon". When a feature ships in a picked category, it switches on automatically for that server.
 - Re-running setup never switches off anything already in use.
 - When Number One joins a new server, it posts a one-time welcome in the system channel with a **Set up** button.
+
+### Member onboarding (Community & Roles)
+
+Discord-style onboarding and welcomes **without turning on Community settings**. Configured on the dashboard; every part is optional:
+
+| Part | Default | What it does |
+| --- | --- | --- |
+| Welcome message | On (system channel) | Posts in a chosen channel, as a pink card or plain text, on join or after onboarding. Placeholders: `{user}`, `{username}`, `{server}`, `{memberCount}`, `{startChannel}`. |
+| Welcome DM | Off | Sends a private welcome too. |
+| Goodbye message | Off | Posts when someone leaves. |
+| Join roles / bot roles | None | Given right away. Bots skip onboarding. |
+| Onboarding steps | Off | A Start button in a chosen channel opens a private walkthrough: rules ("I agree"), then up to 5 questions (single or multiple choice, required or optional), each answer giving up to 5 roles. Members can change their answers later. |
+| Access gate | Off | "Set it up for me" creates a New member role and #start-here, and hides other channels from new members until they finish. Shows exactly what changes first; can be turned off again. New channels are hidden automatically. Optionally removes members who don't finish in time. |
+
+- Progress is saved, so members resume where they left off, even after restarts.
+- All roles are applied in one update at the end.
+- People who joined while the bot was offline get their starting roles when it's back.
+- The dashboard shows joins, completions and pending members, and warns if Discord's own Community features are on.
+- **Permissions:** Manage Roles (and its role above the roles it gives); Manage Channels for the gate; Kick Members for removing unfinished members.
 
 ### Reaction roles (Community & Roles)
 

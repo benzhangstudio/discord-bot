@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { onboardingSettings } from "./onboarding.js";
 
 /**
  * The single definition of every feature: its name, description, category and settings shape.
@@ -85,7 +86,16 @@ export const reactionRolesFeature = defineFeature({
   settings: z.object({}),
 });
 
-export const featureCatalog: FeatureInfo[] = [coreFeature, reactionRolesFeature];
+export const onboardingFeature = defineFeature({
+  id: "onboarding",
+  name: "Member onboarding",
+  description: "Welcome new members, give starting roles, and walk them through rules and questions. No Community settings needed.",
+  category: "community",
+  recommended: true,
+  settings: onboardingSettings,
+});
+
+export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature];
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);
