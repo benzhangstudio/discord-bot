@@ -15,6 +15,13 @@
       "when": 1793493255886,
       "tag": "0001_reaction_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793493814890,
+      "tag": "0002_guild_setup",
+      "breakpoints": true
     }
   ]
 }

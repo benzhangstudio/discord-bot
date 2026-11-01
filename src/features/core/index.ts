@@ -2,10 +2,14 @@ import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.
 import { coreFeature } from "../../shared/features.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { dashboardLink } from "../../server/config.js";
+import { setupCommand, setupComponents, welcomeOnJoin } from "./setup.js";
 
 export const core: BotFeature = {
   info: coreFeature,
+  components: [setupComponents],
+  events: [welcomeOnJoin],
   commands: [
+    setupCommand,
     {
       data: new SlashCommandBuilder().setName("ping").setDescription("Check that the bot is online and how fast it responds."),
       async execute(interaction) {

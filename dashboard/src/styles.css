@@ -408,3 +408,271 @@ code {
   font-weight: 500;
   color: var(--text);
 }
+
+/* Setup card */
+.setup-card,
+.setup-summary {
+  margin: 24px 0 8px;
+}
+
+.setup-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setup-card p {
+  margin: 4px 0 14px;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.category {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.category span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.category.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.category-emoji {
+  font-size: 1.4rem;
+  line-height: 1.2;
+}
+
+.soon {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.group-title {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 22px 0 10px;
+  font-weight: 600;
+}
+
+/* Forms */
+.editor {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.editor h3 {
+  margin: 0 0 14px;
+  font-size: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field > span {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+select option:disabled {
+  color: var(--muted);
+}
+
+textarea {
+  resize: vertical;
+}
+
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+
+.check input {
+  width: auto;
+  margin-top: 4px;
+  accent-color: var(--accent);
+}
+
+.check span {
+  display: flex;
+  flex-direction: column;
+}
+
+.rr-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.add-row {
+  align-self: flex-start;
+  margin: 2px 0 0;
+  color: var(--accent);
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notice {
+  background: var(--accent-soft);
+  border: 1px solid rgba(255, 79, 163, 0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notice .link {
+  margin: 0;
+  align-self: flex-start;
+}
+
+.warning {
+  color: #ffc46b;
+  font-size: 0.85rem;
+}
+
+/* Emoji picker */
+.emoji-input {
+  position: relative;
+  display: flex;
+  gap: 6px;
+}
+
+.emoji-btn {
+  flex: none;
+  width: 38px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+}
+
+.emoji-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  width: 300px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  margin: 4px 0 8px;
+}
+
+.emoji-grid button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 4px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.emoji-grid button:hover {
+  background: var(--accent-soft);
+}
+
+.emoji-img {
+  object-fit: contain;
+}
+
+@media (max-width: 560px) {
+  .rr-row {
+    grid-template-columns: 1fr auto;
+  }
+  .rr-row .emoji-input {
+    grid-column: 1 / -1;
+  }
+}

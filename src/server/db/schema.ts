@@ -57,3 +57,14 @@ export const reactionRoleEntries = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.messageId, t.emojiKey] })],
 );
+
+/** Answers from /setup: what each server uses Number One for. */
+export const guildSetup = sqliteTable("guild_setup", {
+  guildId: text("guild_id").primaryKey(),
+  categories: text("categories", { mode: "json" }).$type<string[]>().notNull().default([]),
+  /** Empty until someone finishes /setup (or the dashboard's setup section). */
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  completedBy: text("completed_by"),
+  /** When the "thanks for adding me" message was posted, so it's only sent once. */
+  welcomedAt: integer("welcomed_at", { mode: "timestamp_ms" }),
+});

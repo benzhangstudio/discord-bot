@@ -1,11 +1,11 @@
 import { PermissionFlagsBits, type Guild } from "discord.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { type DashboardGuild, type DashboardUser, getFeatureInfo } from "../../shared/features.js";
+import { type DashboardGuild, type DashboardUser, categoryIds, getFeatureInfo } from "../../shared/features.js";
 import { features } from "../../features/index.js";
 import { client } from "../bot/client.js";
 import { config, loginReady } from "../config.js";
-import { getAllFeatureStates, getFeatureState, saveFeatureState } from "../settings.js";
+import { applySetup, getAllFeatureStates, getFeatureState, getSetup, saveFeatureState } from "../settings.js";
 import { type Session, discordUserFetch, requireSession } from "./auth.js";
 
 const MANAGE_GUILD = PermissionFlagsBits.ManageGuild;
@@ -49,6 +49,7 @@ async function requireManagedGuild(request: FastifyRequest<{ Params: { guildId: 
 }
 
 function guildSummary(guild: Guild) {
+  const botTop = guild.members.me?.roles.highest.position ?? 0;
   return {
     id: guild.id,
     name: guild.name,
@@ -60,8 +61,18 @@ function guildSummary(guild: Guild) {
       .sort((a, b) => a.position - b.position),
     roles: guild.roles.cache
       .filter((r) => r.id !== guild.id && !r.managed)
-      .map((r) => ({ id: r.id, name: r.name, color: r.hexColor, position: r.position }))
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        color: r.hexColor,
+        position: r.position,
+        // Whether the bot's own role is high enough to give this role out.
+        assignable: botTop > r.position,
+      }))
       .sort((a, b) => b.position - a.position),
+    emojis: guild.emojis.cache
+      .filter((e) => e.available !== false)
+      .map((e) => ({ id: e.id, name: e.name ?? "emoji", animated: Boolean(e.animated), text: e.toString() })),
   };
 }
 
@@ -96,7 +107,7 @@ export function registerApiRoutes(app: FastifyInstance) {
 
       guildApi.get<{ Params: { guildId: string } }>("/api/guilds/:guildId", async (request) => {
         const guild = client.guilds.cache.get(request.params.guildId)!;
-        return { guild: guildSummary(guild), features: await getAllFeatureStates(guild.id) };
+        return { guild: guildSummary(guild), features: await getAllFeatureStates(guild.id), setup: await getSetup(guild.id) };
       });
 
       guildApi.put<{ Params: { guildId: string; featureId: string } }>(
@@ -121,6 +132,18 @@ export function registerApiRoutes(app: FastifyInstance) {
           return getFeatureState(request.params.guildId, feature);
         },
       );
+
+      // The dashboard's version of /setup: same categories, same result.
+      guildApi.put<{ Params: { guildId: string } }>("/api/guilds/:guildId/setup", async (request, reply) => {
+        const body = z.object({ categories: z.array(z.enum(categoryIds)).min(1, "Pick at least one") }).safeParse(request.body);
+        if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? "Invalid request" });
+        const turnedOn = await applySetup(request.params.guildId, body.data.categories, request.session!.userId);
+        return {
+          turnedOn: turnedOn.map((f) => f.id),
+          setup: await getSetup(request.params.guildId),
+          features: await getAllFeatureStates(request.params.guildId),
+        };
+      });
 
       // Feature-specific dashboard routes (e.g. the reaction-role messages list).
       for (const feature of features) feature.registerApi?.(guildApi);

@@ -11,8 +11,9 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Bot core: slash commands, feature on/off checks, error handling | ✅ |
 | Database (SQLite) with automatic upgrades and daily backups | ✅ |
 | Dashboard: "Log in with Discord", server list, per-server feature switches | ✅ |
-| Commands: `/ping`, `/dashboard` | ✅ |
-| Reaction roles (`/reactionroles`) | ✅ |
+| Commands: `/setup`, `/dashboard`, `/ping` | ✅ |
+| Setup categories with recommended features | ✅ |
+| Reaction roles (dashboard) | ✅ |
 | More admin features (moderation, welcome, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
@@ -42,25 +43,35 @@ A copy of the database is saved every day to `data/backups/`, and the last 7 day
 
 ## Features
 
-### Reaction roles
+### Commands
 
-Members get roles by reacting to a message, and lose them by removing the reaction. Turn it on in the dashboard, then use `/reactionroles` (needs Manage Roles):
+Number One keeps its command list short. Everything else is configured in the dashboard.
 
-| Command | What it does |
-| --- | --- |
-| `/reactionroles create` | Posts a new message with a title, optional description and channel. Can include the first emoji and role. |
-| `/reactionroles add` | Adds an emoji and the role it gives. The bot adds the reaction itself. |
-| `/reactionroles remove` | Removes an emoji from a message. |
-| `/reactionroles edit` | Changes the title, description or single-choice setting. |
-| `/reactionroles list` | Shows every reaction-role message in the server. |
-| `/reactionroles delete` | Deletes a message. Members keep roles they already have. |
+| Command | Who | What it does |
+| --- | --- | --- |
+| `/setup` | Manage Server | Asks what the server will use Number One for and switches on the right features |
+| `/dashboard` | Manage Server | Link to this server's dashboard page |
+| `/ping` | Everyone | Checks the bot is online |
 
+### Setup
+
+`/setup` (or the "What will you use Number One for?" card on the dashboard) lets owners pick categories: Moderation & safety, Roles, Welcome & onboarding, Server logs, and Community & engagement. The recommended features in each picked category switch on.
+
+- Categories without features yet are marked "coming soon". When a feature ships in a picked category, it switches on automatically for that server.
+- Re-running setup never switches off anything already in use.
+- When Number One joins a new server, it posts a one-time welcome in the system channel with a **Set up** button.
+
+### Reaction roles (Roles category)
+
+Members get roles by reacting to a message, and lose them by removing the reaction. Managed entirely from the dashboard:
+
+- Create, edit and delete messages: channel, title, description, single-choice option, and emoji-to-role rows.
+- Emoji picker with the server's custom emojis and common emojis. Roles the bot can't give (above its own role) are greyed out.
 - **Single choice:** members can hold only one role from that message. Picking another swaps the role and clears the old reaction.
-- Works with custom server emojis and on old messages after restarts. Bot reactions are ignored.
-- Up to 20 emojis per message (Discord's limit).
+- The bot adds the reactions itself, works on old messages after restarts, ignores bot reactions, and supports custom emojis.
+- Up to 20 emojis per message (Discord's limit). Changing the channel reposts the message there.
 - Cleans up automatically when the message, its channel or a role is deleted. If someone clears the reactions, the bot puts its own back.
-- **Permissions:** the bot needs Manage Roles, and its role must sit above the roles it gives out. In the channel it needs View Channel, Send Messages, Embed Links, Add Reactions and Read Message History. Admins can only set up roles below their own highest role. Problems are explained when running the command instead of failing silently.
-- The dashboard shows each message with its emoji and role pairs, and can delete them.
+- **Permissions:** the bot needs Manage Roles, and its role must sit above the roles it gives out. In the channel it needs View Channel, Send Messages, Embed Links, Add Reactions and Read Message History. Admins can only set up roles below their own highest role. Problems are explained on save.
 
 ## How the project is organized
 

@@ -1,20 +1,13 @@
-import { Client, Events, Routes, GatewayIntentBits, MessageFlags, Partials } from "discord.js";
+import { Events, MessageFlags, Routes } from "discord.js";
 import { features } from "../../features/index.js";
 import { config, dashboardLink, setPublicUrl } from "../config.js";
 import { isFeatureEnabled } from "../settings.js";
-import type { BotFeature, SlashCommand } from "./types.js";
+import { client } from "./discord.js";
+import type { BotFeature, ComponentHandler, SlashCommand } from "./types.js";
 
-export const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers, // privileged: enable "Server Members Intent" in the Developer Portal
-    GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMessageReactions,
-  ],
-  // Partials let the bot react to events on messages, reactions and members it hasn't cached (e.g. after a restart).
-  partials: [Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User, Partials.Channel],
-});
+export { client };
+
+
 
 const commands = new Map<string, { command: SlashCommand; feature: BotFeature }>();
 for (const feature of features) {
@@ -22,6 +15,11 @@ for (const feature of features) {
     if (commands.has(command.data.name)) throw new Error(`Duplicate command name: /${command.data.name}`);
     commands.set(command.data.name, { command, feature });
   }
+}
+
+const components = new Map<string, { handler: ComponentHandler; feature: BotFeature }>();
+for (const feature of features) {
+  for (const handler of feature.components ?? []) components.set(handler.prefix, { handler, feature });
 }
 
 async function registerCommands() {
@@ -60,6 +58,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
       console.error(`[bot] /${interaction.commandName} suggestions failed:`, err);
       return interaction.respond([]).catch(() => {});
     });
+    return;
+  }
+  if (interaction.isMessageComponent()) {
+    const found = components.get(interaction.customId.split(":")[0]);
+    if (!found) return;
+    try {
+      await found.handler.handle(interaction);
+    } catch (err) {
+      console.error(`[bot] ${interaction.customId} failed:`, err);
+      const content = "Something went wrong. Please try again.";
+      await (interaction.replied || interaction.deferred
+        ? interaction.followUp({ content, flags: MessageFlags.Ephemeral })
+        : interaction.reply({ content, flags: MessageFlags.Ephemeral })
+      ).catch(() => {});
+    }
     return;
   }
   if (!interaction.isChatInputCommand()) return;

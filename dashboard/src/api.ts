@@ -1,4 +1,12 @@
-import type { DashboardGuild, DashboardUser, FeatureState, ReactionRoleMessageView } from "../../src/shared/features";
+import type {
+  CategoryId,
+  DashboardGuild,
+  DashboardUser,
+  FeatureState,
+  ReactionRoleInput,
+  ReactionRoleMessageView,
+  SetupState,
+} from "../../src/shared/features";
 
 export class ApiError extends Error {
   constructor(
@@ -27,10 +35,14 @@ export interface GuildDetails {
     icon: string | null;
     memberCount: number;
     channels: { id: string; name: string; type: number }[];
-    roles: { id: string; name: string; color: string }[];
+    roles: { id: string; name: string; color: string; assignable: boolean }[];
+    emojis: { id: string; name: string; animated: boolean; text: string }[];
   };
   features: FeatureState[];
+  setup: SetupState;
 }
+
+export type ReactionRoleSaveResult = { message: ReactionRoleMessageView; warnings: string[] };
 
 export const api = {
   config: () => request<{ clientId: string | null; loginReady: boolean; botReady: boolean }>("/api/config"),
@@ -40,6 +52,18 @@ export const api = {
   saveFeature: (guildId: string, featureId: string, state: Omit<FeatureState, "id">) =>
     request<FeatureState>(`/api/guilds/${guildId}/features/${featureId}`, { method: "PUT", body: JSON.stringify(state) }),
   reactionRoles: (guildId: string) => request<ReactionRoleMessageView[]>(`/api/guilds/${guildId}/reaction-roles`),
+  createReactionRole: (guildId: string, input: ReactionRoleInput) =>
+    request<ReactionRoleSaveResult>(`/api/guilds/${guildId}/reaction-roles`, { method: "POST", body: JSON.stringify(input) }),
+  updateReactionRole: (guildId: string, messageId: string, input: ReactionRoleInput) =>
+    request<ReactionRoleSaveResult>(`/api/guilds/${guildId}/reaction-roles/${messageId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  saveSetup: (guildId: string, categories: CategoryId[]) =>
+    request<{ turnedOn: string[]; setup: SetupState; features: FeatureState[] }>(`/api/guilds/${guildId}/setup`, {
+      method: "PUT",
+      body: JSON.stringify({ categories }),
+    }),
   deleteReactionRole: (guildId: string, messageId: string) =>
     request<{ ok: true }>(`/api/guilds/${guildId}/reaction-roles/${messageId}`, { method: "DELETE" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
