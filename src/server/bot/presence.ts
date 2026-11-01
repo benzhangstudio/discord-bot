@@ -14,7 +14,7 @@ import { ActivityType, Events, type Client, type PresenceData } from "discord.js
 
 const MARKER_URL = "https://api.github.com/repos/benzhangstudio/number-one/branches/bot-status";
 const CHECK_MS = 3 * 60_000;
-const EXPIRES_MS = 3 * 60 * 60_000;
+const EXPIRES_MS = 20 * 60_000; // a forgotten marker stops counting after 20 minutes
 
 // Shown as an activity under the bot's name ("Playing …"), which is how Discord lets bots show rich presence.
 export const idlePresence: PresenceData = { status: "online", activities: [] };
