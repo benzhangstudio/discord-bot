@@ -4,7 +4,6 @@ import type {
   Client,
   ClientEvents,
   MessageComponentInteraction,
-  ModalSubmitInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
 import type { FeatureInfo } from "../../shared/features.js";
@@ -27,12 +26,6 @@ export interface ComponentHandler {
   handle(interaction: MessageComponentInteraction): Promise<unknown>;
 }
 
-/** Handles submitted pop-up forms whose custom ID starts with `${prefix}:`. */
-export interface ModalHandler {
-  prefix: string;
-  handle(interaction: ModalSubmitInteraction): Promise<unknown>;
-}
-
 export interface FeatureEvent<E extends keyof ClientEvents = keyof ClientEvents> {
   event: E;
   /** Runs for every matching event. Use isFeatureEnabled() to skip servers where the feature is off. */
@@ -51,7 +44,6 @@ export interface BotFeature {
   commands?: SlashCommand[];
   events?: FeatureEvent[];
   components?: ComponentHandler[];
-  modals?: ModalHandler[];
   /** Optional one-time setup when the bot starts (timers, caches...). */
   setup?(client: Client): void;
   /** Optional dashboard API routes for this feature (already limited to people who manage the server). */

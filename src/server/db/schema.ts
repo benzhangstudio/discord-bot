@@ -180,22 +180,3 @@ export const announcementDeliveries = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.announcementId, t.guildId] }), index("announcement_deliveries_guild_idx").on(t.guildId)],
 );
-
-/** Bug reports sent with /report. The developer reads them in the dashboard's Developer page. */
-export const bugReports = sqliteTable(
-  "bug_reports",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    guildId: text("guild_id").notNull(),
-    /** The server's name when it was reported (it may change or the bot may leave later). */
-    guildName: text("guild_name").notNull(),
-    memberCount: integer("member_count").notNull().default(0),
-    userId: text("user_id").notNull(),
-    username: text("username").notNull(),
-    summary: text("summary").notNull(),
-    details: text("details").notNull().default(""),
-    resolved: integer("resolved", { mode: "boolean" }).notNull().default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  },
-  (t) => [index("bug_reports_resolved_idx").on(t.resolved)],
-);

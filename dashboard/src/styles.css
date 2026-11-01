@@ -2036,13 +2036,3 @@ select.chip-add {
     padding: 12px;
   }
 }
-
-.dev-resolved {
-  opacity: 0.55;
-}
-
-.dev-report-body {
-  margin: 8px 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}

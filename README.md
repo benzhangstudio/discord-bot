@@ -54,7 +54,6 @@ Number One keeps its command list short. Everything else is configured in the da
 | `/setup` | Manage Server | Asks what the server will use Number One for and switches on the right features |
 | `/dashboard` | Manage Server | Link to this server's dashboard page |
 | `/ping` | Everyone | Checks the bot is online |
-| `/report` | Manage Server | Opens a short form to report a bug; it appears in the developer's dashboard |
 
 ### Setup
 
