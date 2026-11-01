@@ -4,7 +4,7 @@ import { backup } from "node:sqlite";
 import { config } from "../config.js";
 import { sqlite } from "./client.js";
 
-const BACKUP_DIR = join(config.DATA_DIR, "backups");
+const BACKUP_DIR = join(config.dataDir, "backups");
 const KEEP = 7; // days of backups to keep
 const DAY_MS = 24 * 60 * 60 * 1000;
 

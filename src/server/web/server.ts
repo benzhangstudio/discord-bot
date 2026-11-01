@@ -14,7 +14,7 @@ const dashboardDir = join(dirname(fileURLToPath(import.meta.url)), "../../dashbo
 export async function startWebServer() {
   const app = Fastify({ logger: { level: "warn" }, trustProxy: true });
 
-  await app.register(cookie, { secret: config.SESSION_SECRET });
+  await app.register(cookie, { secret: config.sessionSecret });
   registerAuthRoutes(app);
   registerApiRoutes(app);
 
@@ -36,7 +36,7 @@ export async function startWebServer() {
     reply.code(500).send({ error: "Something went wrong" });
   });
 
-  await app.listen({ host: "0.0.0.0", port: config.PORT });
-  console.log(`[web] dashboard running on port ${config.PORT} (${config.PUBLIC_URL})`);
+  await app.listen({ host: "0.0.0.0", port: config.port });
+  console.log(`[web] dashboard running on port ${config.port}${config.publicUrl ? ` (${config.publicUrl})` : ""}`);
   return app;
 }

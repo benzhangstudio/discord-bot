@@ -68,7 +68,8 @@ const featureUpdateBody = z.object({ enabled: z.boolean(), settings: z.record(z.
 
 export function registerApiRoutes(app: FastifyInstance) {
   app.get("/api/config", async () => ({
-    clientId: config.DISCORD_CLIENT_ID,
+    clientId: config.clientId ?? client.application?.id ?? null,
+    loginReady: config.loginReady,
     botReady: client.isReady(),
   }));
 

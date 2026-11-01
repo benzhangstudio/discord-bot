@@ -8,8 +8,8 @@ import { sessions } from "../db/schema.js";
 const DISCORD_API = "https://discord.com/api/v10";
 const SESSION_COOKIE = "n1_session";
 const STATE_COOKIE = "n1_oauth_state";
-const REDIRECT_URI = `${config.PUBLIC_URL}/auth/callback`;
-const secureCookies = config.PUBLIC_URL.startsWith("https://");
+const REDIRECT_URI = `${config.publicUrl}/auth/callback`;
+const secureCookies = Boolean(config.publicUrl?.startsWith("https://"));
 
 export type Session = typeof sessions.$inferSelect;
 
@@ -43,10 +43,11 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
 
 export function registerAuthRoutes(app: FastifyInstance) {
   app.get("/auth/login", async (_request, reply) => {
+    if (!config.loginReady) return reply.redirect("/?error=login_not_configured");
     const state = randomBytes(16).toString("hex");
     reply.setCookie(STATE_COOKIE, state, cookieOptions(600));
     const params = new URLSearchParams({
-      client_id: config.DISCORD_CLIENT_ID,
+      client_id: config.clientId!,
       response_type: "code",
       redirect_uri: REDIRECT_URI,
       scope: "identify guilds",
@@ -57,6 +58,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Querystring: { code?: string; state?: string } }>("/auth/callback", async (request, reply) => {
+    if (!config.loginReady) return reply.redirect("/?error=login_not_configured");
     const { code, state } = request.query;
     const savedState = request.cookies[STATE_COOKIE] && request.unsignCookie(request.cookies[STATE_COOKIE]);
     reply.clearCookie(STATE_COOKIE, { path: "/" });
@@ -68,8 +70,8 @@ export function registerAuthRoutes(app: FastifyInstance) {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: config.DISCORD_CLIENT_ID,
-        client_secret: config.DISCORD_CLIENT_SECRET,
+        client_id: config.clientId!,
+        client_secret: config.clientSecret!,
         grant_type: "authorization_code",
         code,
         redirect_uri: REDIRECT_URI,

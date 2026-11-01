@@ -11,8 +11,8 @@ import * as schema from "./schema.js";
  * The database is a single SQLite file, opened with the SQLite engine built into Node.js.
  * Nothing has to be compiled during install, which keeps Wispbyte startups reliable.
  */
-mkdirSync(config.DATA_DIR, { recursive: true });
-export const dbPath = join(config.DATA_DIR, "number-one.db");
+mkdirSync(config.dataDir, { recursive: true });
+export const dbPath = join(config.dataDir, "number-one.db");
 export const sqlite = new DatabaseSync(dbPath);
 sqlite.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
 

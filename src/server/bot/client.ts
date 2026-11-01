@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from "discord.js";
 import { features } from "../../features/index.js";
-import { config } from "../config.js";
+import { config, dashboardLink } from "../config.js";
 import { isFeatureEnabled } from "../settings.js";
 import type { BotFeature, SlashCommand } from "./types.js";
 
@@ -24,9 +24,9 @@ for (const feature of features) {
 
 async function registerCommands() {
   const body = [...commands.values()].map(({ command }) => command.data.toJSON());
-  if (config.DEV_GUILD_ID) {
-    await client.application!.commands.set(body, config.DEV_GUILD_ID);
-    console.log(`[bot] registered ${body.length} commands in dev server ${config.DEV_GUILD_ID}`);
+  if (config.devGuildId) {
+    await client.application!.commands.set(body, config.devGuildId);
+    console.log(`[bot] registered ${body.length} commands in dev server ${config.devGuildId}`);
   } else {
     await client.application!.commands.set(body);
     console.log(`[bot] registered ${body.length} global commands`);
@@ -49,8 +49,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       : interaction.reply({ content, flags: MessageFlags.Ephemeral });
 
   if (interaction.guildId && !(await isFeatureEnabled(interaction.guildId, entry.feature.info))) {
+    const link = dashboardLink(`/servers/${interaction.guildId}`);
     await reply(
-      `**${entry.feature.info.name}** is turned off in this server. An admin can turn it on at ${config.PUBLIC_URL}/servers/${interaction.guildId}`,
+      `**${entry.feature.info.name}** is turned off in this server. An admin can turn it on in the dashboard${link ? `: ${link}` : "."}`,
     );
     return;
   }
@@ -77,5 +78,5 @@ for (const feature of features) {
 
 export async function startBot() {
   for (const feature of features) feature.setup?.(client);
-  await client.login(config.DISCORD_TOKEN);
+  await client.login(config.token);
 }

@@ -33,7 +33,7 @@ export interface GuildDetails {
 }
 
 export const api = {
-  config: () => request<{ clientId: string; botReady: boolean }>("/api/config"),
+  config: () => request<{ clientId: string | null; loginReady: boolean; botReady: boolean }>("/api/config"),
   me: () => request<DashboardUser>("/api/me"),
   guilds: () => request<DashboardGuild[]>("/api/guilds"),
   guild: (id: string) => request<GuildDetails>(`/api/guilds/${id}`),

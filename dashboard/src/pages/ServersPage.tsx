@@ -12,7 +12,7 @@ export function ServersPage() {
     Promise.all([api.guilds(), api.config()])
       .then(([g, c]) => {
         setGuilds(g);
-        setClientId(c.clientId);
+        setClientId(c.clientId ?? "");
       })
       .catch((err) => setError(err.message));
   }, []);

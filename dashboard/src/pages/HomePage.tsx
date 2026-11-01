@@ -9,7 +9,10 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
         Moderation, welcomes, roles, logging and more, set up in minutes from this dashboard. No config files, no juggling
         five different bots.
       </p>
-      {error && <p className="error">Login didn't go through. Please try again.</p>}
+      {error === "login_not_configured" && (
+        <p className="error">Dashboard login isn't switched on yet. The bot owner needs to finish setting it up.</p>
+      )}
+      {error === "login_failed" && <p className="error">Login didn't go through. Please try again.</p>}
       {loggedIn ? (
         <button className="btn primary" onClick={() => navigate("/servers")}>
           Choose a server

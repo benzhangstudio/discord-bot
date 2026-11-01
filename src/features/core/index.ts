@@ -1,7 +1,7 @@
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { coreFeature } from "../../shared/features.js";
 import type { BotFeature } from "../../server/bot/types.js";
-import { config } from "../../server/config.js";
+import { dashboardLink } from "../../server/config.js";
 
 export const core: BotFeature = {
   info: coreFeature,
@@ -23,8 +23,9 @@ export const core: BotFeature = {
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setContexts(0), // servers only
       async execute(interaction) {
+        const link = dashboardLink(`/servers/${interaction.guildId}`);
         await interaction.reply({
-          content: `Configure Number One here: ${config.PUBLIC_URL}/servers/${interaction.guildId}`,
+          content: link ? `Configure Number One here: ${link}` : "The dashboard isn't available yet.",
           flags: MessageFlags.Ephemeral,
         });
       },
