@@ -342,7 +342,16 @@ function BotStatusSection() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.botStatus().then(setStatus).catch((err) => setError(err.message));
+  // A bad answer from the server must never take the whole Developer page down, so check its shape first.
+  const accept = (s: BotStatusView) => {
+    if (s && typeof s.showStatus === "boolean" && s.shown && typeof s.shown.text === "string") {
+      setError("");
+      setStatus(s);
+    } else {
+      setError("The bot didn't send its status in the expected format. Restart it so it's running the latest version.");
+    }
+  };
+  const load = () => api.botStatus().then(accept).catch((err) => setError(err.message));
   useEffect(() => {
     load();
     const t = window.setInterval(load, 30_000); // picks up the status ending or the bot finishing a restart
@@ -353,7 +362,7 @@ function BotStatusSection() {
     setError("");
     setBusy(true);
     try {
-      setStatus(await api.saveBotStatus(patch));
+      accept(await api.saveBotStatus(patch));
     } catch (err) {
       setError((err as Error).message);
     } finally {
