@@ -4,6 +4,7 @@ import { api, avatarUrl } from "./api";
 import { GuildPage } from "./pages/GuildPage";
 import { HomePage } from "./pages/HomePage";
 import { ServersPage } from "./pages/ServersPage";
+import { TermsPage } from "./pages/TermsPage";
 import { navigate, usePath } from "./router";
 
 export function App() {
@@ -19,7 +20,8 @@ export function App() {
 
   const guildMatch = path.match(/^\/servers\/(\d+)(?:\/([\w-]+))?/);
   let page;
-  if (!user) page = <HomePage />;
+  if (path === "/terms") page = <TermsPage />; // public: readable without logging in
+  else if (!user) page = <HomePage />;
   else if (guildMatch) page = <GuildPage guildId={guildMatch[1]} page={guildMatch[2] ?? ""} />;
   else if (path.startsWith("/servers")) page = <ServersPage />;
   else page = <HomePage loggedIn />;
@@ -54,6 +56,22 @@ export function App() {
         )}
       </header>
       <main className={`content ${user && guildMatch ? "wide" : ""}`}>{page}</main>
+      <footer className="footer">
+        <span>© {new Date().getFullYear()} Number One</span>
+        <a
+          href="/terms"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate("/terms");
+            window.scrollTo(0, 0);
+          }}
+        >
+          Terms of Service
+        </a>
+        <a href="https://discord.gg/YjpDdDYjF8" target="_blank" rel="noopener noreferrer">
+          Support
+        </a>
+      </footer>
     </div>
   );
 }
