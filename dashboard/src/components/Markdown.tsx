@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { PageLink } from "./PageLink";
 
 /**
  * Minimal Markdown renderer for the dashboard's static pages (terms, policies).
- * Supports # and ## headings, paragraphs, "- " bullet lists, "> " banners, **bold** and [links](https://...).
+ * Supports # and ## headings, paragraphs, "- " bullet lists, "> " banners, **bold**,
+ * [links](https://...) and links to dashboard pages like [Privacy Policy](/privacy).
  * Builds React elements directly, so text is always escaped and never injected as HTML.
  */
 export function Markdown({ source }: { source: string }) {
@@ -32,13 +34,19 @@ export function Markdown({ source }: { source: string }) {
 
 function inline(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
-  const pattern = /\*\*(.+?)\*\*|\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  const pattern = /\*\*(.+?)\*\*|\[(.+?)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g;
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     const at = match.index ?? 0;
     if (at > last) parts.push(text.slice(last, at));
     if (match[1] !== undefined) {
       parts.push(<strong key={at}>{match[1]}</strong>);
+    } else if (match[3].startsWith("/")) {
+      parts.push(
+        <PageLink key={at} to={match[3]}>
+          {match[2]}
+        </PageLink>,
+      );
     } else {
       parts.push(
         <a key={at} href={match[3]} target="_blank" rel="noopener noreferrer">

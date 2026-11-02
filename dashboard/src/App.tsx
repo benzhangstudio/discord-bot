@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DashboardUser } from "../../src/shared/features";
 import { api, avatarUrl } from "./api";
+import { Footer } from "./components/Footer";
 import { GuildPage } from "./pages/GuildPage";
 import { HomePage } from "./pages/HomePage";
 import { PrivacyPage } from "./pages/PrivacyPage";
@@ -17,9 +18,17 @@ export function App() {
     api.me().then(setUser).catch(() => setUser(null));
   }, []);
 
-  if (user === undefined) return <div className="center muted">Loading…</div>;
+  if (user === undefined) {
+    return (
+      <div className="app">
+        <main className="content center muted">Loading…</main>
+        <Footer />
+      </div>
+    );
+  }
 
   const guildMatch = path.match(/^\/servers\/(\d+)(?:\/([\w-]+))?/);
+  // Every page is rendered inside the layout below (top bar, page, footer). Add new pages to this list.
   let page;
   if (path === "/terms") page = <TermsPage />; // public: readable without logging in
   else if (path === "/privacy") page = <PrivacyPage />; // public too
@@ -58,32 +67,7 @@ export function App() {
         )}
       </header>
       <main className={`content ${user && guildMatch ? "wide" : ""}`}>{page}</main>
-      <footer className="footer">
-        <span>© {new Date().getFullYear()} Number One</span>
-        <a
-          href="/terms"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/terms");
-            window.scrollTo(0, 0);
-          }}
-        >
-          Terms of Service
-        </a>
-        <a
-          href="/privacy"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/privacy");
-            window.scrollTo(0, 0);
-          }}
-        >
-          Privacy Policy
-        </a>
-        <a href="https://discord.gg/7GyveHcQdn" target="_blank" rel="noopener noreferrer">
-          Support
-        </a>
-      </footer>
+      <Footer />
     </div>
   );
 }
