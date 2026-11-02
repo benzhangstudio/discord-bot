@@ -32,6 +32,25 @@ export function gateCoverage(guild: Guild, settings: OnboardingSettings) {
   };
 }
 
+/**
+ * Channels the gate can't keep closed: in Discord, a role that's allowed to view a channel beats one
+ * that's denied, so a join role with "View Channel" allowed there lets new members see it anyway.
+ */
+export function gateLeaks(guild: Guild, settings: OnboardingSettings) {
+  const roleId = settings.gate.roleId;
+  if (!settings.gate.enabled || !roleId || !settings.joinRoles.length) return [];
+  return [
+    ...gateableChannels(guild, settings.flow.channelId)
+      .filter(
+        (c) =>
+          hidesFrom(c, roleId) &&
+          "permissionOverwrites" in c &&
+          settings.joinRoles.some((id) => c.permissionOverwrites.cache.get(id)?.allow.has(PermissionFlagsBits.ViewChannel)),
+      )
+      .values(),
+  ].map((c) => `#${c.name}`);
+}
+
 /** Plain-language list of what "Set it up for me" will do, shown before anything changes. */
 export function describeGateSetup(guild: Guild, settings: OnboardingSettings) {
   const steps: string[] = [];

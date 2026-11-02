@@ -104,7 +104,6 @@ export const onboardingFeature = defineFeature({
   description: "Welcome new members, give starting roles, and walk them through rules and questions. No Community settings needed.",
   category: "community",
   recommended: true,
-  workInProgress: true,
   settings: onboardingSettings,
 });
 

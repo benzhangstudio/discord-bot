@@ -27,8 +27,11 @@ const ID = {
 
 type Step = { kind: "rules" } | { kind: "question"; question: OnboardingQuestion } | { kind: "summary" };
 
-/** Whether there's anything for members to step through. */
-export const flowActive = (s: OnboardingSettings) => s.flow.enabled && (s.flow.rulesEnabled || s.flow.questions.length > 0);
+/**
+ * Whether members get a Start button. With no rules or questions, the walkthrough is a single
+ * "Finish" step, which is still needed so gated members always have a way in.
+ */
+export const flowActive = (s: OnboardingSettings) => s.flow.enabled && Boolean(s.flow.channelId);
 
 function stepsFor(s: OnboardingSettings): Step[] {
   const steps: Step[] = [];
@@ -120,7 +123,7 @@ function render(guild: Guild, settings: OnboardingSettings, progress: store.Prog
       .setDescription(
         settings.flow.questions.length
           ? `Here's what you picked. Go back to change anything.\n\n${answerSummary(settings, progress)}`
-          : "You're ready to go.",
+          : "You're ready to go. Click Finish to get started.",
       );
     nav.addComponents(new ButtonBuilder().setCustomId(ID.finish).setLabel(progress.status === "done" ? "Save" : "Finish").setStyle(ButtonStyle.Success));
   }

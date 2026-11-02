@@ -7,9 +7,9 @@ import { getFeatureState, saveFeatureState } from "../../server/settings.js";
 import { onboardingFeature } from "../../shared/features.js";
 import { type OnboardingSettings, type OnboardingStatus, onboardingSettings } from "../../shared/onboarding.js";
 import { parseEmojiInput } from "../reaction-roles/emoji.js";
-import { onboardingEvents, startOnboardingTasks } from "./events.js";
+import { onboardingEvents, releaseGatedMembers, startOnboardingTasks } from "./events.js";
 import { onboardingComponents, syncStartMessage } from "./flow.js";
-import { describeGateSetup, gateCoverage, removeGate, setUpGate } from "./gate.js";
+import { describeGateSetup, gateCoverage, gateLeaks, removeGate, setUpGate } from "./gate.js";
 import * as store from "./store.js";
 
 type Req = FastifyRequest<{ Params: { guildId: string } }>;
@@ -28,8 +28,9 @@ async function validate(guild: Guild, userId: string, s: OnboardingSettings) {
   checkChannel(s.welcome.channelId, "welcome");
   checkChannel(s.goodbye.channelId, "goodbye");
   checkChannel(s.flow.channelId, "onboarding");
-  if (s.flow.enabled && (s.flow.rulesEnabled || s.flow.questions.length) && !s.flow.channelId) {
-    throw new FixableError("Pick a channel for the onboarding Start button.");
+  if (s.flow.enabled && !s.flow.channelId) throw new FixableError("Pick a channel for the onboarding Start button.");
+  if (s.gate.enabled && !s.flow.enabled) {
+    throw new FixableError("The access gate needs onboarding steps on, or new members can't get in. Turn the gate off first.");
   }
   if (s.flow.rulesEnabled && !s.flow.rules.trim()) throw new FixableError("Write your rules, or turn the rules step off.");
 
@@ -79,6 +80,14 @@ async function status(guild: Guild, settings: OnboardingSettings): Promise<Onboa
 }
 
 async function respond(guild: Guild, settings: OnboardingSettings, warnings: string[] = []) {
+  const leaks = gateLeaks(guild, settings);
+  if (leaks.length) {
+    warnings = [
+      ...warnings,
+      `New members can still see ${leaks.slice(0, 10).join(", ")} because a join role is allowed in. ` +
+        "Remove that role's View Channel permission there, or take it out of Join roles.",
+    ];
+  }
   return { settings, status: await status(guild, settings), gatePlan: describeGateSetup(guild, settings), warnings };
 }
 
@@ -99,10 +108,14 @@ export const onboarding: BotFeature = {
   components: [onboardingComponents],
   setup: startOnboardingTasks,
 
-  // Posting or removing the Start message follows the feature's on/off switch.
+  // Posting or removing the Start message follows the feature's on/off switch. Switching off also
+  // lets anyone still behind the access gate in, since there's no Start button left for them.
   async onToggle(guildId, enabled) {
     const guild = client.guilds.cache.get(guildId);
-    if (guild) await syncStartMessage(guild, await store.getSettings(guildId), enabled);
+    if (!guild) return;
+    const settings = await store.getSettings(guildId);
+    await syncStartMessage(guild, settings, enabled);
+    if (!enabled) await releaseGatedMembers(guild, settings, "Member onboarding was switched off");
   },
 
   registerApi(api) {

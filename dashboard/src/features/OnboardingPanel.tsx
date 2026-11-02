@@ -48,7 +48,13 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
   };
 
   useEffect(() => {
-    api.onboarding(guild.id).then(load).catch((err) => setError(err.message));
+    api
+      .onboarding(guild.id)
+      .then((r) => {
+        load(r);
+        if (r.warnings.length) setNotice({ text: "Heads up:", warnings: r.warnings });
+      })
+      .catch((err) => setError(err.message));
   }, [guild.id]);
 
   if (error && !data) return <p className="error panel">{error}</p>;
@@ -209,10 +215,13 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
       <section className="sub">
         <Toggle
           label="Onboarding steps"
-          hint="New members click Start for a private walkthrough: rules, then questions that give roles."
+          hint="New members click Start for a private walkthrough: rules, then questions that give roles. With neither, they just click Finish."
           checked={draft.flow.enabled}
           onChange={(v) => set((d) => { d.flow.enabled = v; })}
         />
+        {!flowOn && draft.gate.enabled && (
+          <p className="error small">The access gate is on, so new members need these steps to get in. Turn the gate off first.</p>
+        )}
         {flowOn && (
           <div className="sub-body">
             <label className="field">

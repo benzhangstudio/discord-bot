@@ -73,13 +73,15 @@ Discord-style onboarding and welcomes **without turning on Community settings**.
 | Welcome DM | Off | Sends a private welcome too. |
 | Goodbye message | Off | Posts when someone leaves. |
 | Join roles / bot roles | None | Given right away. Bots skip onboarding. |
-| Onboarding steps | Off | A Start button in a chosen channel opens a private walkthrough: rules ("I agree"), then up to 5 questions (single or multiple choice, required or optional), each answer giving up to 5 roles. Members can change their answers later. |
+| Onboarding steps | Off | A Start button in a chosen channel opens a private walkthrough: rules ("I agree"), then up to 5 questions (single or multiple choice, required or optional), each answer giving up to 5 roles. With no rules or questions, members just click Finish. Members can change their answers later. |
 | Access gate | Off | "Set it up for me" creates a New member role and #start-here, and hides other channels from new members until they finish. Shows exactly what changes first; can be turned off again. New channels are hidden automatically. Optionally removes members who don't finish in time. |
 
 - Progress is saved, so members resume where they left off, even after restarts.
 - All roles are applied in one update at the end.
 - People who joined while the bot was offline get their starting roles when it's back.
 - The dashboard shows joins, completions and pending members, and warns if Discord's own Community features are on.
+- Nobody gets stuck behind the gate: it can't be on without onboarding steps, and switching onboarding off takes the New member role off everyone still holding it.
+- The dashboard warns if a join role is allowed into a channel the gate hides (in Discord, an allow beats a deny, so new members would still see it).
 - **Permissions:** Manage Roles (and its role above the roles it gives); Manage Channels for the gate; Kick Members for removing unfinished members.
 
 ### Reaction roles (Community & Roles)

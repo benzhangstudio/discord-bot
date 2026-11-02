@@ -1,4 +1,4 @@
-import { type Client, Events, type GuildMember } from "discord.js";
+import { type Client, Events, type Guild, type GuildMember } from "discord.js";
 import { onEvent } from "../../server/bot/types.js";
 import type { OnboardingSettings } from "../../shared/onboarding.js";
 import { onboardingFeature } from "../../shared/features.js";
@@ -88,29 +88,34 @@ async function removeUnfinished(client: Client) {
 }
 
 /**
- * While onboarding is marked work in progress it's off everywhere. So nobody is left stuck behind the
- * access gate, servers that used it get the Start message taken down and the "new member" role
- * removed from anyone still holding it. Saved settings stay, so it can be switched back on later.
+ * Takes the "new member" role off everyone still holding it, so nobody is left stuck behind the
+ * access gate when onboarding is switched off. Saved settings stay, so it can be switched back on.
  */
+export async function releaseGatedMembers(guild: Guild, settings: OnboardingSettings, reason: string) {
+  const roleId = settings.gate.enabled ? settings.gate.roleId : null;
+  const role = roleId ? guild.roles.cache.get(roleId) : undefined;
+  if (!role || !role.editable) return 0;
+  const members = await guild.members.fetch().catch(() => null);
+  let released = 0;
+  for (const member of (members ?? guild.members.cache).values()) {
+    if (!member.roles.cache.has(role.id)) continue;
+    await member.roles
+      .remove(role, reason)
+      .then(() => released++)
+      .catch(() => {});
+  }
+  if (released) console.log(`[onboarding] ${guild.name} (${guild.id}): released ${released} gated member(s)`);
+  return released;
+}
+
+/** While onboarding is marked work in progress it's off everywhere, so release anyone behind the gate. */
 async function pauseOnboarding(client: Client) {
   for (const guildId of await store.guildsWithOnboarding()) {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) continue;
     const settings = await store.getSettings(guildId);
     await syncStartMessage(guild, settings, false).catch(() => {});
-    const roleId = settings.gate.enabled ? settings.gate.roleId : null;
-    const role = roleId ? guild.roles.cache.get(roleId) : undefined;
-    if (!role || !role.editable) continue;
-    const members = await guild.members.fetch().catch(() => null);
-    let released = 0;
-    for (const member of (members ?? guild.members.cache).values()) {
-      if (!member.roles.cache.has(role.id)) continue;
-      await member.roles
-        .remove(role, "Member onboarding is paused while it's being worked on")
-        .then(() => released++)
-        .catch(() => {});
-    }
-    if (released) console.log(`[onboarding] paused in ${guild.name} (${guild.id}): released ${released} gated member(s)`);
+    await releaseGatedMembers(guild, settings, "Member onboarding is paused while it's being worked on");
   }
 }
 
