@@ -4,63 +4,71 @@
 
 **Effective Date:** November 1, 2026
 
-This Privacy Policy explains how **Number One**, a Discord bot, collects, uses, and protects information. By inviting, accessing, or using Number One, you agree to this Privacy Policy.
+Number One is a free, independent hobby project. This policy explains what information the bot uses, why, and what you can do about it. By inviting or using Number One, you agree to this policy.
 
-## 1. Information We Collect
+## 1. Who Runs Number One
 
-Number One only collects information needed for its features to work. This may include:
+Number One is made and run by **Betsy Zhang**, an independent developer. It isn't a company, and it isn't affiliated with Discord. Betsy is responsible for the information described here. If you have questions, the best way to reach her is through the Official Support Server.
+
+## 2. What We Collect
+
+Number One only keeps what it needs for its features to work. This may include:
 
 - Discord user IDs, server IDs, channel IDs, role IDs, and message IDs.
-- Server settings and content configured by server administrators.
+- Server settings and content that server admins set up.
 - Command usage and interactions with the bot.
-- Basic Discord account details, such as username and avatar, when logging in to the dashboard.
+- Your Discord username and avatar, when you log in to the dashboard.
 
-Number One does not collect passwords, email addresses, or payment information.
+Number One never collects passwords, email addresses, or payment information.
 
-## 2. How We Use Information
+## 3. How We Use It
 
-Information is used only to:
+Information is only used to:
 
-- Provide, operate, and maintain the bot's features.
-- Save server settings and configurations.
-- Fix bugs, prevent abuse, and improve the bot.
+- Run the bot's features.
+- Save your server's settings.
+- Fix bugs, prevent abuse, and make the bot better.
 
-## 3. Data Sharing
+We use this information because the bot can't work without it, and because it helps keep Number One safe and running smoothly.
 
-We do not sell, rent, or trade your information.
+## 4. Sharing and Storage
 
-Information may only be shared with Discord and our hosting provider as needed to run the bot, or when required by law.
+We will never sell, rent, or trade your information.
 
-## 4. Cookies
+Information is only shared with Discord and our hosting provider as needed to run the bot, or if the law requires it. Discord handles information under its own [Privacy Policy](https://discord.com/privacy).
 
-The Number One dashboard only uses essential cookies to keep you logged in and secure. We do not use advertising or tracking cookies.
+The bot's data is stored on servers in Europe. Number One is run from the United States, so the data may also be accessed from there.
 
-## 5. Data Retention
+## 5. Cookies
 
-Information is kept only as long as needed to provide the bot's features. Some data may be deleted automatically when it is no longer needed, and backups are kept for a limited time.
+The dashboard only uses the cookies it needs to keep you logged in and secure. There are no ads and no tracking.
 
-## 6. Your Rights
+## 6. How Long We Keep It
 
-You may request to view, correct, or delete your data, or your server's data, at any time by contacting us through our Official Support Server.
+Information is only kept as long as it's needed. Some data is deleted automatically once it's no longer used, and backups are only kept for a short time.
+
+## 7. Your Rights
+
+Depending on where you live, you may have the right to see, correct, delete, or get a copy of your data, to ask us to stop or limit how it's used, and to complain to your local data protection authority.
+
+To make a request, just ask in the Official Support Server. We'll get back to you within 30 days.
 
 Server owners can delete all of their server's data at any time from the dashboard. If Number One is removed from a server, that server's data is deleted automatically after 30 days.
 
-## 7. Data Security
+## 8. Security
 
-We take reasonable steps to protect your information. However, no method of storage or transmission is completely secure, and we cannot guarantee absolute security.
+We do our best to keep your information safe. But no system is perfect, so we can't promise complete security.
 
-## 8. Children's Privacy
+## 9. Children
 
-Number One is intended for users who meet Discord's minimum age requirements. We do not knowingly collect information from users below that age.
+Number One is meant for people who meet Discord's minimum age. We don't knowingly collect information from anyone younger. If you think we have, let us know and we'll delete it.
 
-## 9. Changes to This Privacy Policy
+## 10. Changes
 
-We may update this Privacy Policy at any time.
+We may update this policy from time to time. When we do, the changes will show up here with a new effective date. If you keep using Number One after an update, you accept the new version.
 
-Changes will be reflected on this page with an updated effective date. Continued use of Number One following changes constitutes acceptance where permitted by applicable law.
+## 11. Contact
 
-## 10. Contact
-
-For questions, concerns, or data requests regarding Number One, please join our official support and community server.
+Questions, concerns, or data requests? Come say hi in our official support and community server.
 
 **Official Support Server:** [discord.gg/7GyveHcQdn](https://discord.gg/7GyveHcQdn)
