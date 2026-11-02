@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * Minimal Markdown renderer for the dashboard's static pages (terms, policies).
- * Supports # and ## headings, paragraphs, **bold** and [links](https://...).
+ * Supports # and ## headings, paragraphs, "- " bullet lists, "> " banners, **bold** and [links](https://...).
  * Builds React elements directly, so text is always escaped and never injected as HTML.
  */
 export function Markdown({ source }: { source: string }) {
@@ -10,7 +10,18 @@ export function Markdown({ source }: { source: string }) {
   return (
     <>
       {blocks.map((block, i) => {
-        const text = block.trim().replace(/\s*\n\s*/g, " ");
+        const lines = block.trim().split("\n").map((line) => line.trim());
+        if (lines.every((line) => line.startsWith("- "))) {
+          return (
+            <ul key={i}>
+              {lines.map((line, j) => (
+                <li key={j}>{inline(line.slice(2))}</li>
+              ))}
+            </ul>
+          );
+        }
+        const text = lines.join(" ");
+        if (text.startsWith("> ")) return <p key={i} className="banner">{inline(text.slice(2))}</p>;
         if (text.startsWith("## ")) return <h2 key={i}>{inline(text.slice(3))}</h2>;
         if (text.startsWith("# ")) return <h1 key={i}>{inline(text.slice(2))}</h1>;
         return <p key={i}>{inline(text)}</p>;

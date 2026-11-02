@@ -3,6 +3,7 @@ import type { DashboardUser } from "../../src/shared/features";
 import { api, avatarUrl } from "./api";
 import { GuildPage } from "./pages/GuildPage";
 import { HomePage } from "./pages/HomePage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 import { ServersPage } from "./pages/ServersPage";
 import { TermsPage } from "./pages/TermsPage";
 import { navigate, usePath } from "./router";
@@ -21,6 +22,7 @@ export function App() {
   const guildMatch = path.match(/^\/servers\/(\d+)(?:\/([\w-]+))?/);
   let page;
   if (path === "/terms") page = <TermsPage />; // public: readable without logging in
+  else if (path === "/privacy") page = <PrivacyPage />; // public too
   else if (!user) page = <HomePage />;
   else if (guildMatch) page = <GuildPage guildId={guildMatch[1]} page={guildMatch[2] ?? ""} />;
   else if (path.startsWith("/servers")) page = <ServersPage />;
@@ -67,6 +69,16 @@ export function App() {
           }}
         >
           Terms of Service
+        </a>
+        <a
+          href="/privacy"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate("/privacy");
+            window.scrollTo(0, 0);
+          }}
+        >
+          Privacy Policy
         </a>
         <a href="https://discord.gg/7GyveHcQdn" target="_blank" rel="noopener noreferrer">
           Support

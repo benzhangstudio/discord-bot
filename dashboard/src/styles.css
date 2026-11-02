@@ -2173,6 +2173,24 @@ select.chip-add {
   color: var(--accent);
 }
 
+.legal ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.legal li {
+  margin-bottom: 0.35rem;
+}
+
+/* Highlighted call-out, e.g. the support server link at the top of a policy. */
+.legal p.banner {
+  margin: 1rem 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
 /* Text input with a live character counter inside its right edge. */
 .counted {
   position: relative;
