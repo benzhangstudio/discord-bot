@@ -43,8 +43,11 @@ export function rolesFromAnswers(settings: OnboardingSettings, answers: Progress
  */
 export async function applyFinalRoles(member: GuildMember, settings: OnboardingSettings, answers: Progress["answers"]) {
   const chosen = rolesFromAnswers(settings, answers);
+  // Finishing makes the member verified. It's never taken away by changing answers later.
+  if (settings.access.verifiedRoleId) chosen.add(settings.access.verifiedRoleId);
   const removable = allAnswerRoles(settings);
   if (settings.gate.roleId) removable.add(settings.gate.roleId);
+  if (settings.access.verifiedRoleId) removable.delete(settings.access.verifiedRoleId);
 
   const current = new Set(member.roles.cache.keys());
   current.delete(member.guild.id); // @everyone isn't a real role assignment

@@ -94,6 +94,74 @@ export function RolePicker({
   );
 }
 
+const CATEGORY = 4;
+const CHANNEL_ICONS: Record<number, string> = { 0: "#", 2: "🔊 ", 4: "📁 ", 5: "📢 ", 13: "🎙️ ", 15: "💬 ", 16: "🖼️ " };
+const channelIcon = (type: number) => CHANNEL_ICONS[type] ?? "#";
+
+/**
+ * Pick several channels and/or categories: chosen ones show as removable chips.
+ * `kind` "categories" offers categories only; "any" offers categories and every kind of channel.
+ * `exclude` greys out choices (with a note saying why).
+ */
+export function ChannelPicker({
+  guild,
+  value,
+  onChange,
+  kind = "any",
+  max = 50,
+  placeholder = "Add a channel…",
+  exclude = {},
+  disabled = false,
+}: {
+  guild: Guild;
+  value: string[];
+  onChange: (ids: string[]) => void;
+  kind?: "any" | "categories";
+  max?: number;
+  placeholder?: string;
+  /** Channel ID → why it can't be picked. */
+  exclude?: Record<string, string>;
+  disabled?: boolean;
+}) {
+  const byId = new Map(guild.channels.map((c) => [c.id, c]));
+  const options: SearchOption[] = guild.channels
+    .filter((c) => !value.includes(c.id) && (kind === "any" || c.type === CATEGORY))
+    .map((c) => ({
+      value: c.id,
+      label: c.name,
+      prefix: channelIcon(c.type),
+      disabled: Boolean(exclude[c.id]),
+      note: exclude[c.id] ?? (c.parentId ? `in ${byId.get(c.parentId)?.name ?? "a category"}` : undefined),
+    }));
+  return (
+    <div className="role-picker">
+      {value.map((id) => {
+        const channel = byId.get(id);
+        return (
+          <span key={id} className="chip">
+            <span>{channel ? `${channelIcon(channel.type)}${channel.name}` : "deleted channel"}</span>
+            {!disabled && (
+              <button type="button" aria-label="Remove" onClick={() => onChange(value.filter((x) => x !== id))}>
+                ×
+              </button>
+            )}
+          </span>
+        );
+      })}
+      {!disabled && value.length < max && (
+        <SearchSelect
+          className="chip-add"
+          options={options}
+          value={null}
+          onChange={(id) => id && onChange([...value, id])}
+          searchPlaceholder={kind === "categories" ? "Search categories…" : "Search channels and categories…"}
+          trigger={<span>+ {placeholder.replace(/…$/, "")}</span>}
+        />
+      )}
+    </div>
+  );
+}
+
 /** Searchable single role dropdown. */
 export function RoleSelect({
   guild,

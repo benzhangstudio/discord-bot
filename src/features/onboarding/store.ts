@@ -97,6 +97,18 @@ export async function getState(guildId: string) {
   return db.select().from(onboardingState).where(eq(onboardingState.guildId, guildId)).get();
 }
 
+/** Saves private mode and/or the record of channels the bot changed. */
+export async function saveAccessState(
+  guildId: string,
+  patch: Partial<Pick<typeof onboardingState.$inferInsert, "privateMode" | "managedChannels">>,
+) {
+  await db
+    .insert(onboardingState)
+    .values({ guildId, ...patch })
+    .onConflictDoUpdate({ target: onboardingState.guildId, set: patch })
+    .run();
+}
+
 export async function saveState(guildId: string, startChannelId: string | null, startMessageId: string | null) {
   await db
     .insert(onboardingState)

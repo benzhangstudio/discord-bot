@@ -147,6 +147,13 @@ export const onboardingState = sqliteTable("onboarding_state", {
   guildId: text("guild_id").primaryKey(),
   startChannelId: text("start_channel_id"),
   startMessageId: text("start_message_id"),
+  /** "Make the rest of the server private" is on: only the verified role sees ordinary channels. */
+  privateMode: integer("private_mode", { mode: "boolean" }).notNull().default(false),
+  /**
+   * Channels whose @everyone "View Channel" the bot changed, with what it was before
+   * (allow, deny or none), so turning things off puts each channel back exactly as it was.
+   */
+  managedChannels: text("managed_channels", { mode: "json" }).$type<Record<string, "allow" | "deny" | "none">>().notNull().default({}),
 });
 
 /** Announcements: messages the bot's developer sent to every server (updates, maintenance, security...). */

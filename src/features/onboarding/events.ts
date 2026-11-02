@@ -2,8 +2,8 @@ import { type Client, Events, type Guild, type GuildMember } from "discord.js";
 import { onEvent } from "../../server/bot/types.js";
 import type { OnboardingSettings } from "../../shared/onboarding.js";
 import { onboardingFeature } from "../../shared/features.js";
-import { flowActive, syncStartMessage } from "./flow.js";
-import { hideNewChannel } from "./gate.js";
+import { syncAccess } from "./access.js";
+import { flowActive, scheduleCardRefresh, syncStartMessage } from "./flow.js";
 import { sendGoodbye, sendWelcome, sendWelcomeDm } from "./messages.js";
 import { addRoles } from "./roles.js";
 import * as store from "./store.js";
@@ -14,7 +14,9 @@ import * as store from "./store.js";
  */
 async function handleJoin(member: GuildMember, settings: OnboardingSettings, quiet = false) {
   if (member.user.bot) {
-    await addRoles(member, settings.botRoles, "Onboarding: bot roles");
+    // Bots skip onboarding, so they count as verified straight away.
+    const verified = settings.access.verifiedRoleId ? [settings.access.verifiedRoleId] : [];
+    await addRoles(member, [...settings.botRoles, ...verified], "Onboarding: bot roles");
     return;
   }
 
@@ -32,7 +34,9 @@ async function handleJoin(member: GuildMember, settings: OnboardingSettings, qui
 
 const memberJoined = onEvent(Events.GuildMemberAdd, async (member) => {
   const settings = await store.getActiveSettings(member.guild.id);
-  if (settings) await handleJoin(member, settings);
+  if (!settings) return;
+  await handleJoin(member, settings);
+  scheduleCardRefresh(member.guild);
 });
 
 const memberLeft = onEvent(Events.GuildMemberRemove, async (member) => {
@@ -40,11 +44,28 @@ const memberLeft = onEvent(Events.GuildMemberRemove, async (member) => {
   if (settings?.goodbye.enabled && !member.user?.bot) await sendGoodbye(member, settings);
   // If they come back, they go through onboarding again (like Discord's own onboarding).
   await store.deleteProgress(member.guild.id, member.id);
+  if (settings) scheduleCardRefresh(member.guild);
 });
 
+// New channels follow the server's access rules (hidden from new members, private in private mode...).
 const channelCreated = onEvent(Events.ChannelCreate, async (channel) => {
-  const settings = await store.getActiveSettings(channel.guild.id);
-  if (settings) await hideNewChannel(channel, settings);
+  await syncAccess(channel.guild, [channel]);
+});
+
+// A channel moved into or out of a category (e.g. a staff category) may need different access.
+const channelMoved = onEvent(Events.ChannelUpdate, async (before, after) => {
+  if (after.isDMBased() || before.isDMBased() || after.isThread()) return;
+  if ("parentId" in before && before.parentId !== after.parentId) await syncAccess(after.guild, [after]);
+});
+
+// Keep the Start card's verified / at-the-gate numbers current when those roles change.
+const rolesChanged = onEvent(Events.GuildMemberUpdate, async (before, after) => {
+  const settings = await store.getActiveSettings(after.guild.id);
+  const watched = [settings?.access.verifiedRoleId, settings?.gate.roleId].filter((id): id is string => Boolean(id));
+  if (!watched.length) return;
+  if (before.partial || watched.some((id) => before.roles.cache.has(id) !== after.roles.cache.has(id))) {
+    scheduleCardRefresh(after.guild);
+  }
 });
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -128,8 +149,17 @@ export function startOnboardingTasks(client: Client) {
     catchUp(client).catch((err) => console.warn("[onboarding] catch-up failed:", err));
   });
   setInterval(() => {
-    if (client.isReady()) removeUnfinished(client).catch((err) => console.warn("[onboarding] cleanup failed:", err));
+    if (!client.isReady()) return;
+    removeUnfinished(client).catch((err) => console.warn("[onboarding] cleanup failed:", err));
+    // Weekly numbers on the Start card change with time too, so refresh every card now and then.
+    store
+      .guildsWithOnboarding()
+      .then((ids) => ids.forEach((id) => {
+        const guild = client.guilds.cache.get(id);
+        if (guild) scheduleCardRefresh(guild, 1000 + Math.random() * 60_000);
+      }))
+      .catch(() => {});
   }, 15 * 60 * 1000).unref();
 }
 
-export const onboardingEvents = [memberJoined, memberLeft, channelCreated];
+export const onboardingEvents = [memberJoined, memberLeft, channelCreated, channelMoved, rolesChanged];

@@ -1,68 +1,30 @@
-import {
-  ChannelType,
-  type Guild,
-  type GuildBasedChannel,
-  OverwriteType,
-  PermissionFlagsBits,
-} from "discord.js";
+import { ChannelType, type Guild, OverwriteType, PermissionFlagsBits } from "discord.js";
 import type { OnboardingSettings } from "../../shared/onboarding.js";
+import { type AccessState, accessSummary, startArea, viewBit } from "./access.js";
 
-/** The onboarding channel and the category it sits in. New members can always see these. */
-function startArea(guild: Guild, startChannelId: string | null) {
-  const channel = startChannelId ? guild.channels.cache.get(startChannelId) : undefined;
-  return new Set([startChannelId, channel?.parentId].filter((id): id is string => Boolean(id)));
-}
-
-/** Channels the gate controls: everything except threads and the onboarding channel and its category. */
-function gateableChannels(guild: Guild, startChannelId: string | null) {
-  const keep = startArea(guild, startChannelId);
-  return guild.channels.cache.filter((c) => !c.isThread() && !keep.has(c.id));
-}
+/**
+ * The access gate: new members get a "New member" role until they finish onboarding, and ordinary
+ * channels are hidden from that role. The hiding itself is done by access.ts, together with the
+ * public, new-member-only and private-mode rules, so they can never disagree.
+ */
 
 const START_CATEGORY = "Start here";
 const START_CHANNEL = "start-here";
-
-function botCanEdit(channel: GuildBasedChannel) {
-  const me = channel.guild.members.me;
-  const perms = me && "permissionsFor" in channel ? channel.permissionsFor(me) : null;
-  return Boolean(perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageRoles]));
-}
-
-const hidesFrom = (channel: GuildBasedChannel, roleId: string) =>
-  "permissionOverwrites" in channel &&
-  Boolean(channel.permissionOverwrites.cache.get(roleId)?.deny.has(PermissionFlagsBits.ViewChannel));
-
-/** How many channels are hidden from the gate role right now. */
-export function gateCoverage(guild: Guild, settings: OnboardingSettings) {
-  const channels = gateableChannels(guild, settings.flow.channelId);
-  const roleId = settings.gate.roleId;
-  return {
-    hidden: roleId ? channels.filter((c) => hidesFrom(c, roleId)).size : 0,
-    total: channels.size,
-  };
-}
 
 /**
  * Channels the gate can't keep closed: in Discord, a role that's allowed to view a channel beats one
  * that's denied, so a join role with "View Channel" allowed there lets new members see it anyway.
  */
-export function gateLeaks(guild: Guild, settings: OnboardingSettings) {
+export function gateLeaks(guild: Guild, settings: OnboardingSettings, state: AccessState) {
   const roleId = settings.gate.roleId;
   if (!settings.gate.enabled || !roleId || !settings.joinRoles.length) return [];
-  return [
-    ...gateableChannels(guild, settings.flow.channelId)
-      .filter(
-        (c) =>
-          hidesFrom(c, roleId) &&
-          "permissionOverwrites" in c &&
-          settings.joinRoles.some((id) => c.permissionOverwrites.cache.get(id)?.allow.has(PermissionFlagsBits.ViewChannel)),
-      )
-      .values(),
-  ].map((c) => `#${c.name}`);
+  return accessSummary(guild, settings, state)
+    .byClass.other.filter((c) => viewBit(c, roleId) === false && settings.joinRoles.some((id) => viewBit(c, id) === true))
+    .map((c) => `#${c.name}`);
 }
 
 /** Plain-language list of what "Set it up for me" will do, shown before anything changes. */
-export function describeGateSetup(guild: Guild, settings: OnboardingSettings) {
+export function describeGateSetup(guild: Guild, settings: OnboardingSettings, state: AccessState) {
   const steps: string[] = [];
   const role = settings.gate.roleId ? guild.roles.cache.get(settings.gate.roleId) : undefined;
   steps.push(role ? `Use the existing @${role.name} role for new members.` : "Create a role called “New member”.");
@@ -72,17 +34,20 @@ export function describeGateSetup(guild: Guild, settings: OnboardingSettings) {
       ? `Use #${channel.name} as the onboarding channel.`
       : `Create a “${START_CATEGORY}” category at the top of the server with a read-only #${START_CHANNEL} channel inside, where the Start button goes.`,
   );
-  const count = gateableChannels(guild, settings.flow.channelId).size;
-  steps.push(`Hide ${count} other channel${count === 1 ? "" : "s"} from new members until they finish. Nothing changes for existing members.`);
+  const { byClass } = accessSummary(guild, settings, state);
+  const count = byClass.other.length;
+  steps.push(`Hide ${count} channel${count === 1 ? "" : "s"} from new members until they finish. Nothing changes for existing members.`);
+  const untouched = byClass.staff.length + byClass.public.length + byClass.ownerPrivate.length;
+  if (untouched) steps.push(`Leave ${untouched} staff, public or already-private channel${untouched === 1 ? "" : "s"} as they are.`);
   steps.push("Turn on onboarding steps, so new members get a Start button.");
   return steps;
 }
 
 /**
- * Creates (or reuses) the new-member role and onboarding channel, and hides every other channel
- * from that role. Returns the updated settings and anything that couldn't be changed.
+ * Creates (or reuses) the new-member role and onboarding channel, and returns settings with the gate
+ * and onboarding steps switched on. The caller saves them and runs access.applyAccessNow to hide channels.
  */
-export async function setUpGate(guild: Guild, settings: OnboardingSettings) {
+export async function setUpGate(guild: Guild, settings: OnboardingSettings): Promise<OnboardingSettings> {
   const me = guild.members.me;
   if (!me?.permissions.has([PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageChannels])) {
     throw new Error("I need the Manage Roles and Manage Channels permissions to set this up.");
@@ -102,7 +67,7 @@ export async function setUpGate(guild: Guild, settings: OnboardingSettings) {
   // New members can read the onboarding channel (and see its category) but not chat in it.
   for (const id of startArea(guild, channel.id)) {
     const target = guild.channels.cache.get(id);
-    if (!target || !("permissionOverwrites" in target) || !botCanEdit(target)) continue;
+    if (!target || target.isThread() || !("permissionOverwrites" in target)) continue;
     await target.permissionOverwrites
       .edit(
         role.id,
@@ -112,24 +77,11 @@ export async function setUpGate(guild: Guild, settings: OnboardingSettings) {
       .catch(() => {});
   }
 
-  const skipped: string[] = [];
-  for (const target of gateableChannels(guild, channel.id).values()) {
-    if (!("permissionOverwrites" in target) || hidesFrom(target, role.id)) continue;
-    if (!botCanEdit(target)) {
-      skipped.push(`#${target.name}`);
-      continue;
-    }
-    await target.permissionOverwrites
-      .edit(role.id, { ViewChannel: false }, { reason: "Number One onboarding: hide until onboarding is finished", type: OverwriteType.Role })
-      .catch(() => skipped.push(`#${target.name}`));
-  }
-
-  const next: OnboardingSettings = {
+  return {
     ...settings,
     gate: { ...settings.gate, enabled: true, roleId: role.id },
     flow: { ...settings.flow, enabled: true, channelId: channel.id },
   };
-  return { settings: next, skipped };
 }
 
 /**
@@ -167,33 +119,4 @@ async function createStartArea(guild: Guild, gateRoleId: string, botId: string) 
     permissionOverwrites: readOnly,
     reason: "Number One onboarding channel",
   });
-}
-
-/** Undoes the channel changes: removes the gate role's overwrites everywhere. */
-export async function removeGate(guild: Guild, settings: OnboardingSettings) {
-  const roleId = settings.gate.roleId;
-  let changed = 0;
-  if (roleId) {
-    const keep = startArea(guild, settings.flow.channelId); // keep the onboarding channel and its category readable
-    for (const channel of guild.channels.cache.values()) {
-      if (channel.isThread() || !("permissionOverwrites" in channel) || !channel.permissionOverwrites.cache.has(roleId)) continue;
-      if (keep.has(channel.id)) continue;
-      await channel.permissionOverwrites
-        .delete(roleId, "Number One onboarding: gate turned off")
-        .then(() => changed++)
-        .catch(() => {});
-    }
-  }
-  return { settings: { ...settings, gate: { ...settings.gate, enabled: false } }, changed };
-}
-
-/** Hides a newly created channel from new members, so the gate stays closed. */
-export async function hideNewChannel(channel: GuildBasedChannel, settings: OnboardingSettings) {
-  const roleId = settings.gate.roleId;
-  if (!settings.gate.enabled || !roleId || channel.isThread() || startArea(channel.guild, settings.flow.channelId).has(channel.id)) return;
-  // A channel created with its own setting for the New member role (like the start area) is left as is.
-  if (!("permissionOverwrites" in channel) || !botCanEdit(channel) || channel.permissionOverwrites.cache.has(roleId)) return;
-  await channel.permissionOverwrites
-    .edit(roleId, { ViewChannel: false }, { reason: "Number One onboarding: new channel hidden from new members", type: OverwriteType.Role })
-    .catch(() => {});
 }

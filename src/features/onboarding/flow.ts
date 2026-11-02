@@ -13,8 +13,10 @@ import {
 } from "discord.js";
 import type { ComponentHandler } from "../../server/bot/types.js";
 import type { OnboardingQuestion, OnboardingSettings } from "../../shared/onboarding.js";
+import { getAccessState } from "./access.js";
 import { PINK, postableChannel, sendWelcome } from "./messages.js";
-import { applyFinalRoles } from "./roles.js";
+import { memberCounts, onPrivateJobDone } from "./private.js";
+import { applyFinalRoles, rolesFromAnswers } from "./roles.js";
 import * as store from "./store.js";
 
 const ID = {
@@ -67,18 +69,34 @@ function answerSummary(settings: OnboardingSettings, progress: store.Progress) {
     .join("\n\n");
 }
 
+/** A bar like ▰▰▱▱ showing how far along the member is. */
+const progressBar = (index: number, total: number) => "▰".repeat(index + 1) + "▱".repeat(Math.max(total - index - 1, 0));
+
+/** Roles a member gets for finishing with these answers, as mentions (embeds show them without pinging). */
+function rewardMentions(settings: OnboardingSettings, progress: store.Progress) {
+  const roles = rolesFromAnswers(settings, progress.answers);
+  if (settings.access.verifiedRoleId) roles.add(settings.access.verifiedRoleId);
+  return [...roles].map((id) => `<@&${id}>`);
+}
+
 /** Builds the private message for the member's current step. */
 function render(guild: Guild, settings: OnboardingSettings, progress: store.Progress, note?: string) {
   const steps = stepsFor(settings);
   const index = Math.min(Math.max(progress.step, 0), steps.length - 1);
   const step = steps[index];
-  const embed = new EmbedBuilder().setColor(PINK);
+  const embed = new EmbedBuilder()
+    .setColor(PINK)
+    .setAuthor({ name: `${guild.name} · Step ${index + 1} of ${steps.length}`, iconURL: guild.iconURL() ?? undefined });
   const rows: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[] = [];
   const nav = new ActionRowBuilder<ButtonBuilder>();
   if (index > 0) nav.addComponents(new ButtonBuilder().setCustomId(`${ID.go}${index - 1}`).setLabel("Back").setStyle(ButtonStyle.Secondary));
 
   if (step.kind === "rules") {
-    embed.setTitle(`📜 ${guild.name} rules`).setDescription(settings.flow.rules || "Be kind and respectful.");
+    embed
+      .setTitle("📜 Server rules")
+      .setDescription(
+        `${settings.flow.rules || "Be kind and respectful."}\n\n${progress.rulesAccepted ? "✅ You agreed to the rules." : "Click **I agree** to continue."}`.slice(0, 4096),
+      );
     nav.addComponents(
       progress.rulesAccepted
         ? new ButtonBuilder().setCustomId(`${ID.go}${index + 1}`).setLabel("Next").setStyle(ButtonStyle.Primary)
@@ -86,13 +104,20 @@ function render(guild: Guild, settings: OnboardingSettings, progress: store.Prog
     );
   } else if (step.kind === "question") {
     const q = step.question;
+    const number = settings.flow.questions.indexOf(q) + 1;
     const chosen = progress.answers[q.id] ?? [];
     embed
-      .setTitle(q.title)
+      .setTitle(`❓ Question ${number} of ${settings.flow.questions.length}`.slice(0, 256))
       .setDescription(
-        [q.description, q.multiple ? "_Pick as many as you like._" : "_Pick one._", q.required ? "" : "_Optional._"]
-          .filter(Boolean)
-          .join("\n"),
+        [
+          `**${q.title}**`,
+          q.description,
+          "",
+          `${q.multiple ? "Pick as many as you like" : "Pick one"} · ${q.required ? "**Required**" : "Optional"}`,
+        ]
+          .filter((line) => line !== undefined && line !== null)
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n"),
       );
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`${ID.answer}${q.id}`)
@@ -118,17 +143,17 @@ function render(guild: Guild, settings: OnboardingSettings, progress: store.Prog
         .setDisabled(!canGo),
     );
   } else {
-    embed
-      .setTitle("Almost done!")
-      .setDescription(
-        settings.flow.questions.length
-          ? `Here's what you picked. Go back to change anything.\n\n${answerSummary(settings, progress)}`
-          : "You're ready to go. Click Finish to get started.",
-      );
+    const rewards = rewardMentions(settings, progress);
+    const parts = [
+      settings.flow.questions.length ? `Here's what you picked. Click **Back** to change anything.\n\n${answerSummary(settings, progress)}` : "You're ready to go.",
+      rewards.length ? `**You'll get:** ${rewards.join(" ")}` : "",
+      progress.status === "done" ? "Click **Save** to update your roles." : "Click **Finish** to get started.",
+    ];
+    embed.setTitle(progress.status === "done" ? "✏️ Review your answers" : "✅ Almost done!").setDescription(parts.filter(Boolean).join("\n\n").slice(0, 4096));
     nav.addComponents(new ButtonBuilder().setCustomId(ID.finish).setLabel(progress.status === "done" ? "Save" : "Finish").setStyle(ButtonStyle.Success));
   }
 
-  embed.setFooter({ text: `Step ${index + 1} of ${steps.length}${note ? `  •  ${note}` : ""}` });
+  embed.setFooter({ text: `${progressBar(index, steps.length)}${note ? `  •  ${note}` : ""}` });
   rows.push(nav);
   return { embeds: [embed], components: rows };
 }
@@ -235,6 +260,7 @@ async function finish(
     progress.welcomed = await sendWelcome(member, settings).catch(() => false);
   }
   await store.saveProgress(progress);
+  scheduleCardRefresh(member.guild);
 
   return interaction.editReply({
     embeds: [
@@ -277,16 +303,7 @@ export async function syncStartMessage(guild: Guild, settings: OnboardingSetting
   const channel = postableChannel(guild, wanted);
   if (!channel) return "I can't post in the onboarding channel. Check I can view it, send messages and embed links there.";
 
-  const embed = new EmbedBuilder()
-    .setColor(PINK)
-    .setTitle(`Welcome to ${guild.name}`)
-    .setDescription(settings.flow.intro || "Click Start to get set up.");
-  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(ID.start).setLabel("Start").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`${ID.start}:edit`).setLabel("Change my answers").setStyle(ButtonStyle.Secondary),
-  );
-  const content = { embeds: [embed], components: [buttons] };
-
+  const content = await startCard(guild, settings);
   if (old && old.channelId === channel.id) {
     await old.edit(content);
     return null;
@@ -296,3 +313,98 @@ export async function syncStartMessage(guild: Guild, settings: OnboardingSetting
   await store.saveState(guild.id, channel.id, posted.id);
   return null;
 }
+
+const NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** The numbered "How it works" list, built from what this server actually asks. */
+function howItWorks(settings: OnboardingSettings, unlocks: boolean) {
+  const lines: string[] = [];
+  const add = (text: string) => lines.push(`${NUMBERS[lines.length]} ${text}`);
+  const questions = settings.flow.questions;
+  if (settings.flow.rulesEnabled) add("**Read the rules** and click **I agree**");
+  if (questions.length) {
+    const required = questions.filter((q) => q.required).length;
+    const optional = questions.length - required;
+    const detail =
+      required && optional
+        ? `${required} required, ${optional} optional`
+        : required
+          ? questions.length === 1 ? "required" : "all required"
+          : questions.length === 1 ? "optional" : "all optional";
+    add(`**Answer ${plural(questions.length, "question")}** · ${detail}`);
+  }
+  add(`**Click Finish** to ${unlocks ? "unlock the rest of the server" : "get your roles"}`);
+  // Rough time: half a minute for rules, a quarter minute per question.
+  const minutes = Math.max(1, Math.round(((settings.flow.rulesEnabled ? 30 : 0) + questions.length * 15 + 10) / 60));
+  return `${lines.join("\n")}\n\n⏱️ Takes about ${plural(minutes, "minute")}.`;
+}
+
+/** The two-part Start message: how onboarding works, then live numbers for the server. */
+async function startCard(guild: Guild, settings: OnboardingSettings) {
+  const access = await getAccessState(guild.id);
+  const unlocks = (settings.gate.enabled && Boolean(settings.gate.roleId)) || access.privateMode;
+  const answerRoles = settings.flow.questions.some((q) => q.options.some((o) => o.roleIds.length));
+  const verified = settings.access.verifiedRoleId;
+  const rewards = [verified ? `<@&${verified}>` : "", answerRoles ? "roles based on your answers" : ""].filter(Boolean).join(", plus ");
+
+  const intro = new EmbedBuilder()
+    .setColor(PINK)
+    .setTitle(`👋 Welcome to ${guild.name}`.slice(0, 256))
+    .setThumbnail(guild.iconURL({ size: 128 }))
+    .setDescription(
+      [
+        settings.flow.intro || "Click Start to get set up.",
+        `**How it works**\n${howItWorks(settings, unlocks)}`,
+        rewards ? `🎁 **You'll get:** ${rewards}` : "",
+        "Already done? Click **Change my answers** any time.",
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+        .slice(0, 4096),
+    );
+
+  const counts = await memberCounts(guild, settings);
+  const activity = await store.activity(guild.id);
+  const number = (n: number) => n.toLocaleString("en-US");
+  const stats = new EmbedBuilder()
+    .setColor(PINK)
+    .setTitle("📊 Server at a glance")
+    .addFields(
+      { name: "👥 Members", value: number(counts.members), inline: true },
+      ...(counts.verified !== null ? [{ name: "✅ Verified", value: number(counts.verified), inline: true }] : []),
+      ...(counts.atGate !== null ? [{ name: "🚪 Still at the gate", value: number(counts.atGate), inline: true }] : []),
+      { name: "🆕 Joined this week", value: number(activity.joinedLast7Days), inline: true },
+      { name: "🎉 Finished this week", value: number(activity.completedLast7Days), inline: true },
+    )
+    .setFooter({ text: "Updates automatically · Last updated" })
+    .setTimestamp(new Date());
+
+  const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(ID.start).setLabel("Start").setEmoji("🚀").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`${ID.start}:edit`).setLabel("Change my answers").setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: [intro, stats], components: [buttons] };
+}
+
+const pendingRefresh = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Updates the Start card's numbers soon. Many joins or finishes close together become one edit,
+ * so a busy server doesn't hit Discord's rate limits.
+ */
+export function scheduleCardRefresh(guild: Guild, delayMs = 15_000) {
+  if (pendingRefresh.has(guild.id)) return;
+  pendingRefresh.set(
+    guild.id,
+    setTimeout(async () => {
+      pendingRefresh.delete(guild.id);
+      const settings = await store.getActiveSettings(guild.id).catch(() => null);
+      const state = await store.getState(guild.id).catch(() => null);
+      if (!settings || !state?.startMessageId) return;
+      await syncStartMessage(guild, settings, true).catch((err) => console.warn("[onboarding] card refresh failed:", err.message ?? err));
+    }, delayMs).unref(),
+  );
+}
+
+onPrivateJobDone((guild) => scheduleCardRefresh(guild, 1000));

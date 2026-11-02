@@ -12,6 +12,8 @@ const roleList = (max: number) => z.array(snowflake).max(max).default([]);
 export const MAX_QUESTIONS = 5;
 export const MAX_OPTIONS = 10;
 export const MAX_ROLES_PER_OPTION = 5;
+export const MAX_STAFF_CATEGORIES = 10;
+export const MAX_ACCESS_CHANNELS = 50;
 
 export const onboardingOption = z.object({
   id: z.string().min(1).max(40),
@@ -95,6 +97,19 @@ export const onboardingSettings = z.object({
       kickAfterHours: z.number().int().min(0).max(720).default(0),
     })
     .default({ enabled: false, roleId: null, kickAfterHours: 0 }),
+  /** Which channels Number One manages, and how. See src/features/onboarding/access.ts. */
+  access: z
+    .object({
+      /** Categories Number One never changes, nor anything inside them. */
+      staffCategoryIds: z.array(snowflake).max(MAX_STAFF_CATEGORIES).default([]),
+      /** Visible to everyone, including members still onboarding. A category covers its channels. */
+      publicChannelIds: z.array(snowflake).max(MAX_ACCESS_CHANNELS).default([]),
+      /** Only visible to members still onboarding; they disappear once they finish. */
+      newMemberChannelIds: z.array(snowflake).max(MAX_ACCESS_CHANNELS).default([]),
+      /** Given when members finish onboarding. Private mode shows ordinary channels only to this role. */
+      verifiedRoleId: snowflake.nullable().default(null),
+    })
+    .default({ staffCategoryIds: [], publicChannelIds: [], newMemberChannelIds: [], verifiedRoleId: null }),
 });
 
 export type OnboardingSettings = z.infer<typeof onboardingSettings>;
@@ -116,6 +131,22 @@ export interface OnboardingActivity {
   joinedLast7Days: number;
 }
 
+/** Live member numbers, shown on the dashboard and the Start card. null = not tracked (no such role). */
+export interface OnboardingCounts {
+  members: number;
+  verified: number | null;
+  atGate: number | null;
+}
+
+/** Progress of "Make the rest of the server private" (or of letting everyone in when switching off). */
+export interface PrivateJob {
+  phase: "roles" | "channels" | "done" | "failed";
+  /** Members given the verified role so far, out of `total`. */
+  done: number;
+  total: number;
+  error?: string;
+}
+
 /** Bot-managed state the dashboard shows but doesn't edit directly. */
 export interface OnboardingStatus {
   startMessageUrl: string | null;
@@ -124,4 +155,10 @@ export interface OnboardingStatus {
   totalChannels: number;
   communityOnboarding: boolean;
   activity: OnboardingActivity;
+  counts: OnboardingCounts;
+  /** Private mode is on: ordinary channels are only visible to the verified role. */
+  privateMode: boolean;
+  /** Channels currently visible only to the verified role. */
+  privateChannels: number;
+  privateJob: PrivateJob | null;
 }

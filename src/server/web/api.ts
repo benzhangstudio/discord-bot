@@ -57,9 +57,16 @@ function guildSummary(guild: Guild) {
     name: guild.name,
     icon: guild.icon,
     memberCount: guild.memberCount,
+    // Every channel and category (pickers filter by type), in the order Discord shows them.
     channels: guild.channels.cache
-      .filter((c) => c.isTextBased() && !c.isThread())
-      .map((c) => ({ id: c.id, name: c.name, type: c.type, position: "position" in c ? c.position : 0 }))
+      .filter((c) => !c.isThread())
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        parentId: c.parentId ?? null,
+        position: "rawPosition" in c ? c.rawPosition : 0,
+      }))
       .sort((a, b) => a.position - b.position),
     roles: guild.roles.cache
       .filter((r) => r.id !== guild.id && !r.managed)
