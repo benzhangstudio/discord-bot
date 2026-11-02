@@ -48,4 +48,4 @@ We may update these Terms at any time. Changes take effect when posted, and cont
 
 ## 12. Contact
 
-Questions may be directed to our support server, **Number One Cafe**: [discord.gg/YjpDdDYjF8](https://discord.gg/YjpDdDYjF8)
+Questions may be directed to our support server, **Number One Cafe**: [discord.gg/7GyveHcQdn](https://discord.gg/7GyveHcQdn)

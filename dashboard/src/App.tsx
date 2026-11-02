@@ -68,7 +68,7 @@ export function App() {
         >
           Terms of Service
         </a>
-        <a href="https://discord.gg/YjpDdDYjF8" target="_blank" rel="noopener noreferrer">
+        <a href="https://discord.gg/7GyveHcQdn" target="_blank" rel="noopener noreferrer">
           Support
         </a>
       </footer>
