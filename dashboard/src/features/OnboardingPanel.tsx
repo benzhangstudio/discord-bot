@@ -137,6 +137,26 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
 
   return (
     <div className="panel onboarding">
+      <div className="notice">
+        <strong>How Number One onboarding works</strong>
+        <span className="small">
+          New members are welcomed, walked through your rules and questions, and given roles based on their answers. It all
+          works without turning on Discord's Community settings.
+        </span>
+        <span className="small">
+          With the access gate on, new members only see #start-here and your whitelisted channels until they finish. Finishing
+          gives them the Verified role, which opens the rest of the server.
+        </span>
+        <span className="small">What Number One handles for you:</span>
+        <ul className="small">
+          <li>New channels you create are made private automatically, so nothing slips past the gate.</li>
+          <li>Staff categories and whitelisted channels are never touched, and channels that are already private stay private.</li>
+          <li>Everyone already in the server gets Verified before anything is locked, so nobody loses access.</li>
+          <li>Turning the gate off puts every channel back exactly as it was.</li>
+          <li>The Start card shows live server numbers, and members can change their answers any time.</li>
+          <li>Progress is saved, so members pick up where they left off, even after the bot restarts.</li>
+        </ul>
+      </div>
       {status.communityOnboarding && (
         <div className="notice warning-box">
           This server has Discord's Community features on. If Discord's own Onboarding is also switched on, members will
