@@ -2408,6 +2408,8 @@ select.chip-add {
 }
 .automod .stats strong {
   overflow-wrap: anywhere;
+}
+
 /* Landing page (logged-out home). */
 .landing {
   display: flex;
