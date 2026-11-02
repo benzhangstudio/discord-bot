@@ -117,6 +117,7 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
       {messages.length === 0 && (
         <p className="muted">No role menus yet. Create one to let members pick their own roles with reactions, buttons or a dropdown.</p>
       )}
+      <div className="rr-list">
       {messages.map((m) => (
         <div key={m.messageId} className="rr-message">
           <div className="rr-head">
@@ -176,6 +177,7 @@ export function ReactionRolesPanel({ guild }: { guild: Guild }) {
           </div>
         </div>
       ))}
+      </div>
       {full ? (
         <p className="muted small">You've reached the limit of {MAX_REACTION_ROLE_MESSAGES} role menus. Delete one to add another.</p>
       ) : (

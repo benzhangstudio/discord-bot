@@ -70,6 +70,10 @@ export function AnnouncementsPanel({ guild }: { guild: Guild }) {
       ))}
 
       <section className="ann-sub">
+        <div className="sub-head">
+          <strong>Where to post</strong>
+          <small className="muted">Pick a channel, and a role to ping for urgent notices.</small>
+        </div>
         <label className="field">
           <span>Channel</span>
           <ChannelSelect

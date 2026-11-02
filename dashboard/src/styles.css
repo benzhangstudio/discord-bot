@@ -2058,3 +2058,251 @@ select.chip-add {
   display: grid;
   gap: 4px;
 }
+
+/* ===================================================================== */
+/* MEE6-style layout: full-height menu on the left, settings in boxes     */
+/* laid out in a grid. Layout only; colours come from the theme above.    */
+/* ===================================================================== */
+
+/* --- Page shell (desktop): menu pinned to the left edge, content uses the width --- */
+@media (min-width: 821px) {
+  .content.wide {
+    max-width: none;
+    padding: 0;
+  }
+  .guild-layout {
+    grid-template-columns: 272px minmax(0, 1fr);
+    gap: 0;
+    min-height: calc(100vh - 63px);
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    max-height: 100vh;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    padding: 18px 14px;
+  }
+  .guild-main {
+    padding: 28px 40px 80px;
+    max-width: 1320px;
+    width: 100%;
+  }
+}
+
+/* --- Feature page header: a banner box with icon, name, description and switch --- */
+.feature-head {
+  background: linear-gradient(120deg, var(--accent-soft), var(--surface) 55%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.feature-head h1 {
+  margin: 0;
+}
+.feature-head .muted {
+  margin: 4px 0 0;
+}
+
+/* --- Settings boxes --- */
+.onboarding .sub,
+.ann-sub,
+.rr-message {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin: 0;
+  transition: border-color 0.15s;
+}
+.onboarding .sub:hover,
+.ann-sub:hover,
+.rr-message:hover {
+  border-color: rgba(255, 79, 163, 0.35);
+}
+
+/* The first row of a box is its header: title, short description, switch on the right. */
+.onboarding .sub > .toggle-row:first-child,
+.onboarding .sub > .sub-head:first-child,
+.ann-sub > .sub-head:first-child {
+  margin: 0;
+}
+.onboarding .sub > .toggle-row:first-child strong,
+.onboarding .sub > .sub-head:first-child strong,
+.ann-sub > .sub-head:first-child strong {
+  font-size: 1.02rem;
+}
+
+/* Settings sit under a divider, like MEE6's boxes. */
+.onboarding .sub > .sub-body,
+.ann-sub > .sub-head:first-child + * {
+  border-top: 1px solid var(--border);
+  margin: 16px -20px 0;
+  padding: 16px 20px 0;
+  gap: 10px;
+}
+.ann-sub > .sub-head:first-child + * {
+  margin-top: 16px;
+}
+
+/* --- Member onboarding: boxes in a two-column grid --- */
+.panel.onboarding {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.panel.onboarding > * {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.panel.onboarding > .sub.half,
+.panel.onboarding > .ob-stack {
+  grid-column: auto;
+}
+/* Goodbye and Join roles stack in the column next to Welcome. */
+.ob-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Join roles box: keep its two role lists apart. */
+.onboarding .sub > .sub-head.spaced {
+  border-top: 1px solid var(--border);
+  margin: 16px -20px 8px;
+  padding: 16px 20px 0;
+}
+
+/* Access gate: the three pickers side by side, status box underneath. */
+.onboarding .sub.gate > .sub-body {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.onboarding .sub.gate > .sub-body > .private-box {
+  grid-column: 1 / -1;
+  background: var(--bg);
+}
+
+/* Questions: each question is its own inner box. */
+.onboarding .question {
+  background: var(--bg);
+  border-radius: 12px;
+}
+
+/* --- Stat tiles --- */
+.stats {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.stats > div {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 16px 18px;
+  gap: 2px;
+}
+.stats strong {
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+/* --- Bot announcements: two boxes side by side, recent list underneath --- */
+.panel.ann {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.panel.ann > * {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.panel.ann > .ann-sub:not(.ann-recent) {
+  grid-column: auto;
+}
+.ann-sub .toggle-row,
+.ann-sub .ann-locked {
+  padding: 10px 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.ann-sub > .sub-head:first-child + .toggle-row {
+  border-top: 1px solid var(--border);
+}
+.ann-sub > .toggle-row:last-child,
+.ann-sub > .ann-locked:last-child {
+  padding-bottom: 0;
+}
+
+/* --- Reaction roles: one box per role menu, in a grid --- */
+.rr-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.rr-message .rr-entries {
+  border-top: 1px solid var(--border);
+  margin: 14px -20px 0;
+  padding: 14px 20px 0;
+}
+.rr-section {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+/* --- Server list: bigger MEE6-style server boxes --- */
+.guild-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.guild-card {
+  padding: 28px 20px 20px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--accent-soft), var(--surface) 45%);
+}
+.guild-card .btn {
+  width: 100%;
+  margin-top: auto;
+}
+
+/* --- Phones and narrow windows: one column --- */
+@media (max-width: 900px) {
+  .panel.onboarding,
+  .panel.ann {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .onboarding .sub.gate > .sub-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rr-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Space between settings inside a box. */
+.ann-sub > .field + .field {
+  margin-top: 16px;
+}
+
+/* Phones: a roomier page header. */
+@media (max-width: 820px) {
+  .feature-head {
+    padding: 16px;
+    gap: 12px;
+  }
+  .feature-head h1 {
+    font-size: 1.35rem;
+  }
+  .feature-head .plugin-icon.big {
+    width: 44px;
+    height: 44px;
+    font-size: 1.4rem;
+  }
+}

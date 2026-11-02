@@ -185,7 +185,7 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
       )}
 
       {/* 1. Welcome */}
-      <section className="sub">
+      <section className="sub half">
         <Toggle
           label="Welcome message"
           hint="Greet new members in a channel."
@@ -237,43 +237,45 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
         )}
       </section>
 
-      {/* 2. Goodbye */}
-      <section className="sub">
-        <Toggle
-          label="Goodbye message"
-          hint="Post a message when someone leaves. Off by default."
-          checked={draft.goodbye.enabled}
-          onChange={(v) => set((d) => { d.goodbye.enabled = v; })}
-        />
-        {draft.goodbye.enabled && (
-          <div className="sub-body">
-            <label className="field">
-              <span>Channel</span>
-              <ChannelSelect guild={guild} value={draft.goodbye.channelId} emptyLabel="Server's system channel" onChange={(v) => set((d) => { d.goodbye.channelId = v; })} />
-            </label>
-            <label className="field">
-              <span>Message</span>
-              <textarea rows={2} maxLength={1800} value={draft.goodbye.message} onChange={(e) => set((d) => { d.goodbye.message = e.target.value; })} />
-            </label>
-          </div>
-        )}
-      </section>
+      <div className="ob-stack">
+        {/* 2. Goodbye */}
+        <section className="sub">
+          <Toggle
+            label="Goodbye message"
+            hint="Post a message when someone leaves. Off by default."
+            checked={draft.goodbye.enabled}
+            onChange={(v) => set((d) => { d.goodbye.enabled = v; })}
+          />
+          {draft.goodbye.enabled && (
+            <div className="sub-body">
+              <label className="field">
+                <span>Channel</span>
+                <ChannelSelect guild={guild} value={draft.goodbye.channelId} emptyLabel="Server's system channel" onChange={(v) => set((d) => { d.goodbye.channelId = v; })} />
+              </label>
+              <label className="field">
+                <span>Message</span>
+                <textarea rows={2} maxLength={1800} value={draft.goodbye.message} onChange={(e) => set((d) => { d.goodbye.message = e.target.value; })} />
+              </label>
+            </div>
+          )}
+        </section>
 
-      {/* 3. Join roles */}
-      <section className="sub">
-        <div className="sub-head"><strong>Join roles</strong><small className="muted">Given to every new member right away.</small></div>
-        <RolePicker
-          guild={guild}
-          value={draft.joinRoles}
-          blocked={joinBlocked}
-          onChange={(v) => set((d) => { d.joinRoles = v; })}
-        />
-        <div className="sub-head spaced"><strong>Bot roles</strong><small className="muted">Given to bots that join. Bots skip onboarding.</small></div>
-        <RolePicker guild={guild} value={draft.botRoles} onChange={(v) => set((d) => { d.botRoles = v; })} />
-      </section>
+        {/* 3. Join roles */}
+        <section className="sub">
+          <div className="sub-head"><strong>Join roles</strong><small className="muted">Given to every new member right away.</small></div>
+          <RolePicker
+            guild={guild}
+            value={draft.joinRoles}
+            blocked={joinBlocked}
+            onChange={(v) => set((d) => { d.joinRoles = v; })}
+          />
+          <div className="sub-head spaced"><strong>Bot roles</strong><small className="muted">Given to bots that join. Bots skip onboarding.</small></div>
+          <RolePicker guild={guild} value={draft.botRoles} onChange={(v) => set((d) => { d.botRoles = v; })} />
+        </section>
+      </div>
 
       {/* 4. Onboarding steps */}
-      <section className="sub">
+      <section className="sub wide">
         <Toggle
           label="Onboarding steps"
           hint="New members click Start for a private walkthrough: rules, then questions that give roles. With neither, they just click Finish."
@@ -338,7 +340,7 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
       </section>
 
       {/* 5. Access gate */}
-      <section className="sub">
+      <section className="sub wide gate">
         <div className="sub-head">
           <strong>Access gate</strong>
           <small className="muted">
