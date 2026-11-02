@@ -44,28 +44,29 @@ export async function memberCounts(guild: Guild, settings: OnboardingSettings): 
   };
 }
 
-/** Plain-language list of what private mode will do, shown before anything changes. */
-export function describePrivateMode(guild: Guild, settings: OnboardingSettings, state: AccessState) {
-  const role = settings.access.verifiedRoleId ? guild.roles.cache.get(settings.access.verifiedRoleId) : undefined;
-  const gateRole = settings.gate.enabled && settings.gate.roleId ? guild.roles.cache.get(settings.gate.roleId) : undefined;
-  const atGate = gateRole?.members.size ?? 0;
-  const { byClass } = accessSummary(guild, settings, state);
+/** Plain-language list of what "Set it up for me" will do, shown before anything changes. */
+export function describeSetup(guild: Guild, settings: OnboardingSettings, state: AccessState) {
   const n = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const gateRole = settings.gate.roleId ? guild.roles.cache.get(settings.gate.roleId) : undefined;
+  const verified = settings.access.verifiedRoleId ? guild.roles.cache.get(settings.access.verifiedRoleId) : undefined;
+  const start = settings.flow.channelId ? guild.channels.cache.get(settings.flow.channelId) : undefined;
+  const atGate = settings.gate.enabled ? (gateRole?.members.size ?? 0) : 0;
+  const { byClass } = accessSummary(guild, settings, state);
   const kept = [
     byClass.staff.length && n(byClass.staff.length, "staff channel"),
-    byClass.public.length && n(byClass.public.length, "public channel"),
-    byClass.newMember.length && n(byClass.newMember.length, "new-member channel"),
-    byClass.start.length && "the onboarding channel",
+    byClass.whitelist.length && n(byClass.whitelist.length, "whitelisted channel"),
     byClass.ownerPrivate.length && n(byClass.ownerPrivate.length, "already-private channel"),
   ].filter(Boolean);
   return [
-    role ? `Use @${role.name} as the Verified role.` : "Create a role called “Verified”.",
-    `Give it to everyone already in the server (about ${n(Math.max(guild.memberCount - atGate, 0), "member")}, bots included) so nobody loses access.` +
-      (atGate ? ` The ${n(atGate, "member")} still at the gate get it when they finish.` : ""),
+    start
+      ? `Use #${start.name} for the Start button and turn on onboarding steps.`
+      : "Create a “Start here” category at the top of the server with a read-only #start-here channel holding the Start button, and turn on onboarding steps.",
+    `${gateRole ? `Use @${gateRole.name}` : "Create a “New member” role"} for people who haven't finished yet, and ${verified ? `@${verified.name}` : "a “Verified” role"} for people who have.`,
+    `Give Verified to everyone already in the server (about ${n(Math.max(guild.memberCount - atGate, 0), "member")}, bots included) so nobody loses access.`,
     `Then make ${n(byClass.other.length, "channel")} visible only to Verified members.`,
     kept.length ? `Not changed: ${kept.join(", ")}.` : "",
-    "From then on, members get Verified when they finish onboarding, and new channels you create are made private too (unless they're already private or in a staff category).",
-    "You can turn this off any time. Every channel goes back to exactly how it was.",
+    "From then on, new members only see #start-here and whitelisted channels until they finish. New channels you create are made private too, unless they're in a staff category.",
+    "You can turn it off any time. Every channel goes back to exactly how it was.",
   ].filter(Boolean);
 }
 

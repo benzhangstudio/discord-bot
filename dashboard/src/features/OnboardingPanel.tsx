@@ -43,8 +43,8 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ text: string; warnings: string[] } | null>(null);
-  /** The "make it private" confirmation: closed, open, or open with the box ticked. */
-  const [confirmPrivate, setConfirmPrivate] = useState<"closed" | "open" | "ticked">("closed");
+  /** The "Set it up for me" confirmation: closed, open, or open with the box ticked. */
+  const [confirmSetup, setConfirmSetup] = useState<"closed" | "open" | "ticked">("closed");
 
   const load = (r: OnboardingResponse) => {
     setData(r);
@@ -68,7 +68,7 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
     const timer = setInterval(() => {
       api
         .onboarding(guild.id)
-        .then((r) => setData((prev) => (prev ? { ...prev, status: r.status, privatePlan: r.privatePlan } : r)))
+        .then((r) => setData((prev) => (prev ? { ...prev, status: r.status, setupPlan: r.setupPlan } : r)))
         .catch(() => {});
     }, 2000);
     return () => clearInterval(timer);
@@ -101,34 +101,14 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
 
   const gateAction = async (kind: "setup" | "remove") => {
     if (dirty) return setError("Save or discard your changes first.");
-    const question =
-      kind === "setup"
-        ? `This will:\n\n• ${data.gatePlan.join("\n• ")}\n\nContinue?`
-        : "Make all channels visible to new members again? The New member role is kept.";
-    if (!confirm(question)) return;
+    if (kind === "remove" && !confirm("Turn off the access gate? Every channel goes back to how it was before. Members keep the Verified role.")) return;
     setSaving(true);
     setError("");
     try {
       const r = kind === "setup" ? await api.setUpGate(guild.id) : await api.removeGate(guild.id);
       load(r);
-      setNotice({ text: kind === "setup" ? "The access gate is set up." : "The access gate is off.", warnings: r.warnings });
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const privateAction = async (kind: "start" | "stop") => {
-    if (dirty) return setError("Save or discard your changes first.");
-    if (kind === "stop" && !confirm("Turn off private mode? Every channel goes back to how it was before. Members keep the Verified role.")) return;
-    setSaving(true);
-    setError("");
-    try {
-      const r = kind === "start" ? await api.startPrivateMode(guild.id) : await api.stopPrivateMode(guild.id);
-      load(r);
-      setConfirmPrivate("closed");
-      setNotice(kind === "start" ? null : { text: "Private mode is off.", warnings: r.warnings });
+      setConfirmSetup("closed");
+      setNotice(r.warnings.length || kind === "remove" ? { text: kind === "setup" ? "Done." : "The access gate is off.", warnings: r.warnings } : null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -146,17 +126,14 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
   const canAccess = data.canManageAccess;
   const job = status.privateJob;
   const jobRunning = job?.phase === "roles" || job?.phase === "channels";
+  const verifiedName = guild.roles.find((r) => r.id === access.verifiedRoleId)?.name ?? "Verified";
 
-  // Why a channel can't be picked in a list (it's in a staff category, or already in the other list).
+  // Channels inside a staff category can't be whitelisted: they're already never touched.
   const staffIds = new Set(access.staffCategoryIds);
-  const blocked = (other: string[], otherName: string) => {
-    const out: Record<string, string> = {};
-    for (const c of guild.channels) {
-      if (staffIds.has(c.id) || (c.parentId && staffIds.has(c.parentId))) out[c.id] = "staff";
-      else if (other.includes(c.id)) out[c.id] = otherName;
-    }
-    return out;
-  };
+  const inStaff: Record<string, string> = {};
+  for (const c of guild.channels) {
+    if (staffIds.has(c.id) || (c.parentId && staffIds.has(c.parentId))) inStaff[c.id] = "staff, already untouched";
+  }
 
   return (
     <div className="panel onboarding">
@@ -345,45 +322,11 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
         <div className="sub-head">
           <strong>Access gate</strong>
           <small className="muted">
-            Hide the rest of the server from new members until they finish onboarding. Optional. Existing members aren't affected.
+            Lock the server until new members finish onboarding. Number One makes a Start here category, then makes every
+            other channel visible only to Verified members.
           </small>
         </div>
-        {draft.gate.enabled ? (
-          <div className="sub-body">
-            <p className="small">
-              🔒 On. {status.hiddenChannels} of {status.totalChannels} channels are hidden from new members.
-            </p>
-            <label className="field">
-              <span>New member role</span>
-              <RoleSelect guild={guild} value={draft.gate.roleId} onChange={(v) => set((d) => { d.gate.roleId = v; })} />
-              <small className="muted">Members hold this role until they finish. It's removed automatically.</small>
-            </label>
-            <label className="field">
-              <span>Remove members who don't finish</span>
-              <select value={draft.gate.kickAfterHours} onChange={(e) => set((d) => { d.gate.kickAfterHours = Number(e.target.value); })}>
-                {KICK_CHOICES.map((c) => <option key={c.hours} value={c.hours}>{c.label}</option>)}
-              </select>
-            </label>
-            <div className="editor-actions">
-              <button className="btn ghost small" disabled={saving} onClick={() => gateAction("setup")}>Re-check hidden channels</button>
-              <button className="btn danger small" disabled={saving} onClick={() => gateAction("remove")}>Turn off the gate</button>
-            </div>
-          </div>
-        ) : (
-          <div className="sub-body">
-            <button className="btn primary small" disabled={saving} onClick={() => gateAction("setup")}>Set it up for me</button>
-            <small className="muted">You'll see exactly what changes before anything happens.</small>
-          </div>
-        )}
-      </section>
-
-      {/* 6. Channel access */}
-      <section className="sub">
-        <div className="sub-head">
-          <strong>Channel access</strong>
-          <small className="muted">Choose who sees which channels. Number One sets the permissions for you.</small>
-        </div>
-        {!canAccess && <p className="small muted">🔒 Only the server owner can change channel access.</p>}
+        {!canAccess && <p className="small muted">🔒 Only the server owner can set up or change the access gate.</p>}
         <div className="sub-body">
           <label className="field">
             <span>Staff categories</span>
@@ -396,46 +339,31 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
               value={access.staffCategoryIds}
               onChange={(v) => set((d) => { d.access.staffCategoryIds = v; })}
             />
-            <small className="muted">Number One never changes these categories or anything inside them.</small>
+            <small className="muted">Never changed, nor anything inside them.</small>
           </label>
           <label className="field">
-            <span>Public channels</span>
+            <span>Whitelisted channels</span>
             <ChannelPicker
               guild={guild}
               max={MAX_ACCESS_CHANNELS}
+              placeholder="Add a channel…"
               disabled={!canAccess}
-              exclude={blocked(access.newMemberChannelIds, "new-member-only")}
-              value={access.publicChannelIds}
-              onChange={(v) => set((d) => { d.access.publicChannelIds = v; })}
+              exclude={inStaff}
+              value={access.whitelistChannelIds}
+              onChange={(v) => set((d) => { d.access.whitelistChannelIds = v; })}
             />
-            <small className="muted">Everyone can see these, including members still onboarding (e.g. #rules, #announcements). Picking a category covers its channels.</small>
-          </label>
-          <label className="field">
-            <span>New-member-only channels</span>
-            <ChannelPicker
-              guild={guild}
-              max={MAX_ACCESS_CHANNELS}
-              disabled={!canAccess || (!draft.gate.enabled && !access.newMemberChannelIds.length)}
-              exclude={blocked(access.publicChannelIds, "public")}
-              value={access.newMemberChannelIds}
-              onChange={(v) => set((d) => { d.access.newMemberChannelIds = v; })}
-            />
-            <small className="muted">
-              {draft.gate.enabled
-                ? "Only members still onboarding can see these. They disappear once they finish (e.g. #introduce-yourself, #new-member-help)."
-                : "Set up the access gate first. It gives new members the role these channels are shown to."}
-            </small>
+            <small className="muted">Left exactly as they are, so everyone keeps seeing them (e.g. #rules, #announcements). A category covers its channels.</small>
           </label>
           <label className="field">
             <span>Verified role</span>
             <RoleSelect
               guild={guild}
               value={access.verifiedRoleId}
-              emptyLabel="None (one is created when you turn on private mode)"
-              onChange={(v) => canAccess && set((d) => { d.access.verifiedRoleId = v; })}
+              emptyLabel="Create one for me"
+              onChange={(v) => canAccess && !status.privateMode && set((d) => { d.access.verifiedRoleId = v; })}
             />
             <small className="muted">
-              Given to members when they finish onboarding.{" "}
+              Given when members finish onboarding. Only this role can see the private channels.{" "}
               {canAccess && access.verifiedRoleId && !status.privateMode && (
                 <button className="link small" onClick={() => set((d) => { d.access.verifiedRoleId = null; })}>Clear</button>
               )}
@@ -443,54 +371,68 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
           </label>
 
           <div className="private-box">
-            <strong>Private mode</strong>
             {jobRunning ? (
               <p className="small">
                 ⏳{" "}
                 {job!.phase === "roles"
-                  ? `Giving the Verified role to current members so nobody loses access: ${job!.done} of ${job!.total || "…"}.`
+                  ? `Giving @${verifiedName} to current members so nobody loses access: ${job!.done} of ${job!.total || "…"}.`
                   : "Making channels private…"}{" "}
                 You can leave this page; it keeps going.
               </p>
             ) : status.privateMode ? (
               <>
                 <p className="small">
-                  🔐 On. {status.privateChannels} channel{status.privateChannels === 1 ? " is" : "s are"} only visible to Verified members.
+                  🔐 On. {status.privateChannels} channel{status.privateChannels === 1 ? " is" : "s are"} only visible to @{verifiedName}.
                 </p>
+                <label className="field">
+                  <span>Remove members who don't finish</span>
+                  <select value={draft.gate.kickAfterHours} onChange={(e) => set((d) => { d.gate.kickAfterHours = Number(e.target.value); })}>
+                    {KICK_CHOICES.map((c) => <option key={c.hours} value={c.hours}>{c.label}</option>)}
+                  </select>
+                </label>
                 {canAccess && (
                   <div className="editor-actions">
-                    <button className="btn danger small" disabled={saving} onClick={() => privateAction("stop")}>Turn off private mode</button>
+                    <button className="btn ghost small" disabled={saving} onClick={() => gateAction("setup")}>Re-check channels</button>
+                    <button className="btn danger small" disabled={saving} onClick={() => gateAction("remove")}>Turn off the gate</button>
                   </div>
                 )}
               </>
             ) : (
               <>
-                <p className="small muted">
-                  Optional. Every channel not listed above becomes visible only to members with the Verified role.
-                  Channels that are already private are left alone.
-                </p>
                 {job?.phase === "failed" && <p className="error small">{job.error}</p>}
-                {canAccess && confirmPrivate === "closed" && (
-                  <button className="btn primary small" disabled={saving} onClick={() => (dirty ? setError("Save or discard your changes first.") : setConfirmPrivate("open"))}>
-                    Make the rest of the server private…
-                  </button>
+                {draft.gate.enabled && (
+                  <p className="small muted">Set up with an older version. Run “Set it up for me” again to finish.</p>
                 )}
-                {canAccess && confirmPrivate !== "closed" && (
+                {canAccess && confirmSetup === "closed" && (
+                  <div className="editor-actions">
+                    <button
+                      className="btn primary small"
+                      disabled={saving}
+                      onClick={() => (dirty ? setError("Save or discard your changes first.") : setConfirmSetup("open"))}
+                    >
+                      Set it up for me…
+                    </button>
+                    {draft.gate.enabled && (
+                      <button className="btn danger small" disabled={saving} onClick={() => gateAction("remove")}>Turn off the gate</button>
+                    )}
+                  </div>
+                )}
+                {canAccess && confirmSetup !== "closed" && (
                   <div className="confirm-box">
                     <strong>Here's exactly what will happen:</strong>
-                    <ol className="small">{data.privatePlan.map((step) => <li key={step}>{step}</li>)}</ol>
+                    <ol className="small">{data.setupPlan.map((step) => <li key={step}>{step}</li>)}</ol>
                     <label className="check">
                       <input
                         type="checkbox"
-                        checked={confirmPrivate === "ticked"}
-                        onChange={(e) => setConfirmPrivate(e.target.checked ? "ticked" : "open")}
+                        checked={confirmSetup === "ticked"}
+                        onChange={(e) => setConfirmSetup(e.target.checked ? "ticked" : "open")}
                       />
-                      <span>I understand that anyone without the Verified role will only see the channels listed above.</span>
+                      <span>I understand that anyone without @{verifiedName} will only see #start-here and whitelisted channels.</span>
                     </label>
                     <div className="editor-actions">
-                      <button className="btn ghost small" disabled={saving} onClick={() => setConfirmPrivate("closed")}>Cancel</button>
-                      <button className="btn danger small" disabled={saving || confirmPrivate !== "ticked"} onClick={() => privateAction("start")}>
-                        {saving ? "Starting…" : "Yes, make it private"}
+                      <button className="btn ghost small" disabled={saving} onClick={() => setConfirmSetup("closed")}>Cancel</button>
+                      <button className="btn danger small" disabled={saving || confirmSetup !== "ticked"} onClick={() => gateAction("setup")}>
+                        {saving ? "Starting…" : "Yes, set it up"}
                       </button>
                     </div>
                   </div>

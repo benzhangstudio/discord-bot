@@ -11,8 +11,8 @@ import { type AccessState, accessSummary, applyAccessNow, getAccessState, syncAc
 import { FixableError } from "./errors.js";
 import { onboardingEvents, releaseGatedMembers, startOnboardingTasks } from "./events.js";
 import { onboardingComponents, syncStartMessage } from "./flow.js";
-import { describeGateSetup, gateLeaks, setUpGate } from "./gate.js";
-import { describePrivateMode, memberCounts, privateJob, startPrivateMode, stopPrivateMode } from "./private.js";
+import { gateLeaks, setUpGate } from "./gate.js";
+import { describeSetup, memberCounts, privateJob, startPrivateMode, stopPrivateMode } from "./private.js";
 import * as store from "./store.js";
 
 type Req = FastifyRequest<{ Params: { guildId: string } }>;
@@ -76,15 +76,10 @@ async function validate(guild: Guild, userId: string, s: OnboardingSettings, acc
     const channel = guild.channels.cache.get(id);
     return a.staffCategoryIds.includes(id) || Boolean(channel?.parentId && a.staffCategoryIds.includes(channel.parentId));
   };
-  for (const id of [...a.publicChannelIds, ...a.newMemberChannelIds]) {
+  for (const id of a.whitelistChannelIds) {
     const channel = guild.channels.cache.get(id);
-    if (!channel || channel.isThread()) throw new FixableError("One of the picked channels no longer exists. Remove it and save again.");
-    if (inStaff(id)) throw new FixableError(`#${name(id)} is in a staff category, which Number One never changes. Remove it from the list.`);
-  }
-  const both = a.publicChannelIds.find((id) => a.newMemberChannelIds.includes(id));
-  if (both) throw new FixableError(`#${name(both)} can't be both public and new-member-only.`);
-  if (a.newMemberChannelIds.length && !(s.gate.enabled && s.gate.roleId)) {
-    throw new FixableError("New-member-only channels need the access gate, which gives new members their New member role. Set up the gate first.");
+    if (!channel || channel.isThread()) throw new FixableError("A whitelisted channel no longer exists. Remove it and save again.");
+    if (inStaff(id)) throw new FixableError(`#${name(id)} is in a staff category, which is already never changed. Remove it from the whitelist.`);
   }
   if (a.verifiedRoleId) {
     checkRole(a.verifiedRoleId, "Verified role");
@@ -94,8 +89,8 @@ async function validate(guild: Guild, userId: string, s: OnboardingSettings, acc
     }
   }
   if (access.privateMode) {
-    if (!a.verifiedRoleId) throw new FixableError("Private mode is on, so it needs a Verified role. Turn private mode off first.");
-    if (!s.flow.enabled) throw new FixableError("Private mode is on, so new members need onboarding steps to get verified. Turn private mode off first.");
+    if (!a.verifiedRoleId) throw new FixableError("The access gate is on, so it needs a Verified role. Turn the gate off to remove it.");
+    if (!s.flow.enabled) throw new FixableError("The access gate is on, so new members need onboarding steps to get verified. Turn the gate off first.");
   }
 }
 
@@ -131,9 +126,9 @@ async function respond(guild: Guild, settings: OnboardingSettings, userId: strin
   return {
     settings,
     status: await status(guild, settings, access),
-    gatePlan: describeGateSetup(guild, settings, access),
-    privatePlan: describePrivateMode(guild, settings, access),
-    /** Channel access and private mode can only be changed by the server owner. */
+    /** What "Set it up for me" will do, in plain words. */
+    setupPlan: describeSetup(guild, settings, access),
+    /** The access gate can only be set up, changed or turned off by the server owner. */
     canManageAccess: isOwner(guild, userId),
     warnings,
   };
@@ -154,7 +149,7 @@ async function guarded(reply: FastifyReply, run: () => Promise<unknown>) {
 }
 
 function requireOwner(guild: Guild, userId: string) {
-  if (!isOwner(guild, userId)) throw new FixableError("Only the server owner can change channel access.");
+  if (!isOwner(guild, userId)) throw new FixableError("Only the server owner can set up or change the access gate.");
 }
 
 export const onboarding: BotFeature = {
@@ -208,68 +203,57 @@ export const onboarding: BotFeature = {
       }),
     );
 
+    /**
+     * "Set it up for me": creates the Start here category and channel, the New member and Verified roles,
+     * gives Verified to everyone already here, then makes every channel that isn't staff or whitelisted
+     * visible only to Verified. When it's already on, this re-checks every channel instead.
+     */
     api.post("/api/guilds/:guildId/onboarding/gate/setup", async (request: Req, reply) =>
       guarded(reply, async () => {
         if (onboardingFeature.workInProgress) throw new FixableError("Member onboarding is still being worked on and can't be changed yet.");
         const guild = guildOf(request);
+        requireOwner(guild, userOf(request));
         const state = await getFeatureState(guild.id, onboardingFeature);
         if (!state.enabled) throw new FixableError("Turn on Member onboarding first.");
-        const { settings, result } = await withGuildLock(guild.id, async () => {
-          const settings = store.normalize(await setUpGate(guild, state.settings as OnboardingSettings));
-          await saveFeatureState(guild.id, onboardingFeature, { enabled: true, settings }, userOf(request));
-          return { settings, result: await applyAccessNow(guild, settings) };
+        const save = (next: OnboardingSettings) => saveFeatureState(guild.id, onboardingFeature, { enabled: true, settings: next }, userOf(request));
+
+        if ((await getAccessState(guild.id)).privateMode) {
+          const result = await syncAccess(guild);
+          const settings = await store.getSettings(guild.id);
+          return respond(guild, settings, userOf(request), [
+            `Checked every channel: ${result?.changed ?? 0} fixed.`,
+            ...skippedWarning(result?.skipped ?? []),
+          ]);
+        }
+
+        const current = state.settings as OnboardingSettings;
+        await validate(guild, userOf(request), current, { privateMode: false, managed: {} });
+        const prepared = await withGuildLock(guild.id, async () => {
+          const next = store.normalize(await setUpGate(guild, current));
+          await save(next);
+          return next;
         });
-        const problem = await syncStartMessage(guild, settings, true);
-        return respond(guild, settings, userOf(request), [...skippedWarning(result.skipped), ...(problem ? [problem] : [])]);
+        const problem = await syncStartMessage(guild, prepared, true);
+        // Runs in the background: Verified for current members first, then channels go private.
+        const settings = await startPrivateMode(guild, prepared, save);
+        return respond(guild, settings, userOf(request), problem ? [problem] : []);
       }),
     );
 
+    /** Turns the access gate off: every channel goes back to how it was, and nobody is left waiting at the gate. */
     api.post("/api/guilds/:guildId/onboarding/gate/remove", async (request: Req, reply) =>
       guarded(reply, async () => {
         const guild = guildOf(request);
+        requireOwner(guild, userOf(request));
         const state = await getFeatureState(guild.id, onboardingFeature);
         const current = state.settings as OnboardingSettings;
-        if (current.access.newMemberChannelIds.length) {
-          throw new FixableError("New-member-only channels depend on the gate. Clear that list and save first.");
-        }
+        await releaseGatedMembers(guild, current, "Number One: access gate turned off");
         const settings: OnboardingSettings = { ...current, gate: { ...current.gate, enabled: false } };
-        const result = await withGuildLock(guild.id, async () => {
-          await saveFeatureState(guild.id, onboardingFeature, { enabled: state.enabled, settings }, userOf(request));
-          return applyAccessNow(guild, settings);
-        });
+        await saveFeatureState(guild.id, onboardingFeature, { enabled: state.enabled, settings }, userOf(request));
+        const result = await stopPrivateMode(guild); // also re-applies with the gate off
         await syncStartMessage(guild, settings, state.enabled);
         return respond(guild, settings, userOf(request), [
-          `Channels are visible to new members again (${result.changed} updated).`,
-          ...skippedWarning(result.skipped),
-        ]);
-      }),
-    );
-
-    api.post("/api/guilds/:guildId/onboarding/private/setup", async (request: Req, reply) =>
-      guarded(reply, async () => {
-        const guild = guildOf(request);
-        requireOwner(guild, userOf(request));
-        const state = await getFeatureState(guild.id, onboardingFeature);
-        if (!state.enabled) throw new FixableError("Turn on Member onboarding first.");
-        if ((await getAccessState(guild.id)).privateMode) throw new FixableError("Private mode is already on.");
-        const current = state.settings as OnboardingSettings;
-        await validate(guild, userOf(request), current, { privateMode: false, managed: {} });
-        const settings = await startPrivateMode(guild, current, (next) =>
-          saveFeatureState(guild.id, onboardingFeature, { enabled: true, settings: next }, userOf(request)),
-        );
-        return respond(guild, settings, userOf(request));
-      }),
-    );
-
-    api.post("/api/guilds/:guildId/onboarding/private/remove", async (request: Req, reply) =>
-      guarded(reply, async () => {
-        const guild = guildOf(request);
-        requireOwner(guild, userOf(request));
-        const result = await stopPrivateMode(guild);
-        const settings = await store.getSettings(guild.id);
-        await syncStartMessage(guild, settings, (await getFeatureState(guild.id, onboardingFeature)).enabled);
-        return respond(guild, settings, userOf(request), [
-          `Private mode is off. ${result.changed} channel(s) are back to how they were.`,
+          `The access gate is off. ${result.changed} channel(s) are back to how they were.`,
           ...skippedWarning(result.skipped),
         ]);
       }),

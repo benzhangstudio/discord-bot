@@ -7,12 +7,11 @@ import * as store from "./store.js";
  *
  * Every channel falls into one class:
  *   staff        in a staff category (or is one): never touched
- *   public       picked as public (or inside a picked category): everyone can see it
- *   newMember    picked as new-member-only: only members still onboarding can see it
+ *   whitelist    whitelisted (or inside a whitelisted category): left as it is
  *   start        the onboarding channel and its category: new members can always see it
  *   ownerPrivate already hidden from @everyone by the server's admins: left alone, so nothing private is exposed
- *   other        everything else: hidden from new members while the gate is on, and only visible to the
- *                verified role while private mode is on
+ *   other        everything else: only visible to the verified role while private mode is on (or, on
+ *                older setups without private mode, hidden from the New member role)
  *
  * Only the "View Channel" permission is changed, and only for @everyone, the New member role and the
  * verified role. Before @everyone's setting is changed, what it was is recorded, so switching things
@@ -24,7 +23,7 @@ const VIEW = PermissionFlagsBits.ViewChannel;
 /** allow, deny, or not set. */
 type Bit = boolean | null;
 type Original = "allow" | "deny" | "none";
-export type ChannelClass = "staff" | "start" | "public" | "newMember" | "ownerPrivate" | "other";
+export type ChannelClass = "staff" | "whitelist" | "start" | "ownerPrivate" | "other";
 type Overwritable = Extract<GuildBasedChannel, { permissionOverwrites: unknown }>;
 
 export interface AccessState {
@@ -62,11 +61,7 @@ export function classify(channel: Overwritable, settings: OnboardingSettings, st
   const a = settings.access;
   const parent = channel.parentId;
   if (a.staffCategoryIds.includes(channel.id) || (parent && a.staffCategoryIds.includes(parent))) return "staff";
-  // A channel picked directly beats the category it sits in.
-  const listed = (ids: string[]) => (ids.includes(channel.id) ? 2 : parent && ids.includes(parent) ? 1 : 0);
-  const pub = listed(a.publicChannelIds);
-  const fresh = listed(a.newMemberChannelIds);
-  if (pub || fresh) return pub >= fresh ? "public" : "newMember";
+  if (a.whitelistChannelIds.includes(channel.id) || (parent && a.whitelistChannelIds.includes(parent))) return "whitelist";
   if (startArea(channel.guild, settings.flow.channelId).has(channel.id)) return "start";
   if (viewBit(channel, channel.guild.id) === false && !(channel.id in state.managed)) return "ownerPrivate";
   return "other";
@@ -81,16 +76,16 @@ interface Wanted {
 
 function wanted(cls: ChannelClass, settings: OnboardingSettings, state: AccessState): Wanted {
   switch (cls) {
-    case "public":
-      return { everyone: true, gate: null, verified: null };
-    case "newMember":
-      return { everyone: false, gate: true, verified: null };
+    case "whitelist":
+      // Put back anything Number One changed earlier, then leave it alone.
+      return { everyone: "restore", gate: null, verified: null };
     case "start":
       return { gate: true };
     case "other":
       return {
         everyone: state.privateMode ? false : "restore",
-        gate: settings.gate.enabled ? false : null,
+        // Private mode already hides the channel from new members; a separate deny would only add edits.
+        gate: settings.gate.enabled && !state.privateMode ? false : null,
         verified: state.privateMode ? true : null,
       };
     default:
@@ -188,7 +183,7 @@ export async function applyAccessNow(guild: Guild, settings: OnboardingSettings,
 
 /** Counts used on the dashboard and in plans. */
 export function accessSummary(guild: Guild, settings: OnboardingSettings, state: AccessState) {
-  const byClass: Record<ChannelClass, Overwritable[]> = { staff: [], start: [], public: [], newMember: [], ownerPrivate: [], other: [] };
+  const byClass: Record<ChannelClass, Overwritable[]> = { staff: [], whitelist: [], start: [], ownerPrivate: [], other: [] };
   for (const c of accessChannels(guild)) byClass[classify(c, settings, state)].push(c);
   const gateRole = settings.gate.roleId;
   const verifiedRole = settings.access.verifiedRoleId;

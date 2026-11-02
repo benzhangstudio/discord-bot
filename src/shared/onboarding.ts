@@ -97,19 +97,23 @@ export const onboardingSettings = z.object({
       kickAfterHours: z.number().int().min(0).max(720).default(0),
     })
     .default({ enabled: false, roleId: null, kickAfterHours: 0 }),
-  /** Which channels Number One manages, and how. See src/features/onboarding/access.ts. */
+  /**
+   * The access gate's channel rules. Everything not listed here becomes visible only to the verified role.
+   * See src/features/onboarding/access.ts.
+   */
   access: z
     .object({
       /** Categories Number One never changes, nor anything inside them. */
       staffCategoryIds: z.array(snowflake).max(MAX_STAFF_CATEGORIES).default([]),
-      /** Visible to everyone, including members still onboarding. A category covers its channels. */
-      publicChannelIds: z.array(snowflake).max(MAX_ACCESS_CHANNELS).default([]),
-      /** Only visible to members still onboarding; they disappear once they finish. */
-      newMemberChannelIds: z.array(snowflake).max(MAX_ACCESS_CHANNELS).default([]),
-      /** Given when members finish onboarding. Private mode shows ordinary channels only to this role. */
+      /** Channels (or whole categories) left exactly as they are, e.g. #rules or #announcements. */
+      whitelistChannelIds: z.array(snowflake).max(MAX_ACCESS_CHANNELS).default([]),
+      /**
+       * Given when members finish onboarding. Private channels are shown only to this role, so finishing
+       * is what opens the server. Picked by the owner, or created by "Set it up for me" when left empty.
+       */
       verifiedRoleId: snowflake.nullable().default(null),
     })
-    .default({ staffCategoryIds: [], publicChannelIds: [], newMemberChannelIds: [], verifiedRoleId: null }),
+    .default({ staffCategoryIds: [], whitelistChannelIds: [], verifiedRoleId: null }),
 });
 
 export type OnboardingSettings = z.infer<typeof onboardingSettings>;

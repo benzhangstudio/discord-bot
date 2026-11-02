@@ -47,11 +47,9 @@ export interface GuildDetails {
 export interface OnboardingResponse {
   settings: OnboardingSettings;
   status: OnboardingStatus;
-  /** What "Set it up for me" would change, in plain words. */
-  gatePlan: string[];
-  /** What "Make the rest of the server private" would do, in plain words. */
-  privatePlan: string[];
-  /** Only the server owner can change channel access and private mode. */
+  /** What "Set it up for me" will do, in plain words. */
+  setupPlan: string[];
+  /** Only the server owner can set up, change or turn off the access gate. */
   canManageAccess: boolean;
   warnings: string[];
 }
@@ -87,10 +85,6 @@ export const api = {
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/setup`, { method: "POST", body: "{}" }),
   removeGate: (guildId: string) =>
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/remove`, { method: "POST", body: "{}" }),
-  startPrivateMode: (guildId: string) =>
-    request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/private/setup`, { method: "POST", body: "{}" }),
-  stopPrivateMode: (guildId: string) =>
-    request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/private/remove`, { method: "POST", body: "{}" }),
   announcements: (guildId: string) => request<AnnouncementsPanelData>(`/api/guilds/${guildId}/announcements`),
   saveAnnouncements: (guildId: string, settings: AnnouncementSettings) =>
     request<AnnouncementsPanelData>(`/api/guilds/${guildId}/announcements`, { method: "PUT", body: JSON.stringify(settings) }),

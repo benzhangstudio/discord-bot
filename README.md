@@ -74,21 +74,19 @@ Discord-style onboarding and welcomes **without turning on Community settings**.
 | Goodbye message | Off | Posts when someone leaves. |
 | Join roles / bot roles | None | Given right away. Bots skip onboarding. |
 | Onboarding steps | Off | A Start button in a chosen channel opens a private walkthrough: rules ("I agree"), then up to 5 questions (single or multiple choice, required or optional), each answer giving up to 5 roles. With no rules or questions, members just click Finish. Members can change their answers later. |
-| Access gate | Off | "Set it up for me" creates a New member role and a "Start here" category at the top with a read-only #start-here channel, and hides other channels from new members until they finish. Shows exactly what changes first; can be turned off again. New channels are hidden automatically. Optionally removes members who don't finish in time. |
-| Channel access | Empty | Owner-only. **Staff categories** are never touched. **Public channels** are visible to everyone. **New-member-only channels** are visible only to members still onboarding and disappear when they finish. A **Verified role** is given when members finish. |
-| Private mode | Off | Owner-only, with a two-step confirm. Gives the Verified role to everyone already in the server first, then makes every other channel visible only to Verified. Channels that are already private are left alone. Turning it off puts every channel back exactly as it was. |
+| Access gate | Off | Owner-only. Pick **staff categories** (never touched) and **whitelisted channels** (left exactly as they are), then click "Set it up for me". After a two-step confirm, it creates a "Start here" category with a read-only #start-here channel, a New member role and a **Verified** role (or uses the one you pick). It gives Verified to everyone already in the server, then makes every other channel visible only to Verified. Finishing onboarding gives Verified, which opens the server. Channels that are already private are left alone. Turning it off puts every channel back exactly as it was. Optionally removes members who don't finish in time. |
 
 - The Start card explains each step ("Answer 3 questions · 2 required, 1 optional"), what members get, and roughly how long it takes. A second card shows live numbers: members, verified, still at the gate, joined and finished this week.
 - The walkthrough shows "Step 2 of 5" with a progress bar, and the last step lists the roles the member will get.
 - Only "View Channel" is changed, and only for @everyone, the New member role and the Verified role. The original @everyone setting is recorded before it's changed, so it can always be restored. New channels follow the same rules automatically.
-- Switching onboarding off also turns private mode off, so nobody is locked out.
+- Switching onboarding off also turns the access gate's private channels back to normal, so nobody is locked out.
 - Progress is saved, so members resume where they left off, even after restarts.
 - All roles are applied in one update at the end.
 - People who joined while the bot was offline get their starting roles when it's back.
 - The dashboard shows joins, completions and pending members, and warns if Discord's own Community features are on.
 - Nobody gets stuck behind the gate: it can't be on without onboarding steps, and switching onboarding off takes the New member role off everyone still holding it.
 - The dashboard warns if a join role is allowed into a channel the gate hides (in Discord, an allow beats a deny, so new members would still see it).
-- **Permissions:** Manage Roles (and its role above the roles it gives); Manage Channels for the gate and private mode; Kick Members for removing unfinished members.
+- **Permissions:** Manage Roles (and its role above the roles it gives); Manage Channels for the access gate; Kick Members for removing unfinished members.
 
 ### Reaction roles (Community & Roles)
 

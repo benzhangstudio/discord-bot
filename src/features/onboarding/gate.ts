@@ -16,31 +16,15 @@ const START_CHANNEL = "start-here";
  * that's denied, so a join role with "View Channel" allowed there lets new members see it anyway.
  */
 export function gateLeaks(guild: Guild, settings: OnboardingSettings, state: AccessState) {
-  const roleId = settings.gate.roleId;
-  if (!settings.gate.enabled || !roleId || !settings.joinRoles.length) return [];
+  if (!(settings.gate.enabled || state.privateMode) || !settings.joinRoles.length) return [];
+  const gateRole = settings.gate.roleId;
   return accessSummary(guild, settings, state)
-    .byClass.other.filter((c) => viewBit(c, roleId) === false && settings.joinRoles.some((id) => viewBit(c, id) === true))
+    .byClass.other.filter(
+      (c) =>
+        (state.privateMode ? viewBit(c, guild.id) === false : Boolean(gateRole) && viewBit(c, gateRole!) === false) &&
+        settings.joinRoles.some((id) => viewBit(c, id) === true),
+    )
     .map((c) => `#${c.name}`);
-}
-
-/** Plain-language list of what "Set it up for me" will do, shown before anything changes. */
-export function describeGateSetup(guild: Guild, settings: OnboardingSettings, state: AccessState) {
-  const steps: string[] = [];
-  const role = settings.gate.roleId ? guild.roles.cache.get(settings.gate.roleId) : undefined;
-  steps.push(role ? `Use the existing @${role.name} role for new members.` : "Create a role called “New member”.");
-  const channel = settings.flow.channelId ? guild.channels.cache.get(settings.flow.channelId) : undefined;
-  steps.push(
-    channel
-      ? `Use #${channel.name} as the onboarding channel.`
-      : `Create a “${START_CATEGORY}” category at the top of the server with a read-only #${START_CHANNEL} channel inside, where the Start button goes.`,
-  );
-  const { byClass } = accessSummary(guild, settings, state);
-  const count = byClass.other.length;
-  steps.push(`Hide ${count} channel${count === 1 ? "" : "s"} from new members until they finish. Nothing changes for existing members.`);
-  const untouched = byClass.staff.length + byClass.public.length + byClass.ownerPrivate.length;
-  if (untouched) steps.push(`Leave ${untouched} staff, public or already-private channel${untouched === 1 ? "" : "s"} as they are.`);
-  steps.push("Turn on onboarding steps, so new members get a Start button.");
-  return steps;
 }
 
 /**
