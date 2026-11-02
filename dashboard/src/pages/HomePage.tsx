@@ -8,31 +8,31 @@ const liveFeatures = (categoryId: string) =>
 
 const steps = [
   {
-    title: "Add Number One",
-    text: "Invite the bot to your server. One bot, one set of permissions.",
+    title: "Invite",
+    text: "Add Number One to a server. Requires Manage Server.",
   },
   {
     title: "Run /setup",
-    text: "Pick what your server needs. The right features switch on with sensible defaults.",
+    text: "Select categories. Matching modules are enabled with default settings.",
   },
   {
-    title: "Fine-tune here",
-    text: "Change messages, roles and rules from this dashboard. No commands to memorize.",
+    title: "Configure",
+    text: "Edit messages, roles and rules in the dashboard.",
   },
 ];
 
 const reasons = [
   {
-    title: "One bot instead of five",
-    text: "Fewer bots means fewer permission headaches, fewer clashing commands and a tidier member list.",
+    title: "Single bot",
+    text: "Replaces several single-purpose bots. One permission set. One command list.",
   },
   {
-    title: "Works out of the box",
-    text: "Every setting has a sensible default, so a fresh server is ready right after /setup.",
+    title: "Defaults included",
+    text: "Every setting has a default value. Operational immediately after /setup.",
   },
   {
-    title: "A real dashboard",
-    text: "Pickers for channels and roles, live previews and plain-English settings. No config files.",
+    title: "Web dashboard",
+    text: "Channel and role pickers. Message previews. No config files.",
   },
 ];
 
@@ -58,8 +58,8 @@ function SetupPreview() {
         <span className="sp-tag">APP</span>
       </div>
       <div className="sp-embed">
-        <div className="sp-title">Let's set up your server</div>
-        <div className="sp-text">What will you use Number One for?</div>
+        <div className="sp-title">What will you use Number One for?</div>
+        <div className="sp-text">Pick everything that fits your server.</div>
         <div className="sp-options">
           {categories.slice(0, 4).map((c, i) => (
             <div key={c.id} className={`sp-option ${i < 3 ? "on" : ""}`}>
@@ -82,19 +82,19 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
     <div className="landing">
       <section className="landing-hero">
         <div className="landing-hero-text">
-          <span className="lp-pill">All-in-one Discord bot</span>
-          <h1>Run your whole server from one bot.</h1>
+          <span className="lp-pill">Discord administration bot</span>
+          <h1>One bot. All server administration.</h1>
           <p className="lead muted">
-            Moderation, member onboarding, roles and more, set up in minutes. No config files, no juggling five
-            different bots.
+            Moderation, auto-moderation, member onboarding and role management. Configured with /setup and this
+            dashboard.
           </p>
           {error === "login_not_configured" && (
-            <p className="error">Dashboard login isn't switched on yet. The bot owner needs to finish setting it up.</p>
+            <p className="error">Error: dashboard login is not configured.</p>
           )}
           {error === "invite_not_configured" && (
-            <p className="error">The invite link isn't set up yet. The bot owner needs to finish setting it up.</p>
+            <p className="error">Error: invite link is not configured.</p>
           )}
-          {error === "login_failed" && <p className="error">Login didn't go through. Please try again.</p>}
+          {error === "login_failed" && <p className="error">Error: login failed. Retry.</p>}
           <div className="lp-cta-row">
             <a className="btn primary large" href="/invite">
               Add to Discord
@@ -106,8 +106,8 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
       </section>
 
       <section id="features" className="landing-section">
-        <h2>Everything a server needs</h2>
-        <p className="muted lp-section-lead">Pick the parts you want. More arrive over time, and you can switch any of them on later.</p>
+        <h2>Modules</h2>
+        <p className="muted lp-section-lead">Enabled per server. Additional modules are in development.</p>
         <div className="lp-feature-grid">
           {categories.map((c) => {
             const live = liveFeatures(c.id);
@@ -115,7 +115,7 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
               <div key={c.id} className="lp-feature-card">
                 <div className="lp-feature-card-head">
                   <span className="lp-feature-emoji">{c.emoji}</span>
-                  {live.length > 0 ? <span className="lp-status lp-live">Live</span> : <span className="lp-status lp-soon">Coming soon</span>}
+                  {live.length > 0 ? <span className="lp-status lp-live">Available</span> : <span className="lp-status lp-soon">In development</span>}
                 </div>
                 <h3>{c.name}</h3>
                 <p className="muted">{c.description}</p>
@@ -135,7 +135,7 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
       </section>
 
       <section id="how" className="landing-section">
-        <h2>Up and running in three steps</h2>
+        <h2>Setup</h2>
         <ol className="lp-steps">
           {steps.map((s, i) => (
             <li key={s.title} className="lp-step">
@@ -148,7 +148,7 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
       </section>
 
       <section className="landing-section">
-        <h2>Why Number One</h2>
+        <h2>Specifications</h2>
         <div className="lp-reasons">
           {reasons.map((r) => (
             <div key={r.title} className="lp-reason">
@@ -160,14 +160,14 @@ export function HomePage({ loggedIn = false }: { loggedIn?: boolean }) {
       </section>
 
       <section className="landing-cta">
-        <h2>Ready to tidy up your server?</h2>
-        <p className="muted">Add the bot, run /setup, and you're done. Questions? Our support server is always open.</p>
+        <h2>Add Number One</h2>
+        <p className="muted">Invite, run /setup, configure. Support is handled in the Discord server.</p>
         <div className="lp-cta-row">
           <a className="btn primary large" href="/invite">
             Add to Discord
           </a>
           <a className="btn ghost large" href={SUPPORT_SERVER} target="_blank" rel="noopener noreferrer">
-            Join support server
+            Support server
           </a>
         </div>
       </section>
