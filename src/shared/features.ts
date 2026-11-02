@@ -24,9 +24,15 @@ export const categories = [
   },
   {
     id: "community",
-    name: "Community & Roles",
+    name: "Community Settings",
     emoji: "👥",
-    description: "Welcome messages, auto roles, reaction roles and member verification",
+    description: "Welcome messages, member onboarding and verification",
+  },
+  {
+    id: "roles",
+    name: "Roles Management",
+    emoji: "🎭",
+    description: "Reaction roles, role menus and auto roles",
   },
   {
     id: "logging",
@@ -51,8 +57,12 @@ export const categories = [
 export type CategoryId = (typeof categories)[number]["id"];
 export const categoryIds = categories.map((c) => c.id) as [CategoryId, ...CategoryId[]];
 
-/** Older category IDs that servers may have saved, and the broader category they now belong to. */
-export const legacyCategories: Record<string, CategoryId> = { roles: "community", welcome: "community" };
+/**
+ * Older category IDs that servers may have saved, and the category they now belong to.
+ * ("roles" is a category of its own again: Community & Roles was split into Community Settings and
+ * Roles Management, and servers that had picked it were given both by migration 0009.)
+ */
+export const legacyCategories: Record<string, CategoryId> = { welcome: "community" };
 
 export interface FeatureInfo<S extends z.ZodObject = z.ZodObject> {
   id: string;
@@ -92,7 +102,7 @@ export const reactionRolesFeature = defineFeature({
   name: "Reaction roles",
   icon: "🎭",
   description: "Members pick their own roles with reactions, buttons or a dropdown menu.",
-  category: "community",
+  category: "roles",
   recommended: true,
   settings: z.object({}),
 });

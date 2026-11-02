@@ -57,13 +57,13 @@ Number One keeps its command list short. Everything else is configured in the da
 
 ### Setup
 
-`/setup` (or the "What will you use Number One for?" card on the dashboard) lets owners pick broad categories: 🛡️ Moderation & Safety, 👥 Community & Roles, 📋 Logging & Auditing, 🎉 Engagement & Fun, and 🛠️ Utilities & Automation. The recommended features in each picked category switch on.
+`/setup` (or the "What will you use Number One for?" card on the dashboard) lets owners pick broad categories: 🛡️ Moderation & Safety, 👥 Community Settings, 🎭 Roles Management, 📋 Logging & Auditing, 🎉 Engagement & Fun, and 🛠️ Utilities & Automation. The recommended features in each picked category switch on.
 
 - Categories without features yet are marked "coming soon". When a feature ships in a picked category, it switches on automatically for that server.
 - Re-running setup never switches off anything already in use.
 - When Number One joins a new server, it posts a one-time welcome in the system channel with a **Set up** button.
 
-### Member onboarding (Community & Roles)
+### Member onboarding (Community Settings)
 
 Discord-style onboarding and welcomes **without turning on Community settings**. Configured on the dashboard; every part is optional:
 
@@ -88,7 +88,7 @@ Discord-style onboarding and welcomes **without turning on Community settings**.
 - The dashboard warns if a join role is allowed into a channel the gate hides (in Discord, an allow beats a deny, so new members would still see it).
 - **Permissions:** Manage Roles (and its role above the roles it gives); Manage Channels for the access gate; Kick Members for removing unfinished members.
 
-### Reaction roles (Community & Roles)
+### Reaction roles (Roles Management)
 
 Members get roles by reacting to a message, and lose them by removing the reaction. Managed entirely from the dashboard:
 
