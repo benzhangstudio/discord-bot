@@ -193,9 +193,9 @@ export const onboarding: BotFeature = {
         const guild = guildOf(request);
         const parsed = onboardingSettings.safeParse(request.body);
         if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Check the form and try again." });
-        const settings = parsed.data;
+        const settings = store.normalize(parsed.data);
         const state = await getFeatureState(guild.id, onboardingFeature);
-        const before = state.settings as OnboardingSettings;
+        const before = store.normalize(state.settings as OnboardingSettings);
         if (JSON.stringify(settings.access) !== JSON.stringify(before.access)) requireOwner(guild, userOf(request));
         await validate(guild, userOf(request), settings, await getAccessState(guild.id));
 
@@ -215,7 +215,7 @@ export const onboarding: BotFeature = {
         const state = await getFeatureState(guild.id, onboardingFeature);
         if (!state.enabled) throw new FixableError("Turn on Member onboarding first.");
         const { settings, result } = await withGuildLock(guild.id, async () => {
-          const settings = await setUpGate(guild, state.settings as OnboardingSettings);
+          const settings = store.normalize(await setUpGate(guild, state.settings as OnboardingSettings));
           await saveFeatureState(guild.id, onboardingFeature, { enabled: true, settings }, userOf(request));
           return { settings, result: await applyAccessNow(guild, settings) };
         });

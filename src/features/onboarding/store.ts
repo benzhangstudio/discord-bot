@@ -8,13 +8,23 @@ import type { OnboardingSettings } from "../../shared/onboarding.js";
 export type Progress = typeof onboardingProgress.$inferSelect;
 
 /** The server's onboarding settings, or null when the feature is off. */
+/**
+ * Tidies settings: while the gate is on, it hands out the New member role itself,
+ * so that role is dropped from Join roles (picking it there would just be a duplicate).
+ */
+export function normalize(s: OnboardingSettings): OnboardingSettings {
+  const gateRole = s.gate.enabled ? s.gate.roleId : null;
+  if (!gateRole || !s.joinRoles.includes(gateRole)) return s;
+  return { ...s, joinRoles: s.joinRoles.filter((id) => id !== gateRole) };
+}
+
 export async function getActiveSettings(guildId: string): Promise<OnboardingSettings | null> {
   const state = await getFeatureState(guildId, onboardingFeature);
-  return state.enabled ? (state.settings as OnboardingSettings) : null;
+  return state.enabled ? normalize(state.settings as OnboardingSettings) : null;
 }
 
 export async function getSettings(guildId: string): Promise<OnboardingSettings> {
-  return (await getFeatureState(guildId, onboardingFeature)).settings as OnboardingSettings;
+  return normalize((await getFeatureState(guildId, onboardingFeature)).settings as OnboardingSettings);
 }
 
 /** Servers with onboarding switched on explicitly (used by background checks). */

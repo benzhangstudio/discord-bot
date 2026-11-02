@@ -137,6 +137,10 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
   };
 
   const { status } = data;
+  // Roles the bot already hands out at the right time, so they can't be join roles too.
+  const joinBlocked: Record<string, string> = {};
+  if (draft.gate.enabled && draft.gate.roleId) joinBlocked[draft.gate.roleId] = "given by the access gate";
+  if (draft.access.verifiedRoleId) joinBlocked[draft.access.verifiedRoleId] = "given when they finish";
   const flowOn = draft.flow.enabled;
   const access = draft.access;
   const canAccess = data.canManageAccess;
@@ -261,7 +265,12 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
       {/* 3. Join roles */}
       <section className="sub">
         <div className="sub-head"><strong>Join roles</strong><small className="muted">Given to every new member right away.</small></div>
-        <RolePicker guild={guild} value={draft.joinRoles} onChange={(v) => set((d) => { d.joinRoles = v; })} />
+        <RolePicker
+          guild={guild}
+          value={draft.joinRoles}
+          blocked={joinBlocked}
+          onChange={(v) => set((d) => { d.joinRoles = v; })}
+        />
         <div className="sub-head spaced"><strong>Bot roles</strong><small className="muted">Given to bots that join. Bots skip onboarding.</small></div>
         <RolePicker guild={guild} value={draft.botRoles} onChange={(v) => set((d) => { d.botRoles = v; })} />
       </section>
