@@ -2172,3 +2172,30 @@ select.chip-add {
 .legal a {
   color: var(--accent);
 }
+
+/* Text input with a live character counter inside its right edge. */
+.counted {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.counted input {
+  width: 100%;
+  padding-right: 52px;
+}
+
+.char-count {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--muted);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.char-count.full {
+  color: var(--accent);
+}

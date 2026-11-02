@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  MAX_ANSWER_LABEL,
   MAX_OPTIONS,
   MAX_ACCESS_CHANNELS,
   MAX_QUESTIONS,
@@ -527,7 +528,17 @@ function QuestionEditor({
       {q.options.map((o, oi) => (
         <div key={o.id} className="option-row">
           <EmojiInput guild={guild} value={o.emoji} onChange={(v) => onChange((x) => { x.options[oi].emoji = v; })} />
-          <input placeholder="Answer" maxLength={80} value={o.label} onChange={(e) => onChange((x) => { x.options[oi].label = e.target.value; })} />
+          <span className="counted">
+            <input
+              placeholder="Answer"
+              maxLength={MAX_ANSWER_LABEL}
+              value={o.label}
+              onChange={(e) => onChange((x) => { x.options[oi].label = e.target.value; })}
+            />
+            <span className={`char-count ${o.label.length >= MAX_ANSWER_LABEL ? "full" : ""}`}>
+              {o.label.length}/{MAX_ANSWER_LABEL}
+            </span>
+          </span>
           <RolePicker
             guild={guild}
             value={o.roleIds}
