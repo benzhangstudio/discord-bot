@@ -74,7 +74,7 @@ Discord-style onboarding and welcomes **without turning on Community settings**.
 | Goodbye message | Off | Posts when someone leaves. |
 | Join roles / bot roles | None | Given right away. Bots skip onboarding. |
 | Onboarding steps | Off | A Start button in a chosen channel opens a private walkthrough: rules ("I agree"), then up to 5 questions (single or multiple choice, required or optional), each answer giving up to 5 roles. With no rules or questions, members just click Finish. Members can change their answers later. |
-| Access gate | Off | "Set it up for me" creates a New member role and #start-here, and hides other channels from new members until they finish. Shows exactly what changes first; can be turned off again. New channels are hidden automatically. Optionally removes members who don't finish in time. |
+| Access gate | Off | "Set it up for me" creates a New member role and a "Start here" category at the top with a read-only #start-here channel, and hides other channels from new members until they finish. Shows exactly what changes first; can be turned off again. New channels are hidden automatically. Optionally removes members who don't finish in time. |
 
 - Progress is saved, so members resume where they left off, even after restarts.
 - All roles are applied in one update at the end.

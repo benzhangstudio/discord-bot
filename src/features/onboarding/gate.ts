@@ -7,10 +7,20 @@ import {
 } from "discord.js";
 import type { OnboardingSettings } from "../../shared/onboarding.js";
 
-/** Channels the gate controls: everything except threads, and except the onboarding channel itself. */
-function gateableChannels(guild: Guild, startChannelId: string | null) {
-  return guild.channels.cache.filter((c) => !c.isThread() && c.id !== startChannelId);
+/** The onboarding channel and the category it sits in. New members can always see these. */
+function startArea(guild: Guild, startChannelId: string | null) {
+  const channel = startChannelId ? guild.channels.cache.get(startChannelId) : undefined;
+  return new Set([startChannelId, channel?.parentId].filter((id): id is string => Boolean(id)));
 }
+
+/** Channels the gate controls: everything except threads and the onboarding channel and its category. */
+function gateableChannels(guild: Guild, startChannelId: string | null) {
+  const keep = startArea(guild, startChannelId);
+  return guild.channels.cache.filter((c) => !c.isThread() && !keep.has(c.id));
+}
+
+const START_CATEGORY = "Start here";
+const START_CHANNEL = "start-here";
 
 function botCanEdit(channel: GuildBasedChannel) {
   const me = channel.guild.members.me;
@@ -57,7 +67,11 @@ export function describeGateSetup(guild: Guild, settings: OnboardingSettings) {
   const role = settings.gate.roleId ? guild.roles.cache.get(settings.gate.roleId) : undefined;
   steps.push(role ? `Use the existing @${role.name} role for new members.` : "Create a role called “New member”.");
   const channel = settings.flow.channelId ? guild.channels.cache.get(settings.flow.channelId) : undefined;
-  steps.push(channel ? `Use #${channel.name} as the onboarding channel.` : "Create a #start-here channel at the top of the server.");
+  steps.push(
+    channel
+      ? `Use #${channel.name} as the onboarding channel.`
+      : `Create a “${START_CATEGORY}” category at the top of the server with a read-only #${START_CHANNEL} channel inside, where the Start button goes.`,
+  );
   const count = gateableChannels(guild, settings.flow.channelId).size;
   steps.push(`Hide ${count} other channel${count === 1 ? "" : "s"} from new members until they finish. Nothing changes for existing members.`);
   steps.push("Turn on onboarding steps, so new members get a Start button.");
@@ -83,21 +97,20 @@ export async function setUpGate(guild: Guild, settings: OnboardingSettings) {
   });
 
   let channel = settings.flow.channelId ? guild.channels.cache.get(settings.flow.channelId) : undefined;
-  if (!channel || channel.type !== ChannelType.GuildText) {
-    channel = await guild.channels.create({
-      name: "start-here",
-      type: ChannelType.GuildText,
-      position: 0,
-      topic: "New here? Click Start below to get set up.",
-      reason: "Number One onboarding channel",
-    });
+  if (!channel || channel.type !== ChannelType.GuildText) channel = await createStartArea(guild, role.id, me.id);
+
+  // New members can read the onboarding channel (and see its category) but not chat in it.
+  for (const id of startArea(guild, channel.id)) {
+    const target = guild.channels.cache.get(id);
+    if (!target || !("permissionOverwrites" in target) || !botCanEdit(target)) continue;
+    await target.permissionOverwrites
+      .edit(
+        role.id,
+        { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+        { reason: "Number One onboarding", type: OverwriteType.Role },
+      )
+      .catch(() => {});
   }
-  // New members can read the onboarding channel but not chat in it.
-  await channel.permissionOverwrites.edit(
-    role.id,
-    { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
-    { reason: "Number One onboarding", type: OverwriteType.Role },
-  );
 
   const skipped: string[] = [];
   for (const target of gateableChannels(guild, channel.id).values()) {
@@ -119,14 +132,52 @@ export async function setUpGate(guild: Guild, settings: OnboardingSettings) {
   return { settings: next, skipped };
 }
 
+/**
+ * Creates the "Start here" category at the top of the server with a #start-here channel inside.
+ * Reuses a category with that name if one exists. Everyone can read the channel, but only the bot
+ * posts there, so the Start message stays at the top.
+ */
+async function createStartArea(guild: Guild, gateRoleId: string, botId: string) {
+  // Discord only lets the bot set permissions it has itself, so leave out any it doesn't.
+  const has = (p: bigint) => Boolean(guild.members.me?.permissions.has(p));
+  const P = PermissionFlagsBits;
+  const readOnly = [
+    { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [P.SendMessages, P.AddReactions, P.CreatePublicThreads, P.CreatePrivateThreads].filter(has) },
+    { id: gateRoleId, type: OverwriteType.Role, allow: [P.ViewChannel, P.ReadMessageHistory].filter(has), deny: [P.SendMessages].filter(has) },
+    // The bot always keeps what it needs to post and update the Start message.
+    { id: botId, type: OverwriteType.Member, allow: [P.ViewChannel, P.SendMessages, P.EmbedLinks, P.ReadMessageHistory].filter(has) },
+  ];
+
+  const category =
+    guild.channels.cache.find((c) => c.type === ChannelType.GuildCategory && c.name.toLowerCase() === START_CATEGORY.toLowerCase()) ??
+    (await guild.channels.create({
+      name: START_CATEGORY,
+      type: ChannelType.GuildCategory,
+      position: 0,
+      permissionOverwrites: readOnly,
+      reason: "Number One onboarding category",
+    }));
+
+  return guild.channels.create({
+    name: START_CHANNEL,
+    type: ChannelType.GuildText,
+    parent: category.id,
+    position: 0,
+    topic: "New here? Click Start below to get set up.",
+    permissionOverwrites: readOnly,
+    reason: "Number One onboarding channel",
+  });
+}
+
 /** Undoes the channel changes: removes the gate role's overwrites everywhere. */
 export async function removeGate(guild: Guild, settings: OnboardingSettings) {
   const roleId = settings.gate.roleId;
   let changed = 0;
   if (roleId) {
+    const keep = startArea(guild, settings.flow.channelId); // keep the onboarding channel and its category readable
     for (const channel of guild.channels.cache.values()) {
       if (channel.isThread() || !("permissionOverwrites" in channel) || !channel.permissionOverwrites.cache.has(roleId)) continue;
-      if (channel.id === settings.flow.channelId) continue; // keep the onboarding channel readable
+      if (keep.has(channel.id)) continue;
       await channel.permissionOverwrites
         .delete(roleId, "Number One onboarding: gate turned off")
         .then(() => changed++)
@@ -139,8 +190,9 @@ export async function removeGate(guild: Guild, settings: OnboardingSettings) {
 /** Hides a newly created channel from new members, so the gate stays closed. */
 export async function hideNewChannel(channel: GuildBasedChannel, settings: OnboardingSettings) {
   const roleId = settings.gate.roleId;
-  if (!settings.gate.enabled || !roleId || channel.isThread() || channel.id === settings.flow.channelId) return;
-  if (!("permissionOverwrites" in channel) || !botCanEdit(channel) || hidesFrom(channel, roleId)) return;
+  if (!settings.gate.enabled || !roleId || channel.isThread() || startArea(channel.guild, settings.flow.channelId).has(channel.id)) return;
+  // A channel created with its own setting for the New member role (like the start area) is left as is.
+  if (!("permissionOverwrites" in channel) || !botCanEdit(channel) || channel.permissionOverwrites.cache.has(roleId)) return;
   await channel.permissionOverwrites
     .edit(roleId, { ViewChannel: false }, { reason: "Number One onboarding: new channel hidden from new members", type: OverwriteType.Role })
     .catch(() => {});
