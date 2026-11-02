@@ -7,9 +7,9 @@ import {
 } from "discord.js";
 import { canReadMessages } from "../../server/bot/discord.js";
 import { onEvent } from "../../server/bot/types.js";
-import { type AutomodRuleKey, type AutomodSettings, botRules } from "../../shared/automod.js";
+import { type AutomodRuleKey, type AutomodSettings, botRules, needsContent } from "../../shared/automod.js";
 import { channelIgnored, countCatch, followUp, getState, isExempt, postAlert, roleIgnored } from "./act.js";
-import { isShouting, isZalgo, countEmojis, trackRepeat } from "./filters.js";
+import { countEmojis, countLinks, isShouting, isZalgo, trackBurst, trackRepeat } from "./filters.js";
 import { filterForRule, syncRules } from "./native.js";
 
 type BotRule = (typeof botRules)[number];
@@ -21,32 +21,59 @@ function check(
   member: GuildMember,
   isEdit: boolean,
 ): { key: BotRule; toDelete: { channelId: string; messageId: string }[] } | null {
+  const reading = canReadMessages();
   const applies = (key: BotRule) => {
     const rule = settings[key];
-    return rule.enabled && !channelIgnored(rule.ignoredChannelIds, message.channel) && !roleIgnored(rule.ignoredRoleIds, member);
+    return (
+      rule.enabled &&
+      (reading || !needsContent(key)) &&
+      !channelIgnored(rule.ignoredChannelIds, message.channel) &&
+      !roleIgnored(rule.ignoredRoleIds, member)
+    );
   };
   const self = [{ channelId: message.channelId, messageId: message.id }];
   const text = message.content;
+  const { guildId } = message;
 
+  // Anti-spam first: every new message must be counted, even one another filter would catch.
+  // Edits aren't new posts, so they don't count towards bursts or repeats.
+  const burstHits: { key: BotRule; toDelete: { channelId: string; messageId: string }[] }[] = [];
+  if (!isEdit) {
+    const burst = (key: "rate" | "attachments" | "linkSpam", weight: number, limit: number, seconds: number, channels?: number) => {
+      if (!applies(key)) return;
+      const toDelete = trackBurst(key, guildId, member.id, message, { weight, limit, seconds, channels });
+      if (toDelete) burstHits.push({ key, toDelete });
+    };
+    burst("rate", 1, settings.rate.messages, settings.rate.seconds, settings.rate.channels);
+    burst("attachments", message.attachments.size + message.stickers.size, settings.attachments.count, settings.attachments.seconds);
+    burst("linkSpam", countLinks(text), settings.linkSpam.count, settings.linkSpam.seconds);
+    if (applies("repeated")) {
+      const copies = trackRepeat(guildId, member.id, message, settings.repeated);
+      if (copies) burstHits.push({ key: "repeated", toDelete: copies });
+    }
+  }
+  if (burstHits.length) {
+    // Several limits at once (e.g. a flood of links that's also too fast): act once, delete everything caught.
+    const seen = new Set<string>();
+    const toDelete = burstHits.flatMap((h) => h.toDelete).filter((m) => !seen.has(m.messageId) && seen.add(m.messageId));
+    return { key: burstHits[0].key, toDelete };
+  }
+
+  if (!text) return null;
   if (applies("zalgo") && isZalgo(text)) return { key: "zalgo", toDelete: self };
   if (applies("caps") && isShouting(text, settings.caps)) return { key: "caps", toDelete: self };
   if (applies("emoji") && countEmojis(text) > settings.emoji.max) return { key: "emoji", toDelete: self };
-  // Edits don't count as new copies.
-  if (!isEdit && applies("repeated")) {
-    const copies = trackRepeat(message.guildId, member.id, message, settings.repeated);
-    if (copies) return { key: "repeated", toDelete: copies };
-  }
   return null;
 }
 
 async function handle(message: Message | PartialMessage, isEdit: boolean) {
   if (!message.inGuild() || message.author?.bot || message.webhookId || message.system) return;
-  if (!canReadMessages()) return;
   const { enabled, settings } = await getState(message.guildId);
-  if (!enabled || !botRules.some((k) => settings[k].enabled)) return;
+  const reading = canReadMessages();
+  if (!enabled || !botRules.some((k) => settings[k].enabled && (reading || !needsContent(k)))) return;
 
   if (message.partial) message = await message.fetch().catch(() => message);
-  if (message.partial || !message.content) return;
+  if (message.partial) return;
   const msg = message as Message<true>;
   const member = msg.member ?? (await msg.guild.members.fetch(msg.author.id).catch(() => null));
   if (!member || isExempt(member)) return;
@@ -54,17 +81,20 @@ async function handle(message: Message | PartialMessage, isEdit: boolean) {
   const hit = check(msg, settings, member, isEdit);
   if (!hit) return;
 
+  // Delete everything caught, one request per channel (a spam burst can span several).
   const me = msg.guild.members.me;
+  const byChannel = new Map<string, string[]>();
+  for (const { channelId, messageId } of hit.toDelete) byChannel.set(channelId, [...(byChannel.get(channelId) ?? []), messageId]);
   let deleted = 0;
-  for (const { channelId, messageId } of hit.toDelete) {
+  for (const [channelId, ids] of byChannel) {
     const channel = channelId === msg.channelId ? msg.channel : msg.guild.channels.cache.get(channelId);
     const target = channel?.isTextBased() ? channel : null;
     if (!target || !me || !target.permissionsFor(me)?.has(PermissionFlagsBits.ManageMessages)) continue;
-    const ok = await target.messages.delete(messageId).then(
-      () => true,
-      () => false,
-    );
-    if (ok) deleted++;
+    if (ids.length === 1) {
+      if (await target.messages.delete(ids[0]).then(() => true, () => false)) deleted++;
+    } else if ("bulkDelete" in target) {
+      deleted += (await target.bulkDelete(ids, true).catch(() => null))?.size ?? 0;
+    }
   }
 
   countCatch(msg.guildId);

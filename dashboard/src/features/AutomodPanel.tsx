@@ -12,6 +12,8 @@ import {
   automodActionInfo,
   automodActions,
   botRules,
+  needsContent,
+  spamRules,
   discordRules,
   ruleInfo,
 } from "../../../src/shared/automod";
@@ -67,9 +69,16 @@ export function AutomodPanel({ guild }: { guild: Guild }) {
 
   const { status } = data;
   const card = (key: AutomodRuleKey, extra?: ReactNode) => (
-    <RuleCard key={key} ruleKey={key} guild={guild} draft={draft} set={set} paused={botRules.includes(key as never) && !status.canReadMessages}>
+    <RuleCard key={key} ruleKey={key} guild={guild} draft={draft} set={set} paused={needsContent(key) && !status.canReadMessages}>
       {extra}
     </RuleCard>
+  );
+
+  const number = (label: string, value: number, min: number, max: number, apply: (d: Draft, v: number) => void) => (
+    <label className="field">
+      <span>{label}</span>
+      <input type="number" min={min} max={max} value={value} onChange={(e) => set((d) => apply(d, clamp(e.target.valueAsNumber, min, max)))} />
+    </label>
   );
 
   return (
@@ -150,7 +159,7 @@ export function AutomodPanel({ guild }: { guild: Guild }) {
           it's online. Edited messages are checked too. Admins and people with Manage Server are never filtered.
         </p>
       </div>
-      {botRules.map((key) =>
+      {botRules.filter((k) => !(spamRules as readonly string[]).includes(k)).map((key) =>
         card(
           key,
           key === "caps" ? (
@@ -181,6 +190,41 @@ export function AutomodPanel({ guild }: { guild: Guild }) {
               </label>
             </div>
           ) : null,
+        ),
+      )}
+
+      <div className="automod-group-head">
+        <h3>Anti-spam</h3>
+        <p className="muted small">
+          Catches bursts: lots of messages, files or links in a short time, which is how hacked accounts usually spread scam links. Everything in
+          the burst is deleted, and the member gets one warning, timeout or kick, not one per message. If they carry on, new messages keep being
+          deleted until they slow down. Message rate works even without "Message Content Intent".
+        </p>
+      </div>
+      {spamRules.map((key) =>
+        card(
+          key,
+          key === "rate" ? (
+            <>
+              <div className="mod-row">
+                {number("More than this many messages", draft.rate.messages, 3, 30, (d, v) => { d.rate.messages = v; })}
+                {number("Within (seconds)", draft.rate.seconds, 2, 60, (d, v) => { d.rate.seconds = v; })}
+              </div>
+              <div className="mod-row">
+                {number("Or posting in this many channels in that time (0 = off)", draft.rate.channels, 0, 20, (d, v) => { d.rate.channels = v; })}
+              </div>
+            </>
+          ) : key === "attachments" ? (
+            <div className="mod-row">
+              {number("More than this many files, images or stickers", draft.attachments.count, 2, 50, (d, v) => { d.attachments.count = v; })}
+              {number("Within (seconds)", draft.attachments.seconds, 2, 120, (d, v) => { d.attachments.seconds = v; })}
+            </div>
+          ) : (
+            <div className="mod-row">
+              {number("More than this many links", draft.linkSpam.count, 2, 50, (d, v) => { d.linkSpam.count = v; })}
+              {number("Within (seconds)", draft.linkSpam.seconds, 2, 120, (d, v) => { d.linkSpam.seconds = v; })}
+            </div>
+          ),
         ),
       )}
 

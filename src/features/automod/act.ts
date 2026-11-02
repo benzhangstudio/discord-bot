@@ -100,6 +100,8 @@ export async function followUp(guild: Guild, user: User, key: AutomodRuleKey, se
 
 /* ------------------------------------------------------------ alerts */
 
+const recentAlerts = new Map<string, number>();
+
 /**
  * Posts a short note in the alert channel when Number One's own filters delete something.
  * (Discord posts its own alerts for its filters.)
@@ -110,6 +112,13 @@ export async function postAlert(
   info: { user: User; channelId: string; key: AutomodRuleKey; content: string; deleted: number },
 ) {
   if (!settings.alertChannelId) return;
+  // One alert per member and filter per cooldown, so someone who keeps spamming doesn't flood the alert channel.
+  const id = `${guild.id}:${info.user.id}:${info.key}`;
+  if (Date.now() - (recentAlerts.get(id) ?? 0) < COOLDOWN_MS) return;
+  recentAlerts.set(id, Date.now());
+  if (recentAlerts.size > 5000) {
+    for (const [k, at] of recentAlerts) if (Date.now() - at > COOLDOWN_MS) recentAlerts.delete(k);
+  }
   const channel = guild.channels.cache.get(settings.alertChannelId);
   if (!channel?.isTextBased()) return;
   const rule = ruleInfo[info.key];

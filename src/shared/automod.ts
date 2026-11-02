@@ -7,7 +7,8 @@ import { z } from "zod";
  * - "Discord" filters (blocked words, invites, links, mass mentions) become rules in Discord's own AutoMod.
  *   Discord blocks the message before anyone sees it, and keeps doing so even when Number One is offline.
  *   Number One then takes the follow-up step (warn, time out, kick) and records it as a case.
- * - "Number One" filters (caps, emoji spam, zalgo, repeated messages) are things Discord's AutoMod can't check.
+ * - "Number One" filters (caps, emoji spam, zalgo, repeated messages, and the anti-spam limits on message rate,
+ *   attachments and links) are things Discord's AutoMod can't check.
  *   Number One reads each message and deletes it if it breaks a rule. These need the Message Content intent.
  */
 
@@ -110,6 +111,39 @@ export const automodSettings = z.object({
       seconds: z.number().int().min(5).max(600).default(60),
     })
     .prefault({}),
+
+  /* ------------------------------------------------ Anti-spam (Number One) */
+
+  rate: z
+    .object({
+      ...ruleBase,
+      action: z.enum(automodActions).default("timeout"),
+      /** More than this many messages… */
+      messages: z.number().int().min(3).max(30).default(7),
+      /** …within this many seconds counts as spam. */
+      seconds: z.number().int().min(2).max(60).default(5),
+      /** Also catch posting in this many different channels within the same time. 0 = off. */
+      channels: z.number().int().min(0).max(20).default(3),
+    })
+    .prefault({}),
+  attachments: z
+    .object({
+      ...ruleBase,
+      action: z.enum(automodActions).default("timeout"),
+      /** Files, images and stickers allowed within the time window. */
+      count: z.number().int().min(2).max(50).default(8),
+      seconds: z.number().int().min(2).max(120).default(15),
+    })
+    .prefault({}),
+  linkSpam: z
+    .object({
+      ...ruleBase,
+      action: z.enum(automodActions).default("timeout"),
+      /** Links allowed within the time window (counted across all messages). */
+      count: z.number().int().min(2).max(50).default(6),
+      seconds: z.number().int().min(2).max(120).default(15),
+    })
+    .prefault({}),
 });
 
 export type AutomodSettings = z.infer<typeof automodSettings>;
@@ -118,8 +152,8 @@ export type AutomodRule = AutomodSettings[AutomodRuleKey];
 
 /** Filters that become rules in Discord's own AutoMod. */
 export const discordRules = ["words", "invites", "links", "mentions"] as const satisfies readonly AutomodRuleKey[];
-/** Filters Number One checks itself (they need to read messages). */
-export const botRules = ["caps", "emoji", "zalgo", "repeated"] as const satisfies readonly AutomodRuleKey[];
+/** Filters Number One checks itself (they need to read messages). The last three are anti-spam: they look at bursts of messages. */
+export const botRules = ["caps", "emoji", "zalgo", "repeated", "rate", "attachments", "linkSpam"] as const satisfies readonly AutomodRuleKey[];
 export const ruleKeys: AutomodRuleKey[] = [...discordRules, ...botRules];
 
 export const ruleInfo: Record<AutomodRuleKey, { name: string; emoji: string; description: string }> = {
@@ -131,7 +165,19 @@ export const ruleInfo: Record<AutomodRuleKey, { name: string; emoji: string; des
   emoji: { name: "Emoji spam", emoji: "😵", description: "Messages stuffed with emojis." },
   zalgo: { name: "Zalgo text", emoji: "👹", description: "Glitchy text made with stacked accent marks." },
   repeated: { name: "Repeated messages", emoji: "🔁", description: "The same message posted again and again, in any channel." },
+  rate: { name: "Message rate", emoji: "⚡", description: "Too many messages too fast, or posting across many channels at once (typical of hacked accounts)." },
+  attachments: { name: "Attachment spam", emoji: "📎", description: "Floods of images, files or stickers in a short time." },
+  linkSpam: { name: "Link spam", emoji: "🧷", description: "Lots of links in a short time, even when each message only has one." },
 };
+
+/**
+ * Whether a Number One filter has to read what messages say (needs the Message Content intent).
+ * Message rate only counts messages, so it works without it.
+ */
+export const needsContent = (key: AutomodRuleKey) => (botRules as readonly string[]).includes(key) && key !== "rate";
+
+/** The anti-spam filters (shown in their own group on the dashboard). */
+export const spamRules = ["rate", "attachments", "linkSpam"] as const satisfies readonly AutomodRuleKey[];
 
 export interface AutomodStatus {
   /** Discord AutoMod rules Number One currently manages in this server. */

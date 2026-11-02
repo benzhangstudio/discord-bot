@@ -16,6 +16,7 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Reaction roles (dashboard) | ✅ |
 | Member onboarding: welcome, goodbye, join roles, steps, access gate | ✅ |
 | Auto-moderation: blocked words, invites, links, mass mentions, caps, emoji spam, zalgo, repeated messages | ✅ |
+| Anti-spam: message rate, cross-channel posting, attachment and link floods | ✅ |
 | More admin features (moderation, welcome, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
@@ -114,15 +115,19 @@ Catches rule-breaking messages automatically. Configured on the dashboard; every
 | Emoji spam | Number One | More than a set number of emojis in one message. |
 | Zalgo text | Number One | Glitchy text made of stacked accent marks. Normal accents and scripts like Thai or Hindi are never caught. |
 | Repeated messages | Number One | The same message posted a set number of times within a set number of seconds, in any channels. All copies are deleted. |
+| Message rate (anti-spam) | Number One | More than a set number of messages within a few seconds, or posting in several channels at once (how hacked accounts spread scam links). Works without Message Content Intent. |
+| Attachment spam (anti-spam) | Number One | More than a set number of files, images or stickers within a set time. |
+| Link spam (anti-spam) | Number One | More than a set number of links within a set time, even spread over many messages. |
 
 - **Discord AutoMod filters** become rules in Server Settings → AutoMod, named "Number One · …". Discord blocks the message before anyone sees it and keeps working while Number One is offline. Number One keeps these rules in step with the dashboard (on save, when it's switched on or off, and on every restart) and never touches rules other people made. Switching the feature off removes its rules.
 - **Number One filters** read each new or edited message and delete it if it breaks a rule. They only work while the bot is online.
 - **Each filter chooses what happens:** delete only, delete and warn, delete and time out, or delete and kick. Warnings, timeouts and kicks go through Moderation, so they get a numbered case, a mod log entry, a DM to the member, and count towards automatic warning steps. A burst of spam leads to one action, not one per message.
+- **Anti-spam filters** delete the whole burst (one request per channel), take one action, and post one alert. If the member keeps going, each new message is deleted straight away until they slow down.
 - **Each filter can skip** up to 50 channels or categories and up to 20 roles. Like Discord's AutoMod, admins and people with Manage Server are never filtered.
 - **Alerts:** an optional channel gets a note with the caught message each time something is caught.
-- **Privacy:** message text is checked in memory and never saved. Repeated-message checks keep only a short fingerprint of each message for up to 10 minutes.
+- **Privacy:** message text is checked in memory and never saved. Repeated-message checks keep only a short fingerprint of each message for up to 10 minutes, and anti-spam checks keep only message IDs and times for up to 2 minutes.
 - **Permissions:** Manage Server (for Discord AutoMod rules), Manage Messages (to delete messages), Timeout Members and Kick Members (for those actions).
-- **Developer Portal:** the Number One filters need **Message Content Intent** turned on (Developer Portal → Bot → Privileged Gateway Intents), then a restart. If it's off, the bot still logs in without it, the other features keep working, and the dashboard says the Number One filters are paused. (Once Number One is in 100+ servers, Discord must approve this intent.)
+- **Developer Portal:** the Number One filters (except Message rate) need **Message Content Intent** turned on (Developer Portal → Bot → Privileged Gateway Intents), then a restart. If it's off, the bot still logs in without it, the other features keep working, and the dashboard lists which filters are paused. (Once Number One is in 100+ servers, Discord must approve this intent.)
 
 ## How the project is organized
 

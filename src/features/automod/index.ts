@@ -3,11 +3,20 @@ import type { FastifyRequest } from "fastify";
 import { canReadMessages, client } from "../../server/bot/discord.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { getFeatureState, saveFeatureState } from "../../server/settings.js";
-import { type AutomodResponse, type AutomodSettings, automodSettings, botRules, discordRules, ruleKeys } from "../../shared/automod.js";
+import {
+  type AutomodResponse,
+  type AutomodSettings,
+  automodSettings,
+  botRules,
+  discordRules,
+  needsContent,
+  ruleInfo,
+  ruleKeys,
+} from "../../shared/automod.js";
 import { automodFeature } from "../../shared/features.js";
 import { caughtCount, forgetState } from "./act.js";
 import { editEvent, executionEvent, joinEvent, messageEvent } from "./events.js";
-import { forgetGuild, sweepRepeats } from "./filters.js";
+import { forgetGuild, sweepBursts, sweepRepeats } from "./filters.js";
 import { activeRuleCount, cleanDomain, syncProblems, syncRules } from "./native.js";
 
 type Req = FastifyRequest<{ Params: { guildId: string } }>;
@@ -29,9 +38,10 @@ function setupProblems(guild: Guild, settings: AutomodSettings, enabled: boolean
   for (const [needed, flag, name, what] of needs) {
     if (needed && !me.permissions.has(flag)) problems.push(`I need the ${name} permission to ${what}.`);
   }
-  if (on.some((k) => (botRules as readonly string[]).includes(k)) && !canReadMessages()) {
+  const paused = on.filter(needsContent);
+  if (paused.length && !canReadMessages()) {
     problems.push(
-      'Caps, emoji, zalgo and repeated-message filters are paused: "Message Content Intent" is off. Turn it on in the Discord Developer Portal → Bot, then restart Number One.',
+      `${paused.map((k) => ruleInfo[k].name).join(", ")} ${paused.length === 1 ? "is" : "are"} paused: "Message Content Intent" is off. Turn it on in the Discord Developer Portal → Bot, then restart Number One.`,
     );
   }
   if (settings.alertChannelId) {
@@ -107,7 +117,10 @@ export const automod: BotFeature = {
 
   setup(c) {
     c.once(Events.ClientReady, (ready) => void syncAll(ready));
-    setInterval(sweepRepeats, 60_000).unref();
+    setInterval(() => {
+      sweepRepeats();
+      sweepBursts();
+    }, 60_000).unref();
   },
 
   async onToggle(guildId, enabled) {
