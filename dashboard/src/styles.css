@@ -2058,3 +2058,13 @@ select.chip-add {
   display: grid;
   gap: 4px;
 }
+
+/* Onboarding: highlight cards at the top of the page */
+.ob-intro {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ob-intro .feature-name {
+  font-size: 0.95rem;
+}
