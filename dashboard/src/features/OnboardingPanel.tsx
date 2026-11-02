@@ -36,16 +36,6 @@ const KICK_CHOICES = [
   { hours: 168, label: "After 1 week" },
 ];
 
-/** What makes Number One's onboarding different, shown as cards at the top of the page. */
-const HIGHLIGHTS = [
-  { icon: "🚫", title: "No Community needed", text: "Works without turning on Discord's Community settings." },
-  { icon: "🔒", title: "Auto-private channels", text: "New channels you create are made private automatically, so nothing slips past the gate." },
-  { icon: "🛡️", title: "Staff stays untouched", text: "Staff categories and whitelisted channels are never changed. Private channels stay private." },
-  { icon: "🤝", title: "Nobody locked out", text: "Everyone already in the server gets Verified before anything is locked." },
-  { icon: "↩️", title: "One-click undo", text: "Turning the gate off puts every channel back exactly as it was." },
-  { icon: "📊", title: "Live Start card", text: "Shows server numbers as people join and finish. Progress is saved, even through restarts." },
-];
-
 /** Dashboard section for Member onboarding. Every part is optional and switched on separately. */
 export function OnboardingPanel({ guild }: { guild: Guild }) {
   const [data, setData] = useState<OnboardingResponse | null>(null);
@@ -147,20 +137,25 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
 
   return (
     <div className="panel onboarding">
-      <div className="ob-intro">
-        <p className="muted">
-          New members are welcomed, walked through your rules and questions, and given roles. With the access gate on, they
-          only see #start-here and whitelisted channels until finishing gives them the Verified role.
-        </p>
-        <div className="plugin-grid">
-          {HIGHLIGHTS.map((h) => (
-            <div key={h.title} className="card plugin">
-              <span className="plugin-icon">{h.icon}</span>
-              <div className="feature-name">{h.title}</div>
-              <p className="muted small plugin-desc">{h.text}</p>
-            </div>
-          ))}
-        </div>
+      <div className="notice">
+        <strong>How Number One onboarding works</strong>
+        <span className="small">
+          New members are welcomed, walked through your rules and questions, and given roles based on their answers. It all
+          works without turning on Discord's Community settings.
+        </span>
+        <span className="small">
+          With the access gate on, new members only see #start-here and your whitelisted channels until they finish. Finishing
+          gives them the Verified role, which opens the rest of the server.
+        </span>
+        <span className="small">What Number One handles for you:</span>
+        <ul className="small">
+          <li>New channels you create are made private automatically, so nothing slips past the gate.</li>
+          <li>Staff categories and whitelisted channels are never touched, and channels that are already private stay private.</li>
+          <li>Everyone already in the server gets Verified before anything is locked, so nobody loses access.</li>
+          <li>Turning the gate off puts every channel back exactly as it was.</li>
+          <li>The Start card shows live server numbers, and members can change their answers any time.</li>
+          <li>Progress is saved, so members pick up where they left off, even after the bot restarts.</li>
+        </ul>
       </div>
       {status.communityOnboarding && (
         <div className="notice warning-box">
