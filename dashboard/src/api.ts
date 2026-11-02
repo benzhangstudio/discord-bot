@@ -7,6 +7,7 @@ import type {
   ReactionRoleMessageView,
   SetupState,
 } from "../../src/shared/features";
+import type { CaseListResponse, CaseView, ModerationResponse, ModerationSettings } from "../../src/shared/moderation";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
 export class ApiError extends Error {
@@ -87,6 +88,22 @@ export const api = {
   removeGate: (guildId: string) =>
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/remove`, { method: "POST", body: "{}" }),
   deleteGuildData: (guildId: string) => request<{ ok: true }>(`/api/guilds/${guildId}/data`, { method: "DELETE" }),
+  moderation: (guildId: string) => request<ModerationResponse>(`/api/guilds/${guildId}/moderation`),
+  saveModeration: (guildId: string, settings: ModerationSettings) =>
+    request<ModerationResponse>(`/api/guilds/${guildId}/moderation`, { method: "PUT", body: JSON.stringify(settings) }),
+  cases: (guildId: string, filters: { q?: string; action?: string; before?: number | null }) => {
+    const params = new URLSearchParams();
+    if (filters.q) params.set("q", filters.q);
+    if (filters.action) params.set("action", filters.action);
+    if (filters.before) params.set("before", String(filters.before));
+    return request<CaseListResponse>(`/api/guilds/${guildId}/moderation/cases?${params}`);
+  },
+  editCase: (guildId: string, caseNumber: number, reason: string) =>
+    request<CaseView>(`/api/guilds/${guildId}/moderation/cases/${caseNumber}`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+  deleteCase: (guildId: string, caseNumber: number) =>
+    request<{ ok: true }>(`/api/guilds/${guildId}/moderation/cases/${caseNumber}`, { method: "DELETE" }),
+  liftCase: (guildId: string, caseNumber: number) =>
+    request<CaseView>(`/api/guilds/${guildId}/moderation/cases/${caseNumber}/lift`, { method: "POST", body: "{}" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

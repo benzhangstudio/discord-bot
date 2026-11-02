@@ -15,7 +15,8 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Setup categories with recommended features | ✅ |
 | Reaction roles (dashboard) | ✅ |
 | Member onboarding: welcome, goodbye, join roles, steps, access gate | ✅ |
-| More admin features (moderation, welcome, logging…) | Next, one at a time |
+| Moderation: warn, timeout, kick, ban, unban, purge, cases, mod log | ✅ |
+| More admin features (auto-moderation, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
 
@@ -46,7 +47,7 @@ A copy of the database is saved every day to `data/backups/`, and the last 7 day
 
 ### Commands
 
-Number One keeps its command list short. Everything else is configured in the dashboard.
+Number One keeps its command list short. Everything else is configured in the dashboard. Moderation adds its own staff commands (below), each hidden from members without the matching permission.
 
 | Command | Who | What it does |
 | --- | --- | --- |
@@ -61,6 +62,30 @@ Number One keeps its command list short. Everything else is configured in the da
 - Categories without features yet are marked "coming soon". When a feature ships in a picked category, it switches on automatically for that server.
 - Re-running setup never switches off anything already in use.
 - When Number One joins a new server, it posts a one-time welcome in the system channel with a **Set up** button.
+
+### Moderation (Moderation & Safety)
+
+Every action becomes a numbered **case** (#1, #2… per server), so each member has a full history.
+
+| Command | Needs | What it does |
+| --- | --- | --- |
+| `/warn user [reason]` | Timeout Members | Records a warning and DMs the member. Can trigger automatic steps. |
+| `/timeout user duration [reason]` | Timeout Members | Times someone out for `10m`, `1h30m`, `2d`… up to 28 days. Suggests lengths as you type. |
+| `/untimeout user [reason]` | Timeout Members | Ends a timeout early. |
+| `/kick user [reason]` | Kick Members | Removes a member (DMs them first). |
+| `/ban user [duration] [delete_messages] [reason]` | Ban Members | Permanent or temporary ban (`7d`, `1mo`…). Works on people who already left. |
+| `/unban user [reason]` | Ban Members | Lifts a ban; suggests banned users as you type. |
+| `/purge amount [user] [contains]` | Manage Messages | Bulk-deletes up to 100 recent messages, optionally filtered. |
+| `/case history · view · note · reason · delete` | Timeout Members | Look up a member's record (private reply), add staff notes, fix a reason, or delete a case (Manage Server). |
+
+- **Safety checks:** moderators can't act on themselves, the owner, the bot, or anyone with an equal or higher role; Number One checks its own role and permissions first and explains what's missing. Refusals are only shown to the moderator.
+- **DMs:** members are told what happened and why (sent before kicks and bans; taken back if the action then fails). Optionally names the moderator and adds an appeal message to ban DMs.
+- **Mod log:** each case is posted to a chosen channel, and the post is updated when its reason is edited or the case is deleted. Discord's audit log shows which moderator used Number One.
+- **Automatic steps:** e.g. a 1-hour timeout at 3 warnings and a ban at 5. Warnings can expire after a set time.
+- **Temporary bans** are stored in the database and lifted on time, even across restarts.
+- **Actions done directly in Discord** (right-click → Ban, etc.) are picked up from the audit log and recorded as cases too.
+- **Dashboard:** settings, live numbers, and a searchable, filterable list of every case where you can edit reasons, delete cases, or end an active ban or timeout early.
+- **Permissions:** Timeout Members, Kick Members, Ban Members, Manage Messages and View Audit Log, with Number One's role above the members it moderates. In the log channel: View Channel, Send Messages and Embed Links.
 
 ### Member onboarding (Community Settings)
 

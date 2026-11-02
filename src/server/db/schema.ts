@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
  * One row per (server, feature): whether the feature is on and its settings.
@@ -164,3 +164,42 @@ export const onboardingState = sqliteTable("onboarding_state", {
    */
   managedChannels: text("managed_channels", { mode: "json" }).$type<Record<string, "allow" | "deny" | "none">>().notNull().default({}),
 });
+
+/**
+ * Moderation: one row per case (warn, note, timeout, kick, ban…). Case numbers count up per server.
+ * Temporary bans stay "active" until they run out or are lifted; the bot checks for expired ones every minute.
+ */
+export const moderationCases = sqliteTable(
+  "moderation_cases",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    guildId: text("guild_id").notNull(),
+    caseNumber: integer("case_number").notNull(),
+    /** warn, note, timeout, untimeout, kick, ban or unban (see src/shared/moderation.ts). */
+    action: text("action").notNull(),
+    userId: text("user_id").notNull(),
+    /** The member's name when the case was made, so history still reads well after they leave. */
+    userTag: text("user_tag").notNull(),
+    moderatorId: text("moderator_id").notNull(),
+    moderatorTag: text("moderator_tag").notNull(),
+    reason: text("reason").notNull().default(""),
+    durationMs: integer("duration_ms"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    /** A temporary ban or timeout that hasn't ended or been lifted yet. */
+    active: integer("active", { mode: "boolean" }).notNull().default(false),
+    /** Taken by Number One itself (warning steps, temporary ban running out). */
+    auto: integer("auto", { mode: "boolean" }).notNull().default(false),
+    /** Done directly in Discord and picked up from the audit log. */
+    external: integer("external", { mode: "boolean" }).notNull().default(false),
+    dmSent: integer("dm_sent", { mode: "boolean" }).notNull().default(false),
+    /** The case's post in the mod log channel, so edits can update it. */
+    logChannelId: text("log_channel_id"),
+    logMessageId: text("log_message_id"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("moderation_cases_number_idx").on(t.guildId, t.caseNumber),
+    index("moderation_cases_user_idx").on(t.guildId, t.userId),
+    index("moderation_cases_expiry_idx").on(t.active, t.expiresAt),
+  ],
+);

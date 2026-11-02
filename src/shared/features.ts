@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { moderationSettings } from "./moderation.js";
 import { onboardingSettings } from "./onboarding.js";
 
 /**
@@ -116,7 +117,17 @@ export const onboardingFeature = defineFeature({
   settings: onboardingSettings,
 });
 
-export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature];
+export const moderationFeature = defineFeature({
+  id: "moderation",
+  name: "Moderation",
+  icon: "🔨",
+  description: "Warn, time out, kick and ban members, with numbered cases, a mod log, DMs and automatic steps for repeat warnings.",
+  category: "moderation",
+  recommended: true,
+  settings: moderationSettings,
+});
+
+export const featureCatalog: FeatureInfo[] = [coreFeature, moderationFeature, onboardingFeature, reactionRolesFeature];
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);
@@ -156,3 +167,4 @@ export interface DashboardUser {
 }
 
 export * from "./reactionRoles.js";
+export * from "./moderation.js";
