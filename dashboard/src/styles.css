@@ -2199,3 +2199,8 @@ select.chip-add {
 .char-count.full {
   color: var(--accent);
 }
+
+.char-count.over {
+  color: var(--danger);
+  font-weight: 600;
+}

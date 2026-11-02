@@ -87,6 +87,9 @@ export function OnboardingPanel({ guild }: { guild: Guild }) {
     });
 
   const save = async () => {
+    // Answers saved before the limit existed can be longer; make the admin shorten them.
+    const tooLong = draft.flow.questions.flatMap((q) => q.options).find((o) => o.label.trim().length > MAX_ANSWER_LABEL);
+    if (tooLong) return setError(`Answers can be up to ${MAX_ANSWER_LABEL} characters. Shorten "${tooLong.label.trim()}".`);
     setSaving(true);
     setError("");
     try {
@@ -535,7 +538,7 @@ function QuestionEditor({
               value={o.label}
               onChange={(e) => onChange((x) => { x.options[oi].label = e.target.value; })}
             />
-            <span className={`char-count ${o.label.length >= MAX_ANSWER_LABEL ? "full" : ""}`}>
+            <span className={`char-count ${o.label.length >= MAX_ANSWER_LABEL ? "full" : ""}${o.label.length > MAX_ANSWER_LABEL ? " over" : ""}`}>
               {o.label.length}/{MAX_ANSWER_LABEL}
             </span>
           </span>

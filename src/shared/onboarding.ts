@@ -16,19 +16,14 @@ export const MAX_STAFF_CATEGORIES = 10;
 export const MAX_ACCESS_CHANNELS = 50;
 
 /**
- * Answer labels show in a one-line Discord dropdown, which cuts off long text.
- * 50 matches Discord's own onboarding limit and fits on one line on desktop.
+ * Dashboard limit for answer labels. They show in a one-line Discord dropdown, which cuts off
+ * longer text. 50 matches Discord's own onboarding limit. Enforced by the dashboard only.
  */
 export const MAX_ANSWER_LABEL = 50;
 
 export const onboardingOption = z.object({
   id: z.string().min(1).max(40),
-  // Answers saved before this limit existed (up to 80 characters) are shortened instead of
-  // failing validation, which would otherwise reset the server's whole onboarding setup.
-  label: z.preprocess(
-    (v) => (typeof v === "string" ? v.trim().slice(0, MAX_ANSWER_LABEL).trim() : v),
-    z.string().min(1, "Every answer needs a label").max(MAX_ANSWER_LABEL),
-  ),
+  label: z.string().trim().min(1, "Every answer needs a label").max(80),
   description: z.string().trim().max(100).default(""),
   emoji: z.string().trim().max(80).default(""),
   roleIds: roleList(MAX_ROLES_PER_OPTION),
