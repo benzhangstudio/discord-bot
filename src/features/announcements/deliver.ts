@@ -187,13 +187,6 @@ export async function runAnnouncement(id: number) {
   }
 }
 
-/** How many servers each outcome would apply to right now. */
-export async function previewAudience(type: AnnouncementTypeId) {
-  const counts = store.emptyCounts();
-  for (const guild of client.guilds.cache.values()) counts[(await planFor(guild, type)).outcome]++;
-  return { servers: client.guilds.cache.size, counts };
-}
-
 /** Posts a sample notice in a server's chosen channel so admins can check permissions. */
 export async function sendTest(guild: Guild, settings: AnnouncementSettings): Promise<string | null> {
   if (!settings.channelId) return "Choose a channel first.";

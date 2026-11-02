@@ -1,22 +1,16 @@
 import { ChannelType, Events, type Guild } from "discord.js";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyRequest } from "fastify";
 import { client } from "../../server/bot/discord.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { getFeatureState, saveFeatureState } from "../../server/settings.js";
 import {
-  type AnnouncementFailure,
   type AnnouncementSettings,
-  type AnnouncementSummary,
   type AnnouncementTypeId,
   type AnnouncementsPanelData,
-  announcementInput,
   announcementSettings,
-  announcementTypeIds,
 } from "../../shared/announcements.js";
 import { announcementsFeature } from "../../shared/features.js";
-import { z } from "zod";
-import { chosenChannel, previewAudience, runAnnouncement, sendTest } from "./deliver.js";
-import { isDeveloper } from "./developer.js";
+import { chosenChannel, runAnnouncement, sendTest } from "./deliver.js";
 import * as store from "./store.js";
 
 type GuildReq = FastifyRequest<{ Params: { guildId: string } }>;
@@ -58,63 +52,6 @@ async function panelData(guild: Guild): Promise<AnnouncementsPanelData> {
       outcome: r.outcome as "channel" | "fallback",
     })),
   };
-}
-
-async function summaries(rows: store.AnnouncementRow[]): Promise<AnnouncementSummary[]> {
-  const counts = await store.countsFor(rows.map((r) => r.id));
-  return rows.map((r) => ({
-    id: r.id,
-    type: r.type as AnnouncementTypeId,
-    title: r.title,
-    body: r.body,
-    url: r.url,
-    createdAt: r.createdAt.getTime(),
-    status: r.status,
-    counts: counts.get(r.id)!,
-    servers: client.guilds.cache.size,
-  }));
-}
-
-/** Developer-only routes: publish an announcement to every server and see how it went. */
-export function registerDeveloperApi(api: FastifyInstance) {
-  api.register(async (dev) => {
-    dev.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
-      if (!(await isDeveloper(request.session!.userId))) {
-        return reply.code(403).send({ error: "Only the bot's developer can send announcements." });
-      }
-    });
-
-    dev.get("/api/developer/announcements", async () => ({ announcements: await summaries(await store.listAnnouncements(30)) }));
-
-    dev.post("/api/developer/announcements/preview", async (request, reply) => {
-      const body = z.object({ type: z.enum(announcementTypeIds) }).safeParse(request.body);
-      if (!body.success) return reply.code(400).send({ error: "Pick a type." });
-      return previewAudience(body.data.type);
-    });
-
-    dev.post("/api/developer/announcements", async (request, reply) => {
-      const input = announcementInput.safeParse(request.body);
-      if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Check the form and try again." });
-      if (!client.isReady()) return reply.code(400).send({ error: "The bot isn't connected to Discord yet. Try again in a minute." });
-      if ((await store.unfinishedAnnouncements()).length) {
-        return reply.code(400).send({ error: "The last announcement is still being sent. Wait for it to finish." });
-      }
-      const row = await store.createAnnouncement(input.data, request.session!.userId);
-      void runAnnouncement(row.id); // keeps going in the background; progress shows in the list
-      return (await summaries([row]))[0];
-    });
-
-    dev.get<{ Params: { id: string } }>("/api/developer/announcements/:id/failures", async (request, reply) => {
-      const id = Number(request.params.id);
-      if (!Number.isInteger(id) || !(await store.getAnnouncement(id))) return reply.code(404).send({ error: "Not found" });
-      const failures: AnnouncementFailure[] = (await store.failuresFor(id)).map((f) => ({
-        guildId: f.guildId,
-        guildName: client.guilds.cache.get(f.guildId)?.name ?? "A server the bot has since left",
-        reason: f.reason || "Unknown error.",
-      }));
-      return { failures };
-    });
-  });
 }
 
 export const announcements: BotFeature = {

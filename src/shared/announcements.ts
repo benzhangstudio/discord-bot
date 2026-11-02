@@ -38,22 +38,6 @@ export type AnnouncementSettings = z.infer<typeof announcementSettings>;
 export const MAX_TITLE = 100;
 export const MAX_BODY = 3500;
 
-/** What the developer fills in to publish an announcement. */
-export const announcementInput = z.object({
-  type: z.enum(announcementTypeIds),
-  title: z.string().trim().min(1, "Add a title").max(MAX_TITLE, `Keep the title under ${MAX_TITLE} characters`),
-  body: z.string().trim().min(1, "Write the message").max(MAX_BODY, `Keep the message under ${MAX_BODY} characters`),
-  /** Optional "Learn more" link. */
-  url: z
-    .string()
-    .trim()
-    .max(300)
-    .default("")
-    .refine((v) => v === "" || /^https:\/\/[^\s]+$/.test(v), "The link must start with https://"),
-});
-
-export type AnnouncementInput = z.infer<typeof announcementInput>;
-
 /** Why an announcement did or didn't reach a server. */
 export type DeliveryOutcome =
   | "channel" // posted in the server's chosen channel
@@ -62,32 +46,6 @@ export type DeliveryOutcome =
   | "skipped-type" // the server turned this kind off
   | "skipped-nochannel" // no channel set and the kind isn't urgent
   | "failed"; // couldn't post (channel deleted, missing permissions...)
-
-export interface AnnouncementSummary {
-  id: number;
-  type: AnnouncementTypeId;
-  title: string;
-  body: string;
-  url: string;
-  createdAt: number;
-  status: "sending" | "done";
-  /** Counts per outcome. */
-  counts: Record<DeliveryOutcome, number>;
-  /** Servers the bot is in right now. */
-  servers: number;
-}
-
-export interface AnnouncementFailure {
-  guildId: string;
-  guildName: string;
-  reason: string;
-}
-
-/** What the developer sees before sending: how many servers each outcome would apply to. */
-export interface AudiencePreview {
-  servers: number;
-  counts: Record<DeliveryOutcome, number>;
-}
 
 /** A past announcement as a server's admins see it. */
 export interface ReceivedAnnouncement {

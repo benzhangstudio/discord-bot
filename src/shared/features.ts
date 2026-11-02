@@ -164,8 +164,6 @@ export interface DashboardUser {
   id: string;
   username: string;
   avatar: string | null;
-  /** The bot's developer: can publish announcements to every server. */
-  developer?: boolean;
 }
 
 export * from "./announcements.js";
