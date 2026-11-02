@@ -1881,162 +1881,6 @@ select.chip-add {
   cursor: not-allowed;
 }
 
-/* Bot announcements (server settings) */
-.ann-intro {
-  margin: 0 0 12px;
-}
-
-.ann-sub {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  padding: 14px;
-  margin-bottom: 12px;
-}
-
-.ann-locked {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 4px 0;
-}
-
-.ann-locked > span:first-child {
-  display: flex;
-  flex-direction: column;
-}
-
-.ann-recent {
-  margin-top: 16px;
-}
-
-.ann-item {
-  border-top: 1px solid var(--border);
-  padding: 10px 0;
-}
-
-.ann-item:first-of-type {
-  border-top: 0;
-}
-
-.ann-item-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.ann-body {
-  margin: 4px 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* Developer page: publish announcements */
-.dev-card {
-  padding: 16px;
-}
-
-.dev-types {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 8px;
-}
-
-.dev-types .category {
-  padding: 10px 12px;
-}
-
-.dev-templates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.dev-preview {
-  background: #313338; /* Discord's own grey, so it looks like the real thing */
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.dev-embed {
-  background: #2b2d31;
-  border-left: 4px solid var(--accent);
-  border-radius: 4px;
-  padding: 10px 14px;
-  max-width: 520px;
-  color: #dbdee1;
-}
-
-.dev-embed-title {
-  font-weight: 700;
-  color: #f2f3f5;
-  margin-bottom: 4px;
-  overflow-wrap: anywhere;
-}
-
-.dev-embed-body {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 0.9rem;
-}
-
-.dev-embed-foot {
-  margin-top: 8px;
-  font-size: 0.75rem;
-  color: #949ba4;
-}
-
-.dev-audience {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
-}
-
-.dev-audience ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
-}
-
-.dev-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dev-item {
-  padding: 12px 14px;
-}
-
-.dev-item-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.dev-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: 6px;
-}
-
-.dev-failures {
-  margin: 8px 0 0;
-  padding-left: 18px;
-}
-
-@media (max-width: 600px) {
-  .dev-card {
-    padding: 12px;
-  }
-}
-
 /* Onboarding: private mode */
 .private-box {
   border: 1px solid var(--border);
@@ -2211,34 +2055,6 @@ select.chip-add {
   line-height: 1.1;
 }
 
-/* --- Bot announcements: two boxes side by side, recent list underneath --- */
-.panel.ann {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
-}
-.panel.ann > * {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-.panel.ann > .ann-sub:not(.ann-recent) {
-  grid-column: auto;
-}
-.ann-sub .toggle-row,
-.ann-sub .ann-locked {
-  padding: 10px 0;
-  margin: 0;
-  border-top: 1px solid var(--border);
-}
-.ann-sub > .sub-head:first-child + .toggle-row {
-  border-top: 1px solid var(--border);
-}
-.ann-sub > .toggle-row:last-child,
-.ann-sub > .ann-locked:last-child {
-  padding-bottom: 0;
-}
-
 /* --- Reaction roles: one box per role menu, in a grid --- */
 .rr-list {
   display: grid;
@@ -2274,8 +2090,7 @@ select.chip-add {
 
 /* --- Phones and narrow windows: one column --- */
 @media (max-width: 900px) {
-  .panel.onboarding,
-  .panel.ann {
+  .panel.onboarding {
     grid-template-columns: minmax(0, 1fr);
   }
   .onboarding .sub.gate > .sub-body {
@@ -2284,11 +2099,6 @@ select.chip-add {
   .rr-list {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-/* Space between settings inside a box. */
-.ann-sub > .field + .field {
-  margin-top: 16px;
 }
 
 /* Phones: a roomier page header. */

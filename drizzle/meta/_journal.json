@@ -71,6 +71,13 @@
       "when": 1793584488220,
       "tag": "0009_split_community_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793584944788,
+      "tag": "0010_remove_announcements",
+      "breakpoints": true
     }
   ]
 }

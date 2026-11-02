@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { announcementSettings } from "./announcements.js";
 import { onboardingSettings } from "./onboarding.js";
 
 /**
@@ -50,7 +49,7 @@ export const categories = [
     id: "utility",
     name: "Utilities & Automation",
     emoji: "🛠️",
-    description: "Custom commands, announcements, tickets, reminders and social feeds",
+    description: "Custom commands, tickets, reminders and social feeds",
   },
 ] as const;
 
@@ -117,17 +116,7 @@ export const onboardingFeature = defineFeature({
   settings: onboardingSettings,
 });
 
-export const announcementsFeature = defineFeature({
-  id: "announcements",
-  name: "Bot announcements",
-  icon: "📢",
-  description: "Hear about Number One updates, maintenance, downtime and security notices in a channel you choose.",
-  category: "utility",
-  recommended: true,
-  settings: announcementSettings,
-});
-
-export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature, announcementsFeature];
+export const featureCatalog: FeatureInfo[] = [coreFeature, onboardingFeature, reactionRolesFeature];
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);
@@ -166,5 +155,4 @@ export interface DashboardUser {
   avatar: string | null;
 }
 
-export * from "./announcements.js";
 export * from "./reactionRoles.js";

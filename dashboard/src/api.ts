@@ -7,7 +7,6 @@ import type {
   ReactionRoleMessageView,
   SetupState,
 } from "../../src/shared/features";
-import type { AnnouncementSettings, AnnouncementsPanelData } from "../../src/shared/announcements";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
 export class ApiError extends Error {
@@ -85,11 +84,6 @@ export const api = {
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/setup`, { method: "POST", body: "{}" }),
   removeGate: (guildId: string) =>
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/remove`, { method: "POST", body: "{}" }),
-  announcements: (guildId: string) => request<AnnouncementsPanelData>(`/api/guilds/${guildId}/announcements`),
-  saveAnnouncements: (guildId: string, settings: AnnouncementSettings) =>
-    request<AnnouncementsPanelData>(`/api/guilds/${guildId}/announcements`, { method: "PUT", body: JSON.stringify(settings) }),
-  testAnnouncement: (guildId: string) =>
-    request<{ ok: true }>(`/api/guilds/${guildId}/announcements/test`, { method: "POST", body: "{}" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

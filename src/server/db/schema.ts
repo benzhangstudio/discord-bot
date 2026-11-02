@@ -155,35 +155,3 @@ export const onboardingState = sqliteTable("onboarding_state", {
    */
   managedChannels: text("managed_channels", { mode: "json" }).$type<Record<string, "allow" | "deny" | "none">>().notNull().default({}),
 });
-
-/** Announcements: messages the bot's developer sent to every server (updates, maintenance, security...). */
-export const announcements = sqliteTable("announcements", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  /** update, maintenance, status, news or security (see src/shared/announcements.ts). */
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  body: text("body").notNull(),
-  /** Optional "Learn more" link ("" = none). */
-  url: text("url").notNull().default(""),
-  createdBy: text("created_by").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  /** "sending" until every server has been handled, then "done". Unfinished ones resume after a restart. */
-  status: text("status", { enum: ["sending", "done"] }).notNull().default("sending"),
-});
-
-/** Announcements: what happened in each server. One row per (announcement, server), so nothing is sent twice. */
-export const announcementDeliveries = sqliteTable(
-  "announcement_deliveries",
-  {
-    announcementId: integer("announcement_id")
-      .notNull()
-      .references(() => announcements.id, { onDelete: "cascade" }),
-    guildId: text("guild_id").notNull(),
-    /** channel, fallback, skipped-off, skipped-type, skipped-nochannel or failed. */
-    outcome: text("outcome").notNull(),
-    /** Plain-language reason for failures. */
-    reason: text("reason").notNull().default(""),
-    deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }).notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.announcementId, t.guildId] }), index("announcement_deliveries_guild_idx").on(t.guildId)],
-);

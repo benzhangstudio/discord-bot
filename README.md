@@ -15,7 +15,6 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Setup categories with recommended features | ✅ |
 | Reaction roles (dashboard) | ✅ |
 | Member onboarding: welcome, goodbye, join roles, steps, access gate | ✅ |
-| Bot announcements: servers choose where announcements go (dashboard). Developer console for sending them | Being rebuilt |
 | More admin features (moderation, welcome, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
