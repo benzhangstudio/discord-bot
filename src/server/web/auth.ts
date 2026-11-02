@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { PermissionFlagsBits } from "discord.js";
 import { eq, lt } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { config, loginReady, setPublicUrl } from "../config.js";
@@ -60,7 +61,40 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
   request.session = session;
 }
 
+/**
+ * Permissions Number One asks for when it's added to a server: what moderation, auto-moderation, onboarding
+ * and reaction roles need, and no more. Add to this list when a new feature needs another permission.
+ */
+const INVITE_PERMISSIONS = [
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.EmbedLinks,
+  PermissionFlagsBits.AttachFiles,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.AddReactions,
+  PermissionFlagsBits.UseExternalEmojis,
+  PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.ManageChannels,
+  PermissionFlagsBits.ManageRoles,
+  PermissionFlagsBits.KickMembers,
+  PermissionFlagsBits.BanMembers,
+  PermissionFlagsBits.ModerateMembers,
+  PermissionFlagsBits.ViewAuditLog,
+  PermissionFlagsBits.ManageGuild, // auto-moderation creates Discord AutoMod rules
+].reduce((all, p) => all | p, 0n);
+
 export function registerAuthRoutes(app: FastifyInstance) {
+  // "Add to Discord" on the landing page: sends the visitor to Discord's add-bot screen.
+  app.get("/invite", async (_request, reply) => {
+    if (!config.clientId) return reply.redirect("/?error=invite_not_configured");
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      scope: "bot applications.commands",
+      permissions: INVITE_PERMISSIONS.toString(),
+    });
+    return reply.redirect(`https://discord.com/oauth2/authorize?${params}`);
+  });
+
   app.get("/auth/login", async (request, reply) => {
     if (!loginReady()) return reply.redirect("/?error=login_not_configured");
     const state = randomBytes(16).toString("hex");

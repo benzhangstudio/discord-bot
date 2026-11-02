@@ -1,6 +1,6 @@
 import { PageLink } from "./PageLink";
 
-const SUPPORT_SERVER = "https://discord.gg/7GyveHcQdn";
+export const SUPPORT_SERVER = "https://discord.gg/7GyveHcQdn";
 
 /**
  * The footer shown on every page. App renders it once, below whichever page is open,

@@ -50,6 +50,11 @@ export function App() {
         >
           <span className="brand-mark">#1</span> Number One
         </a>
+        {!user && (
+          <a className="btn ghost small" href="/auth/login">
+            Log in
+          </a>
+        )}
         {user && (
           <div className="user">
             {avatarUrl(user) ? <img src={avatarUrl(user)!} alt="" /> : <span className="avatar-fallback">{user.username[0]}</span>}
