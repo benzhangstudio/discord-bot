@@ -2389,3 +2389,23 @@ select.chip-add {
     display: none;
   }
 }
+
+/* --- Auto-moderation (reuses the Moderation panel styles) --- */
+.automod-group-head h3 {
+  margin: 8px 0 4px;
+  font-size: 1.05rem;
+}
+.automod-group-head p {
+  margin: 0;
+}
+.automod-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.automod-body .field small {
+  margin-top: 4px;
+}
+.automod .stats strong {
+  overflow-wrap: anywhere;
+}

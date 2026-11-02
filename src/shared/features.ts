@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { automodSettings } from "./automod.js";
 import { moderationSettings } from "./moderation.js";
 import { onboardingSettings } from "./onboarding.js";
 
@@ -127,7 +128,17 @@ export const moderationFeature = defineFeature({
   settings: moderationSettings,
 });
 
-export const featureCatalog: FeatureInfo[] = [coreFeature, moderationFeature, onboardingFeature, reactionRolesFeature];
+export const automodFeature = defineFeature({
+  id: "automod",
+  name: "Auto-moderation",
+  icon: "🤖",
+  description: "Block bad words, invite links, unwanted links, mass mentions, caps, emoji spam, zalgo and repeated messages automatically.",
+  category: "moderation",
+  recommended: true,
+  settings: automodSettings,
+});
+
+export const featureCatalog: FeatureInfo[] = [coreFeature, moderationFeature, automodFeature, onboardingFeature, reactionRolesFeature];
 
 export function getFeatureInfo(id: string): FeatureInfo | undefined {
   return featureCatalog.find((f) => f.id === id);
@@ -168,3 +179,4 @@ export interface DashboardUser {
 
 export * from "./reactionRoles.js";
 export * from "./moderation.js";
+export * from "./automod.js";

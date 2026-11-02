@@ -18,6 +18,9 @@ Number One only keeps what it needs for its features to work. This may include:
 - Server settings and content that server admins set up.
 - Command usage and interactions with the bot.
 - Your Discord username and avatar, when you log in to the dashboard.
+- Moderation records (cases), such as warnings and bans, with the reason staff gave.
+
+When a server turns on Auto-moderation, Number One reads messages in that server to check them against the server's filters. Message text is checked in memory and is never saved. To spot repeated messages, Number One briefly keeps a scrambled fingerprint of recent messages (not the text itself) for up to 10 minutes. If a server has an alert channel set up, a caught message is posted there for the server's staff to review.
 
 Number One never collects passwords, email addresses, or payment information.
 

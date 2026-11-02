@@ -1,8 +1,8 @@
-import { Events, MessageFlags, Routes } from "discord.js";
+import { ApplicationFlags, Events, MessageFlags, Routes } from "discord.js";
 import { features } from "../../features/index.js";
 import { config, dashboardLink, setPublicUrl } from "../config.js";
 import { isFeatureEnabled } from "../settings.js";
-import { client } from "./discord.js";
+import { canReadMessages, client, dropMessageContent } from "./discord.js";
 import type { BotFeature, ComponentHandler, SlashCommand } from "./types.js";
 
 export { client };
@@ -119,5 +119,26 @@ export async function startBot() {
     for (const feature of features) feature.setup?.(client);
     featuresSetUp = true;
   }
+  await checkMessageContent();
   await client.login(config.token);
+}
+
+/** Discord application flags that mean "Message Content Intent" is turned on in the Developer Portal. */
+const MESSAGE_CONTENT_FLAGS = ApplicationFlags.GatewayMessageContent | ApplicationFlags.GatewayMessageContentLimited;
+
+/**
+ * Logging in with an intent that's off in the Developer Portal fails completely, so check first.
+ * When "Message Content Intent" is off, log in without it: everything else still works, and
+ * auto-moderation's own filters stay paused (the dashboard explains how to fix it).
+ */
+async function checkMessageContent() {
+  if (!canReadMessages()) return;
+  client.rest.setToken(config.token);
+  const app = (await client.rest.get(Routes.currentApplication()).catch(() => null)) as { flags?: number } | null;
+  if (!app || ((app.flags ?? 0) & MESSAGE_CONTENT_FLAGS) !== 0) return;
+  console.warn(
+    '[bot] "Message Content Intent" is off in the Discord Developer Portal, so logging in without it. ' +
+      "Auto-moderation's caps, emoji, zalgo and repeated-message filters are paused until it's turned on (then restart).",
+  );
+  dropMessageContent();
 }

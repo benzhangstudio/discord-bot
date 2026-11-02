@@ -7,6 +7,7 @@ import type {
   ReactionRoleMessageView,
   SetupState,
 } from "../../src/shared/features";
+import type { AutomodResponse, AutomodSettings } from "../../src/shared/automod";
 import type { CaseListResponse, CaseView, ModerationResponse, ModerationSettings } from "../../src/shared/moderation";
 import type { OnboardingSettings, OnboardingStatus } from "../../src/shared/onboarding";
 
@@ -104,6 +105,9 @@ export const api = {
     request<{ ok: true }>(`/api/guilds/${guildId}/moderation/cases/${caseNumber}`, { method: "DELETE" }),
   liftCase: (guildId: string, caseNumber: number) =>
     request<CaseView>(`/api/guilds/${guildId}/moderation/cases/${caseNumber}/lift`, { method: "POST", body: "{}" }),
+  automod: (guildId: string) => request<AutomodResponse>(`/api/guilds/${guildId}/automod`),
+  saveAutomod: (guildId: string, settings: AutomodSettings) =>
+    request<AutomodResponse>(`/api/guilds/${guildId}/automod`, { method: "PUT", body: JSON.stringify(settings) }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

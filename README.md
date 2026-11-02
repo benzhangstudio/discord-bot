@@ -15,6 +15,7 @@ The bot and its dashboard run together as **one program** on one Wispbyte server
 | Setup categories with recommended features | ✅ |
 | Reaction roles (dashboard) | ✅ |
 | Member onboarding: welcome, goodbye, join roles, steps, access gate | ✅ |
+| Auto-moderation: blocked words, invites, links, mass mentions, caps, emoji spam, zalgo, repeated messages | ✅ |
 | More admin features (moderation, welcome, logging…) | Next, one at a time |
 
 ## Running on Wispbyte
@@ -98,6 +99,30 @@ Members get roles by reacting to a message, and lose them by removing the reacti
 - Up to 20 emojis per message (Discord's limit). Changing the channel reposts the message there.
 - Cleans up automatically when the message, its channel or a role is deleted. If someone clears the reactions, the bot puts its own back.
 - **Permissions:** the bot needs Manage Roles, and its role must sit above the roles it gives out. In the channel it needs View Channel, Send Messages, Embed Links, Add Reactions and Read Message History. Admins can only set up roles below their own highest role. Problems are explained on save.
+
+### Auto-moderation (Moderation & Safety)
+
+Catches rule-breaking messages automatically. Configured on the dashboard; every filter is off until switched on.
+
+| Filter | Run by | What it catches |
+| --- | --- | --- |
+| Blocked words | Discord AutoMod | Your own list (up to 1,000, with `*` wildcards), plus Discord's swearing, sexual content and slur lists. A "never block" list stops false matches. |
+| Invite links | Discord AutoMod | discord.gg and similar server invites. |
+| Links | Discord AutoMod | Any web link, except sites on the allow list (subdomains included). |
+| Mass mentions | Discord AutoMod | Messages that ping more than a set number of people or roles, plus Discord's mention-raid protection. |
+| Excessive caps | Number One | Messages that are mostly capitals (percentage and minimum length are adjustable). |
+| Emoji spam | Number One | More than a set number of emojis in one message. |
+| Zalgo text | Number One | Glitchy text made of stacked accent marks. Normal accents and scripts like Thai or Hindi are never caught. |
+| Repeated messages | Number One | The same message posted a set number of times within a set number of seconds, in any channels. All copies are deleted. |
+
+- **Discord AutoMod filters** become rules in Server Settings → AutoMod, named "Number One · …". Discord blocks the message before anyone sees it and keeps working while Number One is offline. Number One keeps these rules in step with the dashboard (on save, when it's switched on or off, and on every restart) and never touches rules other people made. Switching the feature off removes its rules.
+- **Number One filters** read each new or edited message and delete it if it breaks a rule. They only work while the bot is online.
+- **Each filter chooses what happens:** delete only, delete and warn, delete and time out, or delete and kick. Warnings, timeouts and kicks go through Moderation, so they get a numbered case, a mod log entry, a DM to the member, and count towards automatic warning steps. A burst of spam leads to one action, not one per message.
+- **Each filter can skip** up to 50 channels or categories and up to 20 roles. Like Discord's AutoMod, admins and people with Manage Server are never filtered.
+- **Alerts:** an optional channel gets a note with the caught message each time something is caught.
+- **Privacy:** message text is checked in memory and never saved. Repeated-message checks keep only a short fingerprint of each message for up to 10 minutes.
+- **Permissions:** Manage Server (for Discord AutoMod rules), Manage Messages (to delete messages), Timeout Members and Kick Members (for those actions).
+- **Developer Portal:** the Number One filters need **Message Content Intent** turned on (Developer Portal → Bot → Privileged Gateway Intents), then a restart. If it's off, the bot still logs in without it, the other features keep working, and the dashboard says the Number One filters are paused. (Once Number One is in 100+ servers, Discord must approve this intent.)
 
 ## How the project is organized
 

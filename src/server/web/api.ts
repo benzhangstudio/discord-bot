@@ -137,6 +137,10 @@ export function registerApiRoutes(app: FastifyInstance) {
             error: "Turn off the access gate in Onboarding first, so your channels go back to how they were. Then try again.",
           });
         }
+        // Let features undo what they set up inside Discord (e.g. auto-moderation's AutoMod rules) while Number One still can.
+        for (const feature of features) {
+          await feature.beforeDataDelete?.(guild.id).catch((err) => request.log.warn(err));
+        }
         await guild.leave();
         await deleteGuildData(guild.id);
         guildListCache.clear(); // so the server list shows the bot is gone

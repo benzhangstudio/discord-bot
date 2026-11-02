@@ -50,6 +50,8 @@ export interface BotFeature {
   registerApi?(api: FeatureApi): void;
   /** Optional: runs after an admin switches the feature on or off in the dashboard. */
   onToggle?(guildId: string, enabled: boolean): Promise<unknown>;
+  /** Optional: undo changes made inside Discord before the owner deletes the server's data and Number One leaves. */
+  beforeDataDelete?(guildId: string): Promise<unknown>;
 }
 
 export type FeatureApi = import("fastify").FastifyInstance;
