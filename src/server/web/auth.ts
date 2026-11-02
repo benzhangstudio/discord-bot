@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { config, loginReady, setPublicUrl } from "../config.js";
 import { db } from "../db/client.js";
 import { sessions } from "../db/schema.js";
+import { decryptToken, encryptToken } from "./tokenCrypto.js";
 
 const DISCORD_API = "https://discord.com/api/v10";
 const SESSION_COOKIE = "n1_session";
@@ -113,7 +114,7 @@ export function registerAuthRoutes(app: FastifyInstance) {
         userId: user.id,
         username: user.global_name || user.username,
         avatar: user.avatar,
-        accessToken: token.access_token,
+        accessToken: encryptToken(token.access_token),
         expiresAt: new Date(Date.now() + ttlSeconds * 1000),
       })
       .run();
@@ -133,7 +134,9 @@ export function registerAuthRoutes(app: FastifyInstance) {
 
 /** Calls the Discord API on behalf of the logged-in user. */
 export async function discordUserFetch<T>(session: Session, path: string): Promise<T> {
-  const res = await fetch(`${DISCORD_API}${path}`, { headers: { Authorization: `Bearer ${session.accessToken}` } });
+  const accessToken = decryptToken(session.accessToken);
+  if (!accessToken) throw Object.assign(new Error("Stored login can't be read"), { status: 401 }); // log in again
+  const res = await fetch(`${DISCORD_API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) throw Object.assign(new Error(`Discord API ${path} returned ${res.status}`), { status: res.status });
   return (await res.json()) as T;
 }

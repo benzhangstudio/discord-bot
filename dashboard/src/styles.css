@@ -348,6 +348,20 @@ code {
   border-color: rgba(255, 107, 107, 0.35);
 }
 
+/* "Delete all data" box at the bottom of a server's Overview. */
+.danger-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.danger-card:hover {
+  border-color: rgba(255, 107, 107, 0.6);
+}
+
 .rr-message {
   background: var(--bg);
   border: 1px solid var(--border);

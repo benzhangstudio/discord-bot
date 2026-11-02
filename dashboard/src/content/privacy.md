@@ -43,7 +43,7 @@ Information is kept only as long as needed to provide the bot's features. Some d
 
 You may request to view, correct, or delete your data, or your server's data, at any time by contacting us through our Official Support Server.
 
-Server administrators can also stop data collection at any time by removing Number One from their server.
+Server owners can delete all of their server's data at any time from the dashboard. If Number One is removed from a server, that server's data is deleted automatically after 30 days.
 
 ## 7. Data Security
 

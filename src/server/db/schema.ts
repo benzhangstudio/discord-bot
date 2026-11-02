@@ -18,7 +18,16 @@ export const featureSettings = sqliteTable(
   (t) => [primaryKey({ columns: [t.guildId, t.featureId] })],
 );
 
-/** Dashboard login sessions. */
+/**
+ * Servers the bot was removed from. Their data is deleted 30 days later (Discord requires deleting
+ * data that's no longer needed), unless the bot is added back first. See src/server/guildData.ts.
+ */
+export const removedGuilds = sqliteTable("removed_guilds", {
+  guildId: text("guild_id").primaryKey(),
+  removedAt: integer("removed_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+/** Dashboard login sessions. The Discord access token is stored encrypted (see src/server/web/tokenCrypto.ts). */
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),

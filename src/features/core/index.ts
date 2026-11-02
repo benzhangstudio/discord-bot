@@ -1,13 +1,19 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { Events, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { coreFeature } from "../../shared/features.js";
 import type { BotFeature } from "../../server/bot/types.js";
 import { dashboardLink } from "../../server/config.js";
+import { startGuildDataCleanup } from "../../server/guildData.js";
+import { guildAdded, guildRemoved } from "./cleanup.js";
 import { setupCommand, setupComponents, welcomeOnJoin } from "./setup.js";
 
 export const core: BotFeature = {
   info: coreFeature,
   components: [setupComponents],
-  events: [welcomeOnJoin],
+  events: [welcomeOnJoin, guildAdded, guildRemoved],
+  setup(client) {
+    // Deletes data of servers the bot left more than 30 days ago (needs the server list, so waits for login).
+    client.once(Events.ClientReady, () => startGuildDataCleanup(client));
+  },
   commands: [
     setupCommand,
     {

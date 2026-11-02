@@ -41,6 +41,8 @@ export interface GuildDetails {
   };
   features: FeatureState[];
   setup: SetupState;
+  /** Only the server owner can delete the server's data. */
+  isOwner: boolean;
 }
 
 export interface OnboardingResponse {
@@ -84,6 +86,7 @@ export const api = {
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/setup`, { method: "POST", body: "{}" }),
   removeGate: (guildId: string) =>
     request<OnboardingResponse>(`/api/guilds/${guildId}/onboarding/gate/remove`, { method: "POST", body: "{}" }),
+  deleteGuildData: (guildId: string) => request<{ ok: true }>(`/api/guilds/${guildId}/data`, { method: "DELETE" }),
   logout: () => request<{ ok: true }>("/auth/logout", { method: "POST" }),
 };
 

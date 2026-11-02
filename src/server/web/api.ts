@@ -5,6 +5,8 @@ import { type DashboardGuild, type DashboardUser, categoryIds, getFeatureInfo } 
 import { features } from "../../features/index.js";
 import { client } from "../bot/client.js";
 import { config, loginReady } from "../config.js";
+import { getAccessState } from "../../features/onboarding/access.js";
+import { deleteGuildData } from "../guildData.js";
 import { applySetup, getAllFeatureStates, getFeatureState, getSetup, saveFeatureState } from "../settings.js";
 import { type Session, discordUserFetch, requireSession } from "./auth.js";
 
@@ -114,7 +116,31 @@ export function registerApiRoutes(app: FastifyInstance) {
 
       guildApi.get<{ Params: { guildId: string } }>("/api/guilds/:guildId", async (request) => {
         const guild = client.guilds.cache.get(request.params.guildId)!;
-        return { guild: guildSummary(guild), features: await getAllFeatureStates(guild.id), setup: await getSetup(guild.id) };
+        return {
+          guild: guildSummary(guild),
+          features: await getAllFeatureStates(guild.id),
+          setup: await getSetup(guild.id),
+          isOwner: guild.ownerId === request.session!.userId,
+        };
+      });
+
+      // Owner only: deletes everything stored about the server and removes the bot (Discord Developer Terms 5(b)).
+      guildApi.delete<{ Params: { guildId: string } }>("/api/guilds/:guildId/data", async (request, reply) => {
+        const guild = client.guilds.cache.get(request.params.guildId)!;
+        if (guild.ownerId !== request.session!.userId) {
+          return reply.code(403).send({ error: "Only the server owner can delete the server's data." });
+        }
+        // The access gate changed channel permissions; its saved data is what puts them back, so it must go first.
+        const access = await getAccessState(guild.id);
+        if (access.privateMode || Object.keys(access.managed).length > 0) {
+          return reply.code(409).send({
+            error: "Turn off the access gate in Onboarding first, so your channels go back to how they were. Then try again.",
+          });
+        }
+        await guild.leave();
+        await deleteGuildData(guild.id);
+        guildListCache.clear(); // so the server list shows the bot is gone
+        return { ok: true };
       });
 
       guildApi.put<{ Params: { guildId: string; featureId: string } }>(

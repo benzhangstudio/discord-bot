@@ -322,7 +322,52 @@ function OverviewPage({
       <p className="muted small footnote">
         Always on: <code>/setup</code>, <code>/dashboard</code> and <code>/ping</code>.
       </p>
+
+      <DeleteDataCard data={data} />
     </section>
+  );
+}
+
+/** Lets the server owner delete everything Number One stores about the server (Discord requires an easy way). */
+function DeleteDataCard({ data }: { data: GuildDetails }) {
+  const [busy, setBusy] = useState(false);
+  const { guild, isOwner } = data;
+
+  const remove = async () => {
+    const typed = prompt(
+      `This removes Number One from ${guild.name} and permanently deletes all of its settings and data for this server. ` +
+        `Messages and roles it already created stay in your server.\n\nType the server name to confirm:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== guild.name.trim()) return alert("The name didn't match, so nothing was deleted.");
+    setBusy(true);
+    try {
+      await api.deleteGuildData(guild.id);
+      alert(`Done. Number One has left ${guild.name} and its data has been deleted.`);
+      navigate("/servers");
+    } catch (err) {
+      alert((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="overview-group">
+      <h2>Your data</h2>
+      <div className="card danger-card">
+        <div>
+          <div className="feature-name">Remove Number One and delete all data</div>
+          <div className="muted small">
+            {isOwner
+              ? "Removes the bot from this server and permanently deletes everything it stores about it."
+              : "Only the server owner can do this. If Number One is removed from a server, its data is deleted automatically after 30 days."}
+          </div>
+        </div>
+        <button className="btn danger" disabled={!isOwner || busy} onClick={remove}>
+          {busy ? "Deleting…" : "Delete all data"}
+        </button>
+      </div>
+    </div>
   );
 }
 
